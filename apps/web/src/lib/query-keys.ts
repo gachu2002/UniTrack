@@ -1,0 +1,18 @@
+export const queryKeys = {
+  authMe: ['auth', 'me'] as const,
+  adminUsers: ['admin', 'users'] as const,
+  adminUsersFiltered: (filters: unknown) => ['admin', 'users', filters] as const,
+  dashboard: ['dashboard'] as const,
+  projects: ['projects'] as const,
+  project: (projectId: string) => ['projects', projectId] as const,
+  projectMembers: (projectId: string) => ['projects', projectId, 'members'] as const,
+  projectMilestones: (projectId: string) => ['projects', projectId, 'milestones'] as const,
+  projectTasks: (projectId: string) => ['projects', projectId, 'tasks'] as const,
+  projectProgress: (projectId: string) => ['projects', projectId, 'progress'] as const,
+  projectResourceLinks: (projectId: string) => ['projects', projectId, 'resource-links'] as const,
+  projectFiles: (projectId: string) => ['projects', projectId, 'files'] as const,
+  task: (projectId: string, taskId: string) => ['projects', projectId, 'tasks', taskId] as const,
+  classes: ['classes'] as const,
+  class: (classId: string) => ['classes', classId] as const,
+  classProjectCandidates: (classId: string) => ['classes', classId, 'project-candidates'] as const,
+}

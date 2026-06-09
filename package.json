@@ -1,0 +1,12 @@
+{
+  "name": "unitrack",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "dev:web": "pnpm --filter @unitrack/web dev",
+    "build:web": "pnpm --filter @unitrack/web build",
+    "lint:web": "pnpm --filter @unitrack/web lint",
+    "api:dev": "go run ./apps/api/cmd/server",
+    "api:build": "go build -o ./apps/api/bin/server ./apps/api/cmd/server"
+  }
+}

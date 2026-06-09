@@ -1,0 +1,36 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "build",
+  "share": "manual",
+  "autoupdate": "notify",
+  "instructions": [
+    "AGENTS.md",
+    "docs/project.md"
+  ],
+  "permission": {
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "pwd": "allow",
+      "ls *": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "pnpm *": "allow",
+      "go *": "allow",
+      "make *": "allow"
+    },
+    "webfetch": "allow",
+    "skill": "allow",
+    "task": "allow",
+    "question": "allow"
+  },
+  "watcher": {
+    "ignore": [
+      "node_modules/**",
+      "apps/web/dist/**",
+      "apps/api/bin/**",
+      "apps/api/server"
+    ]
+  }
+}
