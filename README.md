@@ -48,10 +48,10 @@ make api-run-local
 
 Default local admin account when using `make api-run-local`:
 
-| Field | Value |
-| --- | --- |
-| Email | `admin@unitrack.local` |
-| Password | `admin12345` |
+| Field    | Value                  |
+| -------- | ---------------------- |
+| Email    | `admin@unitrack.local` |
+| Password | `admin12345`           |
 
 ## References
 
