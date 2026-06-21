@@ -1,0 +1,21 @@
+\chapter{CÁC GIẢI PHÁP VÀ ĐÓNG GÓP NỔI BẬT}
+
+\section{Kiểm soát truy cập theo vai trò và dự án}
+
+Một đóng góp quan trọng của UniTrack là kiểm soát quyền truy cập theo cả vai trò người dùng và quan hệ của người dùng với dự án. Quản trị viên, giảng viên và sinh viên có quyền khác nhau. Ngoài ra, giảng viên chỉ quản lý các dự án thuộc phạm vi phụ trách, còn sinh viên chỉ thao tác trên dự án mà mình là thành viên.
+
+\section{Ràng buộc dữ liệu và giao dịch an toàn}
+
+Các nghiệp vụ như thêm thành viên, giao nhiệm vụ, nộp bài, duyệt bài và di chuyển dự án giữa thư mục cần đảm bảo dữ liệu nhất quán. Hệ thống sử dụng ràng buộc cơ sở dữ liệu, giao dịch và kiểm tra lại trạng thái hiện tại trong backend để hạn chế lỗi do dữ liệu stale hoặc thao tác đồng thời.
+
+\section{Quản lý vòng đời dự án}
+
+Trạng thái dự án quyết định các thao tác được phép. Dự án đang hoạt động cho phép giao việc và nộp bài. Dự án tạm dừng hạn chế công việc mới. Dự án hoàn tất giữ lại khả năng xử lý một số bài nộp đang chờ. Dự án lưu trữ chủ yếu ở trạng thái chỉ đọc. Chính sách này giúp dữ liệu phản ánh đúng tiến trình thực tế của dự án.
+
+\section{Quản lý minh chứng và tài nguyên}
+
+Sinh viên có thể đính kèm tệp minh chứng cho bài nộp đang chờ duyệt. Sau khi bài nộp đã được đánh giá, dữ liệu hỗ trợ được giữ lại để tham khảo nhưng bị chặn chỉnh sửa nhằm bảo toàn bằng chứng. Tài nguyên liên kết cũng được kiểm tra theo target và trạng thái dự án để tránh ghi dữ liệu sai phạm vi.
+
+\section{Frontend state và xử lý dữ liệu stale}
+
+Frontend sử dụng TanStack Query để quản lý dữ liệu từ API. Các query key và helper invalidation được tập trung hóa để giảm lỗi quên làm mới dữ liệu sau mutation. Một số tình huống stale như bị từ chối quyền hoặc xung đột trạng thái sẽ kích hoạt refresh dữ liệu liên quan để giao diện không tiếp tục hiển thị hành động đã hết hiệu lực.

@@ -1,0 +1,33 @@
+\chapter{GIỚI THIỆU ĐỀ TÀI}
+
+\section{Đặt vấn đề}
+
+Trong các học phần hoặc chương trình đào tạo có yêu cầu sinh viên thực hiện dự án, giảng viên thường phải theo dõi nhiều nhóm, nhiều nhiệm vụ và nhiều mốc tiến độ cùng lúc. Nếu quá trình này chỉ được quản lý bằng trao đổi trực tiếp, thư điện tử hoặc bảng tính rời rạc, giảng viên khó có cái nhìn tập trung về trạng thái từng dự án, còn sinh viên dễ thiếu thông tin về công việc cần làm, hạn nộp và phản hồi từ người hướng dẫn.
+
+UniTrack được xây dựng để giải quyết bài toán quản lý dự án sinh viên theo hướng tập trung. Thay vì coi lớp học hay môn học là trung tâm, hệ thống đặt dự án làm đơn vị chính. Mỗi dự án có thành viên, giảng viên phụ trách, nhiệm vụ chính thức, bài nộp, tài nguyên, minh chứng và lịch sử phản hồi. Cách tổ chức này phù hợp với quy trình giảng viên giao việc, sinh viên thực hiện, sinh viên báo cáo tiến độ và giảng viên đánh giá kết quả.
+
+\section{Mục tiêu và phạm vi đề tài}
+
+Mục tiêu của đề tài là xây dựng một nền tảng Web hỗ trợ giảng viên giám sát tiến độ dự án sinh viên với các chức năng cốt lõi sau:
+
+\begin{itemize}
+  \item Quản lý tài khoản người dùng theo vai trò quản trị viên, giảng viên và sinh viên.
+  \item Quản lý workspace, thư mục lớp và danh sách dự án.
+  \item Tạo, cập nhật và theo dõi dự án cùng thành viên tham gia.
+  \item Tạo nhiệm vụ chính thức, phân công sinh viên, thiết lập hạn nộp và theo dõi trạng thái.
+  \item Cho phép sinh viên nộp báo cáo tiến độ, tài nguyên và tệp minh chứng.
+  \item Cho phép giảng viên xem xét, phản hồi và duyệt bài nộp.
+  \item Cung cấp dashboard tóm tắt công việc cần chú ý theo từng vai trò.
+\end{itemize}
+
+Phạm vi đồ án tập trung vào luồng supervision project-first. Các chức năng ngoài phạm vi như mạng xã hội, trò chuyện thời gian thực, thanh toán hoặc hệ thống học liệu độc lập không được triển khai trong phiên bản hiện tại.
+
+\section{Định hướng giải pháp}
+
+Hệ thống được phát triển dưới dạng ứng dụng Web gồm frontend, backend và cơ sở dữ liệu quan hệ. Frontend cung cấp giao diện cho người dùng thao tác trên trình duyệt. Backend cung cấp API REST, xử lý nghiệp vụ, kiểm tra phân quyền và lưu trữ dữ liệu. Cơ sở dữ liệu PostgreSQL lưu thông tin tài khoản, dự án, thành viên, nhiệm vụ, bài nộp, tài nguyên và tệp minh chứng.
+
+Giải pháp ưu tiên tính rõ ràng, dễ bảo trì và an toàn dữ liệu. Các thao tác quan trọng như thay đổi tài khoản, cập nhật trạng thái dự án, thêm thành viên, nộp bài và duyệt bài đều cần được kiểm tra quyền truy cập và trạng thái hiện tại của dữ liệu.
+
+\section{Bố cục đồ án}
+
+Báo cáo gồm sáu chương. Chương 1 giới thiệu bài toán, mục tiêu và phạm vi đề tài. Chương 2 trình bày khảo sát và phân tích yêu cầu. Chương 3 mô tả công nghệ sử dụng. Chương 4 trình bày thiết kế, triển khai và đánh giá hệ thống. Chương 5 tổng hợp các giải pháp và đóng góp nổi bật. Chương 6 kết luận và đưa ra hướng phát triển tiếp theo.

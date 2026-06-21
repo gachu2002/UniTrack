@@ -1,0 +1,109 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[a4paper,top=2.5cm,bottom=2.5cm,left=3cm,right=2cm]{geometry}
+\usepackage{fontspec}
+\setmainfont{TeX Gyre Termes}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{bookmark}
+
+\graphicspath{{assets/}{assets/screenshots/}{assets/diagrams/}}
+
+\input{report-info.tex}
+
+\renewcommand{\contentsname}{MỤC LỤC}
+\renewcommand{\listfigurename}{DANH MỤC HÌNH VẼ}
+\renewcommand{\listtablename}{DANH MỤC BẢNG BIỂU}
+\renewcommand{\bibname}{TÀI LIỆU THAM KHẢO}
+\renewcommand{\chaptername}{CHƯƠNG}
+\renewcommand{\figurename}{Hình}
+\renewcommand{\tablename}{Bảng}
+
+\titleformat{\chapter}[display]
+  {\bfseries\centering\Large}
+  {CHƯƠNG \thechapter.}
+  {0.5em}
+  {}
+\titlespacing*{\chapter}{0pt}{0pt}{2em}
+
+\titleformat{\section}
+  {\bfseries\large}
+  {\thesection}
+  {1em}
+  {}
+
+\titleformat{\subsection}
+  {\bfseries\normalsize}
+  {\thesubsection}
+  {1em}
+  {}
+
+\setlength{\parindent}{1cm}
+\setlength{\parskip}{0.25em}
+\setlength{\headheight}{17pt}
+\linespread{1.25}
+\setlist[itemize]{leftmargin=1.2cm}
+\setlist[enumerate]{leftmargin=1.2cm}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\nouppercase{\leftmark}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\captionsetup{font=small,labelfont=bf,labelsep=space}
+
+\newcommand{\placeholderfigure}[2]{%
+  \begin{figure}[H]
+    \centering
+    \fbox{\parbox[c][5cm][c]{0.82\textwidth}{\centering #1}}
+    \caption{#2}
+  \end{figure}
+}
+
+\begin{document}
+
+\pagenumbering{gobble}
+\input{frontmatter/title-page.tex}
+
+\clearpage
+\pagenumbering{roman}
+\input{frontmatter/loi-cam-on.tex}
+\input{frontmatter/loi-cam-ket.tex}
+\input{frontmatter/tom-tat.tex}
+
+\clearpage
+\tableofcontents
+\clearpage
+\listoffigures
+\clearpage
+\listoftables
+\clearpage
+\input{frontmatter/abbreviations.tex}
+\clearpage
+\input{frontmatter/glossary.tex}
+
+\clearpage
+\pagenumbering{arabic}
+\input{chapters/01-gioi-thieu.tex}
+\input{chapters/02-khao-sat-phan-tich.tex}
+\input{chapters/03-cong-nghe.tex}
+\input{chapters/04-thiet-ke-trien-khai-danh-gia.tex}
+\input{chapters/05-giai-phap-dong-gop.tex}
+\input{chapters/06-ket-luan-huong-phat-trien.tex}
+
+\clearpage
+\bibliographystyle{ieeetr}
+\bibliography{references}
+
+\end{document}

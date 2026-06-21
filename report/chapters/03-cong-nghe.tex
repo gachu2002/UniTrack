@@ -1,0 +1,39 @@
+\chapter{CÔNG NGHỆ SỬ DỤNG}
+
+\section{Frontend với React và TypeScript}
+
+Frontend của UniTrack được xây dựng bằng React và TypeScript. React hỗ trợ phát triển giao diện theo component, phù hợp với các màn hình có nhiều trạng thái như dashboard, workspace, chi tiết dự án và chi tiết nhiệm vụ. TypeScript giúp kiểm tra kiểu dữ liệu trong quá trình phát triển, giảm lỗi khi tích hợp với API backend \cite{react,typescript}.
+
+\section{Backend với Go}
+
+Backend sử dụng Go để xây dựng API REST. Go có ưu điểm là biên dịch nhanh, runtime gọn, thư viện chuẩn mạnh và phù hợp cho các dịch vụ Web cần xử lý đồng thời. Hệ thống sử dụng router HTTP, các handler theo từng lát tính năng và truy vấn SQL trực tiếp để kiểm soát rõ ràng luồng dữ liệu \cite{go}.
+
+\section{Cơ sở dữ liệu PostgreSQL}
+
+PostgreSQL được dùng làm hệ quản trị cơ sở dữ liệu quan hệ. Đây là lựa chọn phù hợp cho các nghiệp vụ cần ràng buộc toàn vẹn, giao dịch và truy vấn dữ liệu có quan hệ phức tạp như dự án, thành viên, nhiệm vụ, bài nộp và đánh giá \cite{postgresql}.
+
+\section{RESTful API và phiên đăng nhập}
+
+Frontend giao tiếp với backend thông qua API REST. Các endpoint sử dụng JSON làm định dạng trao đổi dữ liệu. Phiên đăng nhập được lưu bằng cookie, backend kiểm tra phiên hiện tại trước khi cho phép truy cập các tài nguyên được bảo vệ.
+
+\section{Thư viện và công cụ hỗ trợ}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|p{0.28\textwidth}|X|}
+\hline
+Nhóm công cụ & Công nghệ \\
+\hline
+Frontend & React, TypeScript, Vite, Tailwind CSS, shadcn/Radix, TanStack Query, Zustand \\
+\hline
+Backend & Go, chi, pgx, REST API \\
+\hline
+Database & PostgreSQL, goose migrations \\
+\hline
+Kiểm thử & Go test, Playwright \\
+\hline
+Triển khai tham khảo & Vercel, Render, Neon, Cloudflare R2 \\
+\hline
+\end{tabularx}
+\caption{Danh sách công nghệ chính của UniTrack}
+\end{table}

@@ -1,0 +1,25 @@
+\chapter{THIẾT KẾ, TRIỂN KHAI VÀ ĐÁNH GIÁ HỆ THỐNG}
+
+\section{Thiết kế kiến trúc}
+
+UniTrack được thiết kế theo mô hình phân tách frontend, backend và cơ sở dữ liệu. Frontend chịu trách nhiệm hiển thị giao diện và quản lý trạng thái phía trình duyệt. Backend xử lý API, xác thực, phân quyền, nghiệp vụ và giao tiếp với cơ sở dữ liệu. PostgreSQL lưu trữ dữ liệu quan hệ và đảm bảo các ràng buộc toàn vẹn quan trọng.
+
+\placeholderfigure{Frontend React gọi API REST tới backend Go; backend kiểm tra phiên, quyền truy cập và thao tác với PostgreSQL.}{Kiến trúc tổng quan của hệ thống UniTrack}
+
+\section{Thiết kế dữ liệu}
+
+Các nhóm dữ liệu chính gồm người dùng, phiên đăng nhập, dự án, thành viên dự án, thư mục lớp, mốc kế hoạch, nhiệm vụ, bài nộp tiến độ, đánh giá bài nộp, tài nguyên liên kết, tệp minh chứng và nhật ký hoạt động. Dữ liệu dự án là trung tâm, các bảng còn lại liên kết trực tiếp hoặc gián tiếp với dự án để đảm bảo mọi thao tác đều nằm trong phạm vi quyền truy cập cụ thể.
+
+\placeholderfigure{Sơ đồ ERD sẽ được thay bằng hình xuất từ cơ sở dữ liệu hoặc công cụ vẽ.}{Sơ đồ thực thể liên kết của UniTrack}
+
+\section{Thiết kế giao diện}
+
+Giao diện tập trung vào ba khu vực chính: dashboard, workspace và chi tiết nhiệm vụ. Dashboard giúp người dùng nhìn nhanh công việc cần chú ý. Workspace hiển thị thư mục lớp và dự án. Trang chi tiết dự án cung cấp thông tin dự án, thành viên, nhiệm vụ, tài nguyên và trạng thái tiến độ. Trang chi tiết nhiệm vụ hỗ trợ sinh viên nộp bài và giảng viên duyệt bài.
+
+\section{Triển khai chức năng}
+
+Phiên bản hiện tại đã triển khai các luồng chính: xác thực, quản trị tài khoản, dashboard theo vai trò, workspace, dự án, thư mục lớp, thành viên dự án, mốc kế hoạch, nhiệm vụ chính thức, bài nộp tiến độ, đánh giá bài nộp, tài nguyên và tệp minh chứng. Các thao tác ghi quan trọng được kiểm tra trạng thái dự án để tránh chỉnh sửa dữ liệu trong các trạng thái không phù hợp.
+
+\section{Kiểm thử và đánh giá}
+
+Backend có bộ kiểm thử lifecycle và kiểm thử nghiệp vụ cho các luồng chính. Frontend có kiểm thử Playwright cho đăng nhập, dashboard, phân quyền, stale action, luồng thư mục và một số tình huống trạng thái. Việc kiểm thử tập trung vào rủi ro chính: truy cập sai quyền, dữ liệu stale, trạng thái dự án không hợp lệ, tài khoản không hoạt động và tài nguyên không còn được phép chỉnh sửa.

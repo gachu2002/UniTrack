@@ -1,0 +1,15 @@
+{
+  "name": "unitrack",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "dev:web": "pnpm --filter @unitrack/web dev",
+    "build:web": "pnpm --filter @unitrack/web build",
+    "lint:web": "pnpm --filter @unitrack/web lint",
+    "test:e2e:web": "pnpm --filter @unitrack/web test:e2e",
+    "test:e2e:web:headed": "pnpm --filter @unitrack/web test:e2e:headed",
+    "test:e2e:web:report": "pnpm --filter @unitrack/web test:e2e:report",
+    "api:dev": "go run ./apps/api/cmd/server",
+    "api:build": "mkdir -p ./apps/api/bin && go build -o ./apps/api/bin/server ./apps/api/cmd/server"
+  }
+}

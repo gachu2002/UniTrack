@@ -1,0 +1,47 @@
+\chapter{KHẢO SÁT VÀ PHÂN TÍCH YÊU CẦU}
+
+\section{Khảo sát hiện trạng}
+
+Trong thực tế, quá trình theo dõi dự án sinh viên thường diễn ra qua nhiều kênh khác nhau như trao đổi trực tiếp, email, nhóm chat, bảng tính hoặc thư mục lưu tệp. Cách làm này có ưu điểm là đơn giản lúc ban đầu nhưng nhanh chóng phát sinh hạn chế khi số lượng dự án, thành viên và nhiệm vụ tăng lên.
+
+Các hạn chế chính gồm: khó tổng hợp trạng thái dự án, khó xác định nhiệm vụ nào quá hạn, khó lưu vết phản hồi, khó quản lý minh chứng theo từng bài nộp và khó phân biệt quyền thao tác giữa giảng viên, sinh viên và quản trị viên. Do đó, một hệ thống tập trung cần được xây dựng để chuẩn hóa quy trình giao việc, nộp bài và đánh giá.
+
+\section{Tổng quan chức năng}
+
+UniTrack có ba nhóm người dùng chính: quản trị viên, giảng viên và sinh viên. Quản trị viên quản lý tài khoản và có khả năng quan sát tổng quan hệ thống. Giảng viên tạo và quản lý dự án, phân công nhiệm vụ, theo dõi tiến độ và duyệt bài nộp. Sinh viên tham gia dự án, xem nhiệm vụ được giao, nộp tiến độ và nhận phản hồi.
+
+\placeholderfigure{Sơ đồ use case tổng quan sẽ được thay bằng hình xuất từ công cụ vẽ.}{Biểu đồ use case tổng quan của UniTrack}
+
+\section{Yêu cầu chức năng}
+
+Các yêu cầu chức năng chính của hệ thống được tóm tắt như sau:
+
+\begin{longtable}{|p{0.18\textwidth}|p{0.72\textwidth}|}
+\hline
+Mã yêu cầu & Nội dung \\
+\hline
+FR01 & Người dùng có thể đăng nhập, đăng xuất và xem thông tin phiên hiện tại. \\
+\hline
+FR02 & Quản trị viên có thể tạo, tìm kiếm, cập nhật trạng thái, vai trò và mật khẩu tài khoản. \\
+\hline
+FR03 & Giảng viên có thể tạo thư mục lớp và tổ chức dự án theo workspace. \\
+\hline
+FR04 & Giảng viên có thể tạo, cập nhật, đóng băng, hoàn tất hoặc lưu trữ dự án theo trạng thái hợp lệ. \\
+\hline
+FR05 & Giảng viên có thể thêm sinh viên đang hoạt động vào dự án và quản lý vai trò thành viên. \\
+\hline
+FR06 & Giảng viên có thể tạo mốc kế hoạch và nhiệm vụ chính thức cho dự án. \\
+\hline
+FR07 & Sinh viên có thể xem nhiệm vụ được giao và nộp tiến độ trong phạm vi dự án đang hoạt động. \\
+\hline
+FR08 & Giảng viên có thể duyệt, trả lại hoặc từ chối bài nộp của sinh viên. \\
+\hline
+FR09 & Người dùng có quyền có thể quản lý tài nguyên và tệp minh chứng theo chính sách vòng đời dự án. \\
+\hline
+FR10 & Dashboard hiển thị thông tin cần chú ý theo vai trò người dùng. \\
+\hline
+\end{longtable}
+
+\section{Yêu cầu phi chức năng}
+
+Hệ thống cần đáp ứng các yêu cầu phi chức năng quan trọng: giao diện dễ sử dụng, phân quyền rõ ràng, dữ liệu nhất quán, phản hồi API dễ hiểu, cấu trúc mã nguồn dễ bảo trì, kiểm thử được các luồng chính và có thể triển khai trên hạ tầng Web phổ biến.
