@@ -1,21 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ArrowUpRight, Clock, UserRound } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, CalendarClock, ChevronLeft, ChevronRight, Clock } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import { PageHeader } from '@/components/layout/page-header'
 import { ErrorState } from '@/components/shared/error-state'
-import { LedgerSection } from '@/components/shared/ledger-section'
 import { LoadingState } from '@/components/shared/loading-state'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getDashboard } from '@/features/dashboard/api'
-import { ProgressUpdateTable } from '@/features/projects/components/progress-table'
-import { ProjectTable } from '@/features/projects/components/project-table'
-import { projectNeedsAttention } from '@/features/projects/attention'
-import { TaskTable } from '@/features/tasks/components/task-table'
-import { formatDateTime } from '@/lib/format'
+import { getLastApprovedLabel, getProjectAttentionReason, projectNeedsAttention } from '@/features/projects/attention'
+import { formatDate, formatDateTime } from '@/lib/format'
+import { pageItems } from '@/lib/pagination'
 import { queryKeys } from '@/lib/query-keys'
-import type { DashboardStats, ProgressUpdate, Task, UserRole } from '@/types/api'
+import { cn } from '@/lib/utils'
+import type { Dashboard, ProgressUpdate, Project, Task } from '@/types/api'
+
+const DASHBOARD_PAGE_SIZE = 4
 
 export function DashboardPage() {
   const dashboardQuery = useQuery({ queryKey: queryKeys.dashboard, queryFn: getDashboard })
@@ -33,155 +35,414 @@ export function DashboardPage() {
   const dashboard = dashboardQuery.data
   const isStudent = dashboard.role === 'student'
   const isAdmin = dashboard.role === 'admin'
-  const title = isStudent ? 'Do next' : isAdmin ? 'Global review queue' : 'Review queue'
+  const title = isStudent ? 'Do next' : 'Review work'
   const description = isStudent
-    ? 'Start with open assignments. Submitted work moves below while it waits for review.'
-    : isAdmin
-      ? 'Track review debt, overdue assignments, and account scale across all projects.'
-      : 'Start with student submissions, then check overdue assignments and project follow-ups.'
+    ? 'Start with the first open assignment, then check submitted work below.'
+    : 'Clear pending submissions first, then follow up on overdue assignments and stale projects.'
   const attentionProjects = dashboard.projects.filter(projectNeedsAttention)
   const followUpProjects = attentionProjects.filter((project) => project.pendingReviewCount === 0)
   const pendingReviewUpdates = sortOldestFirst(dashboard.progressUpdates.filter((update) => update.reviewStatus === 'pending_review'))
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-6">
       <PageHeader
         eyebrow={isStudent ? 'Student dashboard' : isAdmin ? 'Admin dashboard' : 'Teacher dashboard'}
         title={title}
         description={description}
       />
-      <DashboardSummary role={dashboard.role} stats={dashboard.stats} />
 
       {isStudent ? (
-        <section className="space-y-6">
-          <LedgerSection id="work" title="Open assignments" description="Assignments you can still move forward." bodyClassName="p-0">
-            <StudentAssignmentGroups tasks={dashboard.tasks} />
-          </LedgerSection>
-
-          <LedgerSection title="Recent submissions" description="Your submitted work and teacher review status." bodyClassName="p-0">
-            <ProgressUpdateTable updates={dashboard.progressUpdates} showSubmittedBy={false} showTaskColumn={false} emptyTitle="No submissions yet" emptyMessage="Work you submit for assignments will appear here." />
-          </LedgerSection>
-        </section>
+        <StudentDashboard dashboard={dashboard} />
       ) : (
-        <section className="space-y-6">
-          <LedgerSection id="reviews" title="Pending reviews" description="Oldest submissions are listed first so review debt is easy to clear." bodyClassName="p-0">
-            <TeacherReviewQueue updates={pendingReviewUpdates} />
-          </LedgerSection>
-
-          <LedgerSection id="overdue" title="Overdue assignments" description="Specific assignments past their due date in active projects." bodyClassName="p-0">
-            <TaskTable tasks={dashboard.tasks} showProject showAttention emptyTitle="No overdue assignments" emptyMessage="Assignments that need follow-up will appear here." />
-          </LedgerSection>
-
-          <LedgerSection id="work" title="Project follow-ups" description="Active projects with stale or missing approved progress, excluding work already covered by the review queue." bodyClassName="p-0">
-            <ProjectTable projects={followUpProjects} mode="attention" showSupervisor={isAdmin} emptyTitle="No project follow-ups" emptyMessage="Projects with stale or missing progress will appear here after review work is clear." />
-          </LedgerSection>
-        </section>
+        <ManagerDashboard dashboard={dashboard} isAdmin={isAdmin} pendingReviewUpdates={pendingReviewUpdates} followUpProjects={followUpProjects} />
       )}
     </div>
   )
 }
 
-function StudentAssignmentGroups({ tasks }: { tasks: Task[] }) {
-  const needsRevision = tasks.filter(isNeedsRevision)
-  const overdue = tasks.filter((task) => !isNeedsRevision(task) && task.isOverdue)
-  const nextUp = tasks.filter((task) => !isNeedsRevision(task) && !task.isOverdue)
-  const groups = [
-    { title: 'Needs revision', description: 'Teacher feedback is waiting. Start here before opening new work.', tasks: needsRevision },
-    { title: 'Overdue', description: 'Past due assignments that still need action.', tasks: overdue },
-    { title: 'Next up', description: 'Upcoming assigned work after urgent items are clear.', tasks: nextUp },
-  ].filter((group) => group.tasks.length > 0)
+function ManagerDashboard({ dashboard, isAdmin, pendingReviewUpdates, followUpProjects }: { dashboard: Dashboard; isAdmin: boolean; pendingReviewUpdates: ProgressUpdate[]; followUpProjects: Project[] }) {
+  return (
+    <section className="space-y-6">
+      <DashboardSection id="reviews" title="Pending reviews" description="Oldest submissions are first." countLabel={`${pendingReviewUpdates.length} waiting`}>
+        <PaginatedDashboardList items={pendingReviewUpdates} pageSize={DASHBOARD_PAGE_SIZE} itemLabel="submissions">
+          {(updates) => <ReviewTable updates={updates} />}
+        </PaginatedDashboardList>
+      </DashboardSection>
 
-  if (groups.length === 0) {
-    return <TaskTable tasks={[]} showProject showAssignees={false} emptyTitle="No open assignments" emptyMessage="Nothing needs action right now. Submitted or completed work appears below or in your projects." />
+      <DashboardSection id="overdue" title="Overdue assignments" description="Past-due work in active projects." countLabel={`${dashboard.tasks.length} overdue`}>
+        <PaginatedDashboardList items={dashboard.tasks} pageSize={DASHBOARD_PAGE_SIZE} itemLabel="assignments">
+          {(tasks) => <OverdueAssignmentTable tasks={tasks} />}
+        </PaginatedDashboardList>
+      </DashboardSection>
+
+      <DashboardSection id="work" title="Project follow-ups" description="Projects with stale or missing approved progress." countLabel={`${followUpProjects.length} projects`}>
+        <PaginatedDashboardList items={followUpProjects} pageSize={DASHBOARD_PAGE_SIZE} itemLabel="projects">
+          {(projects) => <ProjectFollowUpTable projects={projects} showSupervisor={isAdmin} />}
+        </PaginatedDashboardList>
+      </DashboardSection>
+    </section>
+  )
+}
+
+function StudentDashboard({ dashboard }: { dashboard: Dashboard }) {
+  const tasks = sortStudentTasks(dashboard.tasks)
+  return (
+    <section className="space-y-6">
+      <DashboardSection id="work" title="Open assignments" description="Work is ordered by revision, overdue status, then nearest due date." countLabel={`${tasks.length} open`}>
+        <PaginatedDashboardList items={tasks} pageSize={DASHBOARD_PAGE_SIZE} itemLabel="assignments">
+          {(visibleTasks) => <StudentWorkTable tasks={visibleTasks} />}
+        </PaginatedDashboardList>
+      </DashboardSection>
+
+      <DashboardSection title="Recent submissions" description="Submitted work and teacher review status." countLabel={`${dashboard.progressUpdates.length} submissions`}>
+        <PaginatedDashboardList items={dashboard.progressUpdates} pageSize={DASHBOARD_PAGE_SIZE} itemLabel="submissions">
+          {(updates) => <SubmissionTable updates={updates} />}
+        </PaginatedDashboardList>
+      </DashboardSection>
+    </section>
+  )
+}
+
+function DashboardSection({ id, title, description, countLabel, children }: { id?: string; title: string; description: string; countLabel: string; children: ReactNode }) {
+  return (
+    <section id={id} className="space-y-2.5">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="font-heading text-xl font-semibold tracking-tight text-ink">{title}</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+        </div>
+        <span className="text-sm font-medium text-muted-foreground">{countLabel}</span>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-border bg-card/90 shadow-sm">
+        {children}
+      </div>
+    </section>
+  )
+}
+
+function ReviewTable({ updates }: { updates: ProgressUpdate[] }) {
+  if (updates.length === 0) {
+    return <DashboardEmpty title="No pending reviews" message="Student submissions waiting for review will appear here." />
   }
 
   return (
-    <div className="divide-y divide-border">
-      {groups.map((group) => (
-        <section key={group.title}>
-          <div className="bg-paper/60 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-heading text-lg font-semibold tracking-tight text-ink">{group.title}</h3>
-              <span className="rounded-full border border-border bg-card px-2.5 py-1 text-xs font-bold text-muted-foreground">{group.tasks.length}</span>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">{group.description}</p>
-          </div>
-          <TaskTable tasks={group.tasks} showProject showAssignees={false} emptyTitle="No assignments" emptyMessage="This action group is clear." />
-        </section>
-      ))}
+    <div className="overflow-x-auto">
+      <Table className="min-w-[52rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Submission</TableHead>
+            <TableHead className="w-44">Student</TableHead>
+            <TableHead className="w-64">Project</TableHead>
+            <TableHead className="w-44">Submitted</TableHead>
+            <TableHead className="w-24 text-right">Action</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {updates.map((update) => {
+            const reviewHref = `/workspace/projects/${update.projectId}/tasks/${update.taskId}#assignment-workflow`
+            return (
+              <TableRow key={update.id}>
+                <TableCell className="min-w-72">
+                  <Link className="font-heading font-semibold text-ink underline-offset-4 hover:text-primary hover:underline" to={reviewHref}>
+                    {update.title || update.taskTitle}
+                  </Link>
+                  <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{update.description}</p>
+                  {update.blockers ? <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="size-3.5" /> {update.blockers}</p> : null}
+                </TableCell>
+                <TableCell className="text-muted-foreground">{update.submittedByName}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  <Link className="block truncate underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${update.projectId}`}>{update.projectName}</Link>
+                  <p className="mt-1 truncate text-xs">{update.taskTitle}</p>
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5"><Clock className="size-4" /> {formatDateTime(update.createdAt)}</span>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button asChild size="sm">
+                    <Link to={reviewHref}>Review <ArrowUpRight className="size-4" /></Link>
+                  </Button>
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
     </div>
   )
+}
+
+function OverdueAssignmentTable({ tasks }: { tasks: Task[] }) {
+  if (tasks.length === 0) {
+    return <DashboardEmpty title="No overdue assignments" message="Assignments that need follow-up will appear here." />
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <Table className="min-w-[48rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Assignment</TableHead>
+            <TableHead className="w-64">Project</TableHead>
+            <TableHead className="w-36">Due</TableHead>
+            <TableHead className="w-64">Assignees</TableHead>
+            <TableHead className="w-20 text-right">Open</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {tasks.map((task) => (
+            <TableRow key={task.id}>
+              <TableCell className="min-w-72">
+                <Link className="font-heading font-semibold text-ink underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${task.projectId}/tasks/${task.id}`}>
+                  {task.title}
+                </Link>
+                <p className="mt-1 truncate text-xs text-muted-foreground">{task.milestoneTitle || 'Missing checkpoint'}</p>
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                <Link className="block truncate underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${task.projectId}`}>{task.projectName}</Link>
+              </TableCell>
+              <TableCell className="whitespace-nowrap font-semibold text-destructive">
+                <span className="inline-flex items-center gap-1.5"><CalendarClock className="size-4" /> {formatDate(task.deadline)}</span>
+              </TableCell>
+              <TableCell className="max-w-64 truncate text-muted-foreground">{assigneeText(task)}</TableCell>
+              <TableCell className="text-right">
+                <OpenLink to={`/workspace/projects/${task.projectId}/tasks/${task.id}`} label={`Open assignment ${task.title}`} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function ProjectFollowUpTable({ projects, showSupervisor }: { projects: Project[]; showSupervisor: boolean }) {
+  if (projects.length === 0) {
+    return <DashboardEmpty title="No project follow-ups" message="Projects with stale or missing progress will appear here after review work is clear." />
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <Table className="min-w-[48rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Project</TableHead>
+            <TableHead className="w-56">{showSupervisor ? 'Supervisor' : 'Topic'}</TableHead>
+            <TableHead className="w-40">Reason</TableHead>
+            <TableHead className="w-40">Last approved</TableHead>
+            <TableHead className="w-20 text-right">Open</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {projects.map((project) => (
+            <TableRow key={project.id}>
+              <TableCell className="min-w-72">
+                <Link className="font-heading font-semibold text-ink underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${project.id}`}>
+                  {project.name}
+                </Link>
+                <p className="mt-1 text-xs text-muted-foreground">{project.memberCount} members · {project.taskCount} assignments</p>
+              </TableCell>
+              <TableCell className="text-muted-foreground">{showSupervisor ? project.supervisorName : project.topic || 'No topic set'}</TableCell>
+              <TableCell><span className="text-sm font-semibold text-destructive">{getProjectAttentionReason(project)}</span></TableCell>
+              <TableCell className="text-muted-foreground">{getLastApprovedLabel(project)}</TableCell>
+              <TableCell className="text-right">
+                <OpenLink to={`/workspace/projects/${project.id}`} label={`Open ${project.name}`} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function StudentWorkTable({ tasks }: { tasks: Task[] }) {
+  if (tasks.length === 0) {
+    return <DashboardEmpty title="No open assignments" message="Nothing needs action right now. Submitted or completed work appears below or in your projects." />
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <Table className="min-w-[48rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Assignment</TableHead>
+            <TableHead className="w-64">Project</TableHead>
+            <TableHead className="w-36">Due</TableHead>
+            <TableHead className="w-36">Status</TableHead>
+            <TableHead className="w-20 text-right">Open</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {tasks.map((task) => {
+            const badge = studentWorkBadge(task)
+            return (
+              <TableRow key={task.id}>
+                <TableCell className="min-w-72">
+                  <Link className="font-heading font-semibold text-ink underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${task.projectId}/tasks/${task.id}`}>
+                    {task.title}
+                  </Link>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{task.milestoneTitle || 'Missing checkpoint'}</p>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  <Link className="block truncate underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${task.projectId}`}>{task.projectName}</Link>
+                </TableCell>
+                <TableCell className={cn('whitespace-nowrap', task.isOverdue ? 'font-semibold text-destructive' : 'text-muted-foreground')}>
+                  <span className="inline-flex items-center gap-1.5"><CalendarClock className="size-4" /> {formatDate(task.deadline)}</span>
+                </TableCell>
+                <TableCell><StatusBadge value={badge.value} tone={badge.tone} /></TableCell>
+                <TableCell className="text-right">
+                  <OpenLink to={`/workspace/projects/${task.projectId}/tasks/${task.id}`} label={`Open assignment ${task.title}`} />
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function SubmissionTable({ updates }: { updates: ProgressUpdate[] }) {
+  if (updates.length === 0) {
+    return <DashboardEmpty title="No submissions yet" message="Work you submit for assignments will appear here." />
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <Table className="min-w-[48rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Submission</TableHead>
+            <TableHead className="w-64">Project</TableHead>
+            <TableHead className="w-36">Status</TableHead>
+            <TableHead className="w-44">Submitted</TableHead>
+            <TableHead className="w-20 text-right">Open</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {updates.map((update) => (
+            <TableRow key={update.id}>
+              <TableCell className="min-w-72">
+                <Link className="font-heading font-semibold text-ink underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${update.projectId}/tasks/${update.taskId}#progress-${update.id}`}>
+                  {update.title || update.taskTitle}
+                </Link>
+                {update.blockers ? <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="size-3.5" /> {update.blockers}</p> : null}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                <Link className="block truncate underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${update.projectId}`}>{update.projectName}</Link>
+                <p className="mt-1 truncate text-xs">{update.taskTitle}</p>
+              </TableCell>
+              <TableCell><StatusBadge value={update.reviewStatus} /></TableCell>
+              <TableCell className="whitespace-nowrap text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5"><Clock className="size-4" /> {formatDateTime(update.createdAt)}</span>
+              </TableCell>
+              <TableCell className="text-right">
+                <OpenLink to={`/workspace/projects/${update.projectId}/tasks/${update.taskId}#progress-${update.id}`} label="Open submission" />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function OpenLink({ to, label }: { to: string; label: string }) {
+  return (
+    <Link className="inline-flex items-center gap-1 text-sm font-semibold text-primary underline-offset-4 hover:underline" to={to} aria-label={label}>
+      Open
+      <ArrowUpRight className="size-4" />
+    </Link>
+  )
+}
+
+function DashboardEmpty({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="p-4">
+      <div className="rounded-xl border border-dashed border-border bg-paper/60 px-5 py-6 text-center">
+        <p className="font-heading text-lg font-semibold text-ink">{title}</p>
+        <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-muted-foreground">{message}</p>
+      </div>
+    </div>
+  )
+}
+
+function PaginatedDashboardList<T>({ items, pageSize, itemLabel, children }: { items: T[]; pageSize: number; itemLabel: string; children: (items: T[]) => ReactNode }) {
+  const [page, setPage] = useState(1)
+  const { currentPage, items: visibleItems } = pageItems(items, page, pageSize)
+
+  return (
+    <>
+      {children(visibleItems)}
+      {items.length > pageSize ? <DashboardPager page={currentPage} pageSize={pageSize} totalItems={items.length} itemLabel={itemLabel} onPageChange={setPage} /> : null}
+    </>
+  )
+}
+
+function DashboardPager({ page, pageSize, totalItems, itemLabel, onPageChange }: { page: number; pageSize: number; totalItems: number; itemLabel: string; onPageChange: (page: number) => void }) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const startItem = (page - 1) * pageSize + 1
+  const endItem = Math.min(startItem + pageSize - 1, totalItems)
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-paper/35 px-3 py-2 text-xs text-muted-foreground">
+      <span className="font-medium">{startItem}-{endItem} of {totalItems} {itemLabel}</span>
+      <div className="flex items-center gap-1">
+        <button type="button" className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 font-semibold transition hover:bg-muted hover:text-ink disabled:pointer-events-none disabled:opacity-40" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
+          <ChevronLeft className="size-4" />
+          Previous
+        </button>
+        <button type="button" className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 font-semibold transition hover:bg-muted hover:text-ink disabled:pointer-events-none disabled:opacity-40" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}>
+          Next
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function studentWorkBadge(task: Task): { value: string; tone: 'amber' | 'red' | 'blue' | 'slate' } {
+  if (isNeedsRevision(task)) {
+    return { value: 'needs_revision', tone: 'amber' }
+  }
+  if (task.isOverdue) {
+    return { value: 'overdue', tone: 'red' }
+  }
+  if (task.officialProgressState === 'in_progress' || task.status === 'in_progress') {
+    return { value: 'in_progress', tone: 'blue' }
+  }
+  return { value: 'next_up', tone: 'slate' }
+}
+
+function sortStudentTasks(tasks: Task[]) {
+  return [...tasks].sort((left, right) => {
+    const rankDiff = studentTaskRank(left) - studentTaskRank(right)
+    if (rankDiff !== 0) {
+      return rankDiff
+    }
+    return deadlineTime(left) - deadlineTime(right)
+  })
+}
+
+function studentTaskRank(task: Task) {
+  if (isNeedsRevision(task)) {
+    return 0
+  }
+  if (task.isOverdue) {
+    return 1
+  }
+  return 2
+}
+
+function deadlineTime(task: Task) {
+  return task.deadline ? new Date(task.deadline).getTime() : Number.POSITIVE_INFINITY
 }
 
 function isNeedsRevision(task: Task) {
   return task.status === 'needs_changes' || task.officialProgressState === 'needs_changes'
 }
 
-function DashboardSummary({ role, stats }: { role: UserRole; stats: DashboardStats }) {
-  const items = role === 'student'
-    ? [
-        `${stats.overdueTaskCount} overdue`,
-        `${stats.pendingReviews} waiting review`,
-        `${stats.taskCount} assigned total`,
-      ]
-    : role === 'admin'
-      ? [
-          `${stats.pendingReviews} review${stats.pendingReviews === 1 ? '' : 's'} waiting`,
-          `${stats.overdueTaskCount} overdue assignment${stats.overdueTaskCount === 1 ? '' : 's'}`,
-          `${stats.projectCount} project${stats.projectCount === 1 ? '' : 's'}`,
-          `${stats.teacherCount ?? 0} teacher${stats.teacherCount === 1 ? '' : 's'}`,
-          `${stats.studentCount ?? 0} student${stats.studentCount === 1 ? '' : 's'}`,
-        ]
-      : [
-          `${stats.pendingReviews} review${stats.pendingReviews === 1 ? '' : 's'} waiting`,
-          `${stats.overdueTaskCount} overdue assignment${stats.overdueTaskCount === 1 ? '' : 's'}`,
-          `${stats.projectCount} project${stats.projectCount === 1 ? '' : 's'}`,
-          `${stats.studentCount ?? 0} student${stats.studentCount === 1 ? '' : 's'}`,
-        ]
-  return (
-    <div className="flex flex-wrap gap-2 border-y border-border py-3" aria-label="Dashboard summary">
-      {items.map((item) => <span key={item} className="rounded-full bg-card px-3 py-1 text-sm font-semibold text-muted-foreground shadow-sm ring-1 ring-border">{item}</span>)}
-    </div>
-  )
-}
-
-function TeacherReviewQueue({ updates }: { updates: ProgressUpdate[] }) {
-  if (updates.length === 0) {
-    return <div className="p-6"><div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/70 px-5 py-6 text-center"><p className="font-heading text-lg font-semibold text-ink">No pending reviews</p><p className="mt-1 text-sm text-muted-foreground">Student submissions waiting for review will appear here.</p></div></div>
-  }
-
-  return (
-    <div className="divide-y divide-border bg-card">
-      {updates.map((update, index) => {
-        const reviewHref = `/workspace/projects/${update.projectId}/tasks/${update.taskId}#assignment-workflow`
-        return (
-          <article key={update.id} className="grid gap-4 px-4 py-4 transition hover:bg-slate-50/80 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-            <div className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-full border border-amber-200 bg-amber-50 font-heading text-sm font-semibold text-amber-800">{String(index + 1).padStart(2, '0')}</span>
-              <div className="hidden h-12 w-px bg-border lg:block" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge value={update.reviewStatus} />
-                {update.blockers ? <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700"><AlertTriangle className="size-3.5" /> Blocker</span> : null}
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-paper px-2.5 py-1 text-xs font-medium text-muted-foreground"><Clock className="size-3.5" /> {formatDateTime(update.createdAt)}</span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-paper px-2.5 py-1 text-xs font-medium text-muted-foreground"><UserRound className="size-3.5" /> {update.submittedByName}</span>
-              </div>
-              <h3 className="mt-2 truncate font-heading text-lg font-semibold tracking-tight text-ink">{update.title || update.taskTitle}</h3>
-              <p className="mt-1 text-sm text-muted-foreground"><span className="font-semibold text-ink">{update.projectName}</span> · {update.taskTitle}</p>
-              <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-6 text-muted-foreground">{update.description}</p>
-              {update.blockers ? <p className="mt-2 line-clamp-1 text-sm font-medium text-red-700">Blocker: {update.blockers}</p> : null}
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button asChild size="sm">
-                <Link to={reviewHref}>Review <ArrowUpRight className="size-4" /></Link>
-              </Button>
-            </div>
-          </article>
-        )
-      })}
-    </div>
-  )
+function assigneeText(task: Task) {
+  return task.assignees.length > 0 ? task.assignees.map((assignee) => assignee.fullName).join(', ') : 'No assignee'
 }
 
 function sortOldestFirst(updates: ProgressUpdate[]) {

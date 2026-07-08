@@ -39,7 +39,10 @@ type resourceLinkInput struct {
 	Description *string
 }
 
-var errReviewedSubmissionLocked = errors.New("reviewed submission support records cannot be changed")
+var (
+	errReviewedSubmissionLocked    = errors.New("reviewed submission support records cannot be changed")
+	errResourceLinkTargetForbidden = errors.New("resource link target cannot be changed by this user")
+)
 
 func (s *Server) handleListResourceLinks(w http.ResponseWriter, r *http.Request) {
 	user, _ := currentUser(r)
@@ -93,7 +96,7 @@ func (s *Server) handleCreateResourceLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
-	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "changing resource links", projectAcceptsSupportChanges) {
+	if _, ok := s.requireProjectSupportWriteTx(w, r.Context(), tx, user, projectID, "changing resource links"); !ok {
 		return
 	}
 	allowed, err = canViewProjectTx(r.Context(), tx, user, projectID)
@@ -105,9 +108,13 @@ func (s *Server) handleCreateResourceLink(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusForbidden, "you do not have access to this project")
 		return
 	}
-	if err := ensureResourceLinkTargetWritableTx(r.Context(), tx, projectID, resourceInput.RelatedType, resourceInput.RelatedID); err != nil {
+	if err := ensureResourceLinkTargetWritableForUserTx(r.Context(), tx, user, projectID, resourceInput.RelatedType, resourceInput.RelatedID); err != nil {
 		if errors.Is(err, errReviewedSubmissionLocked) {
 			writeError(w, http.StatusConflict, "reviewed submissions cannot change resource links")
+			return
+		}
+		if errors.Is(err, errResourceLinkTargetForbidden) {
+			writeError(w, http.StatusForbidden, "only the progress submitter or supervisor can change submission resources")
 			return
 		}
 		writeError(w, http.StatusBadRequest, "resource target is invalid")
@@ -173,7 +180,8 @@ func (s *Server) handleUpdateResourceLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
-	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "changing resource links", projectAcceptsSupportChanges) {
+	canManageProject, ok := s.requireProjectSupportWriteTx(w, r.Context(), tx, user, projectID, "changing resource links")
+	if !ok {
 		return
 	}
 	allowed, err = canViewProjectTx(r.Context(), tx, user, projectID)
@@ -195,18 +203,17 @@ func (s *Server) handleUpdateResourceLink(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "could not load resource link")
 		return
 	}
-	canManageProject, err := canManageProjectTx(r.Context(), tx, user, projectID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not verify resource permission")
-		return
-	}
 	if !canManageProject && current.AddedBy != user.ID {
 		writeError(w, http.StatusForbidden, "you cannot update this resource link")
 		return
 	}
-	if err := ensureResourceLinkTargetWritableTx(r.Context(), tx, projectID, current.RelatedType, current.RelatedID); err != nil {
+	if err := ensureResourceLinkTargetWritableForUserTx(r.Context(), tx, user, projectID, current.RelatedType, current.RelatedID); err != nil {
 		if errors.Is(err, errReviewedSubmissionLocked) {
 			writeError(w, http.StatusConflict, "reviewed submissions cannot change resource links")
+			return
+		}
+		if errors.Is(err, errResourceLinkTargetForbidden) {
+			writeError(w, http.StatusForbidden, "only the progress submitter or supervisor can change submission resources")
 			return
 		}
 		writeError(w, http.StatusBadRequest, "resource target is invalid")
@@ -217,9 +224,13 @@ func (s *Server) handleUpdateResourceLink(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := ensureResourceLinkTargetWritableTx(r.Context(), tx, projectID, resourceInput.RelatedType, resourceInput.RelatedID); err != nil {
+	if err := ensureResourceLinkTargetWritableForUserTx(r.Context(), tx, user, projectID, resourceInput.RelatedType, resourceInput.RelatedID); err != nil {
 		if errors.Is(err, errReviewedSubmissionLocked) {
 			writeError(w, http.StatusConflict, "reviewed submissions cannot change resource links")
+			return
+		}
+		if errors.Is(err, errResourceLinkTargetForbidden) {
+			writeError(w, http.StatusForbidden, "only the progress submitter or supervisor can change submission resources")
 			return
 		}
 		writeError(w, http.StatusBadRequest, "resource target is invalid")
@@ -283,7 +294,8 @@ func (s *Server) handleDeleteResourceLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
-	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "changing resource links", projectAcceptsSupportChanges) {
+	canManageProject, ok := s.requireProjectSupportWriteTx(w, r.Context(), tx, user, projectID, "changing resource links")
+	if !ok {
 		return
 	}
 	allowed, err = canViewProjectTx(r.Context(), tx, user, projectID)
@@ -305,18 +317,17 @@ func (s *Server) handleDeleteResourceLink(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "could not load resource link")
 		return
 	}
-	canManageProject, err := canManageProjectTx(r.Context(), tx, user, projectID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not verify resource permission")
-		return
-	}
 	if !canManageProject && current.AddedBy != user.ID {
 		writeError(w, http.StatusForbidden, "you cannot delete this resource link")
 		return
 	}
-	if err := ensureResourceLinkTargetWritableTx(r.Context(), tx, projectID, current.RelatedType, current.RelatedID); err != nil {
+	if err := ensureResourceLinkTargetWritableForUserTx(r.Context(), tx, user, projectID, current.RelatedType, current.RelatedID); err != nil {
 		if errors.Is(err, errReviewedSubmissionLocked) {
 			writeError(w, http.StatusConflict, "reviewed submissions cannot change resource links")
+			return
+		}
+		if errors.Is(err, errResourceLinkTargetForbidden) {
+			writeError(w, http.StatusForbidden, "only the progress submitter or supervisor can change submission resources")
 			return
 		}
 		writeError(w, http.StatusBadRequest, "resource target is invalid")
@@ -521,10 +532,6 @@ func normalizeResourceLinkTarget(projectID string, relatedType string, relatedID
 	return relatedType, relatedID, nil
 }
 
-func (s *Server) ensureResourceLinkTarget(ctx context.Context, projectID string, relatedType string, relatedID string) error {
-	return ensureResourceLinkTargetTx(ctx, s.db, projectID, relatedType, relatedID)
-}
-
 func ensureResourceLinkTargetTx(ctx context.Context, q rowQueryer, projectID string, relatedType string, relatedID string) error {
 	var exists bool
 	switch relatedType {
@@ -584,8 +591,25 @@ func ensureResourceLinkTargetWritableTx(ctx context.Context, tx pgx.Tx, projectI
 	return nil
 }
 
-func canManageResourceLink(user User, resource ResourceLinkDTO) bool {
-	return user.Role == RoleAdmin || user.Role == RoleTeacher || resource.AddedBy == user.ID
+func ensureResourceLinkTargetWritableForUserTx(ctx context.Context, tx pgx.Tx, user User, projectID string, relatedType string, relatedID string) error {
+	if relatedType != "progress_update" {
+		return ensureResourceLinkTargetTx(ctx, tx, projectID, relatedType, relatedID)
+	}
+	submittedBy, reviewStatus, err := progressUpdateEvidenceTargetTx(ctx, tx, projectID, relatedID)
+	if err != nil {
+		return err
+	}
+	if reviewStatus != "pending_review" {
+		return errReviewedSubmissionLocked
+	}
+	canManageProject, err := canManageProjectTx(ctx, tx, user, projectID)
+	if err != nil {
+		return err
+	}
+	if !canManageProject && submittedBy != user.ID {
+		return errResourceLinkTargetForbidden
+	}
+	return nil
 }
 
 func validResourceLinkTargetType(targetType string) bool {

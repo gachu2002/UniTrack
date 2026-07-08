@@ -1,0 +1,221 @@
+\definecolor{unitrackblue}{HTML}{1A2B3C}
+\definecolor{unitrackcyan}{HTML}{F8FBFC}
+\definecolor{unitrackline}{HTML}{AAB7C2}
+\definecolor{unitrackgreen}{HTML}{F8FBF8}
+\definecolor{unitrackyellow}{HTML}{FFFDF6}
+\definecolor{unitrackred}{HTML}{FFF7F7}
+\definecolor{unitrackviolet}{HTML}{FAF8FF}
+\definecolor{unitrackpaper}{HTML}{FFFFFF}
+\definecolor{unitrackink}{HTML}{111827}
+\definecolor{unitrackamber}{HTML}{FFF8E8}
+\definecolor{unitrackrose}{HTML}{FFF7F8}
+\definecolor{unitrackslate}{HTML}{F1F5F9}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\arrayrulecolor{black!18}
+\setlength{\arrayrulewidth}{0.18pt}
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.24}
+\UseTblrLibrary{booktabs}
+\DefTblrTemplate{caption-tag}{default}{\tablename\enspace\thetable}
+\DefTblrTemplate{caption-sep}{default}{\space}
+\SetTblrStyle{caption-tag}{font=\bfseries}
+\SetTblrInner{rowsep=3pt,colsep=5pt}
+\DefTblrTemplate{conthead-text}{empty}{}
+\DefTblrTemplate{contfoot-text}{empty}{}
+\SetTblrTemplate{conthead-text}{empty}
+\SetTblrTemplate{contfoot-text}{empty}
+\NewTblrTheme{unitrack}{
+  \SetTblrStyle{firsthead}{font=\bfseries}
+  \SetTblrStyle{head}{font=\bfseries}
+  \SetTblrInner{hlines={0.35pt, black!24}, vlines={0pt}, row{1}={font=\bfseries,bg=black!7}}
+}
+
+\tikzset{
+  reportbox/.style={rectangle, rounded corners=3pt, draw=unitrackline, fill=unitrackcyan, thick, align=center, minimum height=8mm, inner sep=5pt},
+  reportboxgreen/.style={reportbox, fill=unitrackgreen},
+  reportboxyellow/.style={reportbox, fill=unitrackyellow},
+  reportboxred/.style={reportbox, fill=unitrackred},
+  reportboxviolet/.style={reportbox, fill=unitrackviolet},
+  actor/.style={circle, draw=unitrackblue, fill=white, thick, align=center, minimum size=9mm, inner sep=2pt},
+  db/.style={cylinder, shape border rotate=90, aspect=0.25, draw=unitrackblue, fill=unitrackyellow, thick, align=center, minimum height=10mm, inner sep=5pt},
+  flow/.style={-{Latex[length=2.2mm]}, thick, draw=unitrackblue},
+  dashedflow/.style={-{Latex[length=2.2mm]}, thick, dashed, draw=unitrackblue},
+  lifeline/.style={dashed, draw=unitrackline},
+  swimlane/.style={draw=unitrackline, fill=gray!4, rounded corners=2pt},
+  screen/.style={rectangle, rounded corners=5pt, draw=unitrackblue, thick, fill=white, minimum width=10.5cm, minimum height=5.8cm},
+  screenbar/.style={rectangle, draw=unitrackblue, fill=unitrackblue!8, minimum height=7mm},
+  reportnote/.style={rectangle, rounded corners=4pt, draw=unitrackline, fill=unitrackpaper, thick, align=left, inner sep=7pt},
+  swimbg/.style={rectangle, rounded corners=4pt, draw=unitrackline, fill=unitrackslate!50, inner sep=4pt},
+  tinylabel/.style={font=\scriptsize, align=center},
+}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\tabhead}{\rowcolor{black!8}}
+\newcommand{\subtabhead}{\rowcolor{black!4}}
+\newcommand{\okbadge}{\textbf{Hoàn thành}}
+\newcommand{\partialbadge}{\textbf{Một phần}}
+\newcommand{\futurebadge}{\textbf{Tương lai}}
+\newcommand{\riskbadge}{\textbf{Rủi ro}}
+\newcommand{\route}[1]{\texttt{#1}}
+\newcommand{\smallcode}[1]{{\footnotesize\texttt{#1}}}
+\newcommand{\stackcell}[1]{\begin{tabular}[t]{@{}l@{}}#1\end{tabular}}
+\newcommand{\figuredesc}[2]{}
+\newcommand{\tableintro}[2]{\noindent Bảng~\ref{#1} #2.\par\vspace{0.25em}}
+\newcommand{\figurelead}[2]{\noindent Hình~\ref{#1} #2.\par\vspace{0.25em}}
+\newenvironment{dbfieldtable}[1]{%
+  \begingroup\footnotesize
+  \SetTblrInner{rowsep=2pt,colsep=4pt}%
+  \begin{longtblr}[
+    caption={Cấu trúc bảng \code{#1}},
+  ]{
+    width=\textwidth,
+    colspec={X[1.08,l]X[0.62,l]X[2.0,l]},
+    rowhead=1,
+    rows={valign=t},
+    row{1}={font=\bfseries,bg=black!7},
+    hlines={0.35pt,black!24},
+  }
+  Trường & Kiểu & Ràng buộc và vai trò \\
+}{%
+  \end{longtblr}
+  \endgroup
+}
+\newcommand{\dbentity}[3]{%
+  \subsubsection{\texorpdfstring{\code{#1}}{#1} (#2)}
+  \noindent\textbf{Mục đích:} #3\par
+  \vspace{0.2em}
+}
+\newenvironment{dbfieldlist}{%
+  \begin{itemize}[leftmargin=1.25cm,itemsep=0.08em,topsep=0.15em]
+}{%
+  \end{itemize}
+}
+\newcommand{\dbfield}[2]{\item \smallcode{#1}: #2}
+\newenvironment{dbdesigntable}[2]{%
+  \tableintro{tab:db-#2}{mô tả cấu trúc dữ liệu, ràng buộc chính và liên kết của bảng đang xét}%
+  \begingroup\scriptsize
+  \renewcommand{\smallcode}[1]{\texttt{##1}}%
+  \renewcommand{\arraystretch}{1.18}%
+  \setlength{\tabcolsep}{4pt}%
+  \begin{longtable}{|>{\raggedright\arraybackslash}p{0.22\textwidth}|>{\raggedright\arraybackslash}p{0.20\textwidth}|>{\raggedright\arraybackslash}p{0.32\textwidth}|>{\raggedright\arraybackslash}p{0.18\textwidth}|}
+  \caption{Thiết kế chi tiết bảng \code{#1}}\label{tab:db-#2}\\
+  \hline
+  \rowcolor{black!7}\textbf{Tên trường} & \textbf{Kiểu / ràng buộc} & \textbf{Ghi chú} & \textbf{Liên kết} \\
+  \hline
+  \endfirsthead
+  \hline
+  \rowcolor{black!7}\textbf{Tên trường} & \textbf{Kiểu / ràng buộc} & \textbf{Ghi chú} & \textbf{Liên kết} \\
+  \hline
+  \endhead
+}{%
+  \end{longtable}
+  \endgroup
+}
+\newcommand{\dbrow}[4]{\texttt{#1} & #2 & #3 & #4 \\ \hline}
+\newcommand{\assetfigure}[3]{%
+  \begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=#1\textwidth,height=0.56\textheight,keepaspectratio]{#2}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+}
+\newcommand{\screenshotfigure}[2]{%
+  \begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth,height=0.56\textheight,keepaspectratio]{#1}
+    \caption{#2}
+    \label{fig:#1}
+    \figuredesc{#1}{#2}%
+  \end{figure}
+}
+\newcommand{\diagramassetfigure}[3]{%
+  \begin{figure}[!htbp]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=#1\textwidth,height=0.66\textheight,keepaspectratio]{#2}}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+}
+\newcommand{\diagramlandscapefigure}[3]{%
+  \begin{landscape}
+  \begin{figure}[p]
+    \centering
+    \includegraphics[width=#1\linewidth,height=0.82\textheight,keepaspectratio]{#2}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+  \end{landscape}
+}
+\newcommand{\diagrampagefigure}[3]{%
+  \begin{figure}[!htbp]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=#1\textwidth,height=0.70\textheight,keepaspectratio]{#2}}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+}
+\newcommand{\diagramfullpagefigure}[3]{%
+  \begin{figure}[!htbp]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=#1\textwidth,height=0.72\textheight,keepaspectratio]{#2}}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+}
+\newcommand{\diagramfullpagefigurealias}[4]{%
+  \begin{figure}[!htbp]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=#1\textwidth,height=0.72\textheight,keepaspectratio]{#2}}
+    \caption{#4}
+    \label{fig:#3}
+    \figuredesc{#3}{#4}%
+  \end{figure}
+}
+\newcommand{\diagramfullpagewidefigure}[3]{%
+  \begin{figure}[!htbp]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=#1\textwidth,height=0.72\textheight,keepaspectratio]{#2}}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+}
+\newcommand{\diagramlandscapefullpagefigure}[3]{%
+  \begin{landscape}
+  \begin{figure}[p]
+    \centering
+    \includegraphics[width=#1\linewidth,height=0.84\textheight,keepaspectratio]{#2}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+  \end{landscape}
+  \clearpage
+}
+\newcommand{\diagramshortpagefigure}[3]{%
+  \begin{figure}[!htbp]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=#1\textwidth,height=0.66\textheight,keepaspectratio]{#2}}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+}
+
+\newenvironment{artifactnote}[1]{%
+  \begin{center}\begin{tikzpicture}
+    \node[reportnote, text width=0.92\textwidth] (box) \bgroup
+    \textbf{#1}\par\vspace{0.25em}\small\raggedright
+}{%
+    \egroup;
+  \end{tikzpicture}\end{center}
+}

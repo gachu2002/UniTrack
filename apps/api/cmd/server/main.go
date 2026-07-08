@@ -19,8 +19,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	cfg := config.Load()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("configuration load failed", slog.Any("error", err))
+		os.Exit(1)
+	}
 	if err := cfg.Validate(); err != nil {
 		logger.Error("configuration validation failed", slog.Any("error", err))
 		os.Exit(1)
@@ -49,11 +53,13 @@ func main() {
 		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
 
+	serveErrCh := make(chan error, 1)
 	go func() {
 		logger.Info("starting http server", slog.String("address", server.Addr))
 
 		if serveErr := server.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			logger.Error("http server stopped unexpectedly", slog.Any("error", serveErr))
+			serveErrCh <- serveErr
 			stop()
 		}
 	}()
@@ -65,5 +71,11 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", slog.Any("error", err))
 		os.Exit(1)
+	}
+	select {
+	case err := <-serveErrCh:
+		logger.Error("http server failed", slog.Any("error", err))
+		os.Exit(1)
+	default:
 	}
 }

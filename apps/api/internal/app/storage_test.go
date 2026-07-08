@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -14,6 +15,13 @@ func TestLocalFileStorePutOpenDelete(t *testing.T) {
 
 	if err := store.Put(context.Background(), key, strings.NewReader("evidence"), "text/plain", int64(len("evidence"))); err != nil {
 		t.Fatalf("put local file: %v", err)
+	}
+	info, err := os.Stat(key)
+	if err != nil {
+		t.Fatalf("stat local file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("local file mode = %#o, want 0600", got)
 	}
 
 	object, err := store.Open(context.Background(), key)

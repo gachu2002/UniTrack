@@ -1,11 +1,12 @@
 import { apiClient } from '@/lib/axios'
-import type { User, UserRole } from '@/types/api'
+import type { PaginatedResponse, User, UserRole } from '@/types/api'
 
 export interface GetAdminUsersParams {
   search?: string
   role?: UserRole
   status?: User['status']
   limit?: number
+  page?: number
 }
 
 export interface CreateAdminUserInput {
@@ -30,9 +31,14 @@ export interface SetAdminUserPasswordInput {
   password: string
 }
 
-export async function getAdminUsers(params: GetAdminUsersParams) {
-  const { data } = await apiClient.get<User[]>('/admin/users', { params })
+export async function getAdminUsersPage(params: GetAdminUsersParams) {
+  const { data } = await apiClient.get<PaginatedResponse<User>>('/admin/users', { params })
   return data
+}
+
+export async function getAdminUsers(params: GetAdminUsersParams) {
+  const data = await getAdminUsersPage(params)
+  return data.items
 }
 
 export async function createAdminUser(input: CreateAdminUserInput) {

@@ -2,6 +2,53 @@ package config
 
 import "testing"
 
+func setLoadEnvDefaults(t *testing.T) {
+	t.Helper()
+	t.Setenv("HTTP_READ_TIMEOUT", "10s")
+	t.Setenv("HTTP_WRITE_TIMEOUT", "10s")
+	t.Setenv("HTTP_IDLE_TIMEOUT", "60s")
+	t.Setenv("HTTP_SHUTDOWN_TIMEOUT", "10s")
+	t.Setenv("SESSION_TTL", "168h")
+	t.Setenv("SESSION_SECURE", "false")
+	t.Setenv("SESSION_SAME_SITE", "lax")
+	_, err := Load()
+	if err != nil {
+		t.Fatalf("load default test env: %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidBoolean(t *testing.T) {
+	setLoadEnvDefaults(t)
+	t.Setenv("SESSION_SECURE", "definitely")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted invalid boolean")
+	}
+}
+
+func TestLoadRejectsInvalidDuration(t *testing.T) {
+	setLoadEnvDefaults(t)
+	t.Setenv("HTTP_READ_TIMEOUT", "soon")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted invalid duration")
+	}
+}
+
+func TestLoadRejectsNonPositiveDuration(t *testing.T) {
+	setLoadEnvDefaults(t)
+	t.Setenv("SESSION_TTL", "0s")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted non-positive duration")
+	}
+}
+
+func TestLoadRejectsInvalidSameSite(t *testing.T) {
+	setLoadEnvDefaults(t)
+	t.Setenv("SESSION_SAME_SITE", "maybe")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted invalid SameSite value")
+	}
+}
+
 func TestValidateRejectsSameSiteNoneWithoutSecure(t *testing.T) {
 	cfg := Config{SessionSameSite: "none", SessionSecure: false, CORSAllowedOrigins: []string{"https://app.example.test"}}
 	if err := cfg.Validate(); err == nil {

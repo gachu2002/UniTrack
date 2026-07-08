@@ -75,8 +75,12 @@ func (s *Server) handleCreateMilestone(w http.ResponseWriter, r *http.Request) {
 		writeProjectLifecycleError(w, err)
 		return
 	}
+	if errors.Is(err, errProjectManagerAccessRequired) {
+		writeError(w, http.StatusForbidden, "only the supervising teacher or an admin can create milestones")
+		return
+	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeStatusError(w, err, http.StatusInternalServerError, "could not create milestone")
 		return
 	}
 	milestone, err := s.getProjectMilestone(r.Context(), projectID, milestoneID)
@@ -111,7 +115,7 @@ func (s *Server) handleUpdateMilestone(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if err := s.updateMilestone(r.Context(), projectID, milestoneID, input); err != nil {
+	if err := s.updateMilestone(r.Context(), user, projectID, milestoneID, input); err != nil {
 		if isProjectLifecycleError(err) {
 			writeProjectLifecycleError(w, err)
 			return
@@ -120,7 +124,11 @@ func (s *Server) handleUpdateMilestone(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "milestone not found")
 			return
 		}
-		writeError(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, errProjectManagerAccessRequired) {
+			writeError(w, http.StatusForbidden, "only the supervising teacher or an admin can update milestones")
+			return
+		}
+		writeStatusError(w, err, http.StatusInternalServerError, "could not update milestone")
 		return
 	}
 	updated, err := s.getProjectMilestone(r.Context(), projectID, milestoneID)
@@ -151,12 +159,16 @@ func (s *Server) handleReorderMilestones(w http.ResponseWriter, r *http.Request)
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if err := s.reorderMilestones(r.Context(), projectID, input.MilestoneIDs); err != nil {
+	if err := s.reorderMilestones(r.Context(), user, projectID, input.MilestoneIDs); err != nil {
 		if isProjectLifecycleError(err) {
 			writeProjectLifecycleError(w, err)
 			return
 		}
-		writeError(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, errProjectManagerAccessRequired) {
+			writeError(w, http.StatusForbidden, "only the supervising teacher or an admin can reorder milestones")
+			return
+		}
+		writeStatusError(w, err, http.StatusInternalServerError, "could not reorder milestones")
 		return
 	}
 	milestones, err := s.listProjectMilestones(r.Context(), projectID)
@@ -194,6 +206,10 @@ func (s *Server) handleDeleteMilestone(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
 	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "changing project milestones", projectAcceptsPlanChanges) {
+		return
+	}
+	if err := requireProjectManagerTx(r.Context(), tx, user, projectID); err != nil {
+		writeProjectManagerAccessError(w, err, "only the supervising teacher or an admin can delete milestones")
 		return
 	}
 
@@ -234,11 +250,11 @@ func (s *Server) handleDeleteMilestone(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createMilestone(ctx context.Context, user User, projectID string, input createMilestoneRequest) (string, error) {
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
-		return "", errors.New("milestone title is required")
+		return "", badRequestError("milestone title is required")
 	}
 	targetDate, err := parseOptionalDate(input.TargetDate)
 	if err != nil {
-		return "", errors.New("target date must be a date in YYYY-MM-DD format")
+		return "", badRequestError("target date must be a date in YYYY-MM-DD format")
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -246,6 +262,9 @@ func (s *Server) createMilestone(ctx context.Context, user User, projectID strin
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := s.lockProjectLifecycleTx(ctx, tx, projectID, "changing project milestones", projectAcceptsPlanChanges); err != nil {
+		return "", err
+	}
+	if err := requireProjectManagerTx(ctx, tx, user, projectID); err != nil {
 		return "", err
 	}
 
@@ -271,13 +290,16 @@ func (s *Server) createMilestone(ctx context.Context, user User, projectID strin
 	return milestoneID, nil
 }
 
-func (s *Server) updateMilestone(ctx context.Context, projectID string, milestoneID string, input updateMilestoneRequest) error {
+func (s *Server) updateMilestone(ctx context.Context, user User, projectID string, milestoneID string, input updateMilestoneRequest) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return errors.New("could not update milestone")
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := s.lockProjectLifecycleTx(ctx, tx, projectID, "changing project milestones", projectAcceptsPlanChanges); err != nil {
+		return err
+	}
+	if err := requireProjectManagerTx(ctx, tx, user, projectID); err != nil {
 		return err
 	}
 
@@ -300,7 +322,7 @@ func (s *Server) updateMilestone(ctx context.Context, projectID string, mileston
 		title = strings.TrimSpace(*input.Title)
 	}
 	if title == "" {
-		return errors.New("milestone title is required")
+		return badRequestError("milestone title is required")
 	}
 	description := stringValue(current.Description)
 	if input.Description != nil {
@@ -312,7 +334,7 @@ func (s *Server) updateMilestone(ctx context.Context, projectID string, mileston
 	}
 	targetDate, err := parseOptionalDate(targetDateValue)
 	if err != nil {
-		return errors.New("target date must be a date in YYYY-MM-DD format")
+		return badRequestError("target date must be a date in YYYY-MM-DD format")
 	}
 	sortOrder := current.SortOrder
 	if input.SortOrder != nil {
@@ -336,19 +358,19 @@ func (s *Server) updateMilestone(ctx context.Context, projectID string, mileston
 	return nil
 }
 
-func (s *Server) reorderMilestones(ctx context.Context, projectID string, milestoneIDs []string) error {
+func (s *Server) reorderMilestones(ctx context.Context, user User, projectID string, milestoneIDs []string) error {
 	if len(milestoneIDs) == 0 {
-		return errors.New("milestone order is required")
+		return badRequestError("milestone order is required")
 	}
 	orderedIDs := make([]string, 0, len(milestoneIDs))
 	seen := map[string]struct{}{}
 	for _, rawID := range milestoneIDs {
 		milestoneID := strings.TrimSpace(rawID)
 		if milestoneID == "" {
-			return errors.New("milestone order contains an empty id")
+			return badRequestError("milestone order contains an empty id")
 		}
 		if _, exists := seen[milestoneID]; exists {
-			return errors.New("milestone order contains duplicate ids")
+			return badRequestError("milestone order contains duplicate ids")
 		}
 		seen[milestoneID] = struct{}{}
 		orderedIDs = append(orderedIDs, milestoneID)
@@ -360,6 +382,9 @@ func (s *Server) reorderMilestones(ctx context.Context, projectID string, milest
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := s.lockProjectLifecycleTx(ctx, tx, projectID, "changing project milestones", projectAcceptsPlanChanges); err != nil {
+		return err
+	}
+	if err := requireProjectManagerTx(ctx, tx, user, projectID); err != nil {
 		return err
 	}
 
@@ -382,11 +407,11 @@ func (s *Server) reorderMilestones(ctx context.Context, projectID string, milest
 		return errors.New("could not verify milestone order")
 	}
 	if len(projectMilestoneIDs) != len(orderedIDs) {
-		return errors.New("milestone order must include every checkpoint")
+		return badRequestError("milestone order must include every checkpoint")
 	}
 	for _, milestoneID := range orderedIDs {
 		if _, exists := projectMilestoneIDs[milestoneID]; !exists {
-			return errors.New("milestone order contains a checkpoint outside this project")
+			return badRequestError("milestone order contains a checkpoint outside this project")
 		}
 	}
 	for index, milestoneID := range orderedIDs {

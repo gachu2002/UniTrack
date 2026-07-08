@@ -53,7 +53,7 @@ func (s localFileStore) Put(_ context.Context, key string, body io.Reader, _ str
 	if err := os.MkdirAll(filepath.Dir(key), 0o750); err != nil {
 		return err
 	}
-	file, err := os.Create(key)
+	file, err := os.OpenFile(key, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}

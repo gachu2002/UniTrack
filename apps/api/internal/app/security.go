@@ -98,7 +98,7 @@ func (s *Server) requireTrustedOrigin(next http.Handler) http.Handler {
 			origin = originFromReferer(r.Header.Get("Referer"))
 		}
 		if origin == "" {
-			if hasSessionCookie(r, s.cfg.SessionCookieName) {
+			if hasSessionCookie(r, s.cfg.SessionCookieName) || writesSessionCookie(r) {
 				writeError(w, http.StatusForbidden, "request origin is not allowed")
 				return
 			}
@@ -112,6 +112,15 @@ func (s *Server) requireTrustedOrigin(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func writesSessionCookie(r *http.Request) bool {
+	switch r.URL.Path {
+	case "/api/v1/auth/login", "/api/v1/auth/logout":
+		return true
+	default:
+		return false
+	}
 }
 
 func hasSessionCookie(r *http.Request, cookieName string) bool {

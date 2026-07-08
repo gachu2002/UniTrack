@@ -5,7 +5,8 @@
   "autoupdate": "notify",
   "instructions": [
     "AGENTS.md",
-    "docs/project.md"
+    "docs/project.md",
+    "docs/engineering-guide.md"
   ],
   "permission": {
     "edit": "ask",

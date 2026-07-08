@@ -1,0 +1,34 @@
+@startdot
+digraph G {
+  graph [rankdir=LR, bgcolor="white", splines=line, nodesep=0.78, ranksep=1.28, pad=0.24, margin=0.05];
+  node [fontname="DejaVu Sans", fontsize=17, color="#111111", fontcolor="#111111", margin="0.18,0.10", penwidth=1.2];
+  edge [color="#111111", arrowsize=0.78, penwidth=1.2];
+
+  Admin [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Quản trị viên</TD></TR>
+    </TABLE>
+  >];
+
+  subgraph cluster_accounts {
+    label="Quản trị tài khoản";
+    color="#111111";
+    fontname="DejaVu Sans";
+    fontsize=17;
+    style="rounded";
+    margin=28;
+    Search [shape=ellipse, label="Tìm kiếm\ntài khoản"];
+    Create [shape=ellipse, label="Tạo tài khoản\nadmin / giảng viên / sinh viên"];
+    Update [shape=ellipse, label="Đổi vai trò\nhoặc trạng thái"];
+    Password [shape=ellipse, label="Đặt mật khẩu"];
+  }
+
+  Admin -> Search;
+  Admin -> Create;
+  Admin -> Update;
+  Admin -> Password;
+}
+@enddot

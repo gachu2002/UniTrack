@@ -1,0 +1,27 @@
+@startuml
+!include includes/report-style.iuml
+
+start
+:HTTP method, path, cookie, body;
+:Origin/CORS guard for write requests;
+:Session lookup and active account gate;
+:Validate route UUID parameters;
+if (JSON body?) then (yes)
+  :Strict JSON decode\n1 MB limit, unknown fields rejected;
+endif
+:Pass authenticated request context\nto feature handler;
+:Role and project relation preflight checks;
+:BEGIN transaction;
+:Lock project/target rows;
+:Recheck current manager authority,\nlifecycle, and target state;
+if (Target still valid?) then (yes)
+  :Apply domain write;
+  :Database constraints enforce\nFKs, unique indexes, deferred triggers;
+  :Commit transaction;
+  :Return JSON or file response;
+else (no)
+  :Rollback;
+  :Return 403 or 409\nso frontend refreshes cached data;
+endif
+stop
+@enduml

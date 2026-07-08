@@ -1,0 +1,83 @@
+@startdot
+digraph G {
+  graph [rankdir=TB, bgcolor="white", splines=ortho, nodesep=0.45, ranksep=0.62, pad=0.16, margin=0.05];
+  node [shape=plain, fontname="DejaVu Sans", fontsize=15, margin=0];
+  edge [fontname="DejaVu Sans", fontsize=11, color="#111111", fontcolor="#111111", arrowsize=0.68, penwidth=1.05];
+
+  server [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
+      <TR><TD BGCOLOR="#FFF7C7"><B>cmd/server</B></TD></TR>
+      <TR><TD ALIGN="LEFT">startup + graceful shutdown</TD></TR>
+      <TR><TD ALIGN="LEFT">config load and router boot</TD></TR>
+    </TABLE>
+  >];
+  config [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
+      <TR><TD BGCOLOR="#FFF7C7"><B>internal/config</B></TD></TR>
+      <TR><TD ALIGN="LEFT">strict env parsing</TD></TR>
+      <TR><TD ALIGN="LEFT">cookie/CORS startup policy</TD></TR>
+    </TABLE>
+  >];
+  database [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
+      <TR><TD BGCOLOR="#FFF7C7"><B>internal/database</B></TD></TR>
+      <TR><TD ALIGN="LEFT">pgx pool</TD></TR>
+      <TR><TD ALIGN="LEFT">health/readiness checks</TD></TR>
+    </TABLE>
+  >];
+
+  routes [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
+      <TR><TD BGCOLOR="#FFF7C7"><B>internal/app server + security</B></TD></TR>
+      <TR><TD ALIGN="LEFT">route registration</TD></TR>
+      <TR><TD ALIGN="LEFT">auth/session middleware</TD></TR>
+      <TR><TD ALIGN="LEFT">origin guard</TD></TR>
+    </TABLE>
+  >];
+  handlers [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
+      <TR><TD BGCOLOR="#FFF7C7"><B>feature handlers</B></TD></TR>
+      <TR><TD ALIGN="LEFT">projects, folders, members</TD></TR>
+      <TR><TD ALIGN="LEFT">milestones, tasks, reviews</TD></TR>
+      <TR><TD ALIGN="LEFT">resources, files, admin</TD></TR>
+    </TABLE>
+  >];
+  helpers [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
+      <TR><TD BGCOLOR="#FFF7C7"><B>app helpers</B></TD></TR>
+      <TR><TD ALIGN="LEFT">permissions.go: ACL + TX rechecks</TD></TR>
+      <TR><TD ALIGN="LEFT">response.go: strict JSON + errors</TD></TR>
+      <TR><TD ALIGN="LEFT">storage.go: local/R2 adapter</TD></TR>
+    </TABLE>
+  >];
+
+  pg [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="8">
+      <TR><TD BGCOLOR="#D9EAF7"><B>PostgreSQL</B></TD></TR>
+      <TR><TD ALIGN="LEFT">raw SQL</TD></TR>
+      <TR><TD ALIGN="LEFT">goose migrations</TD></TR>
+    </TABLE>
+  >];
+  object_storage [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="8">
+      <TR><TD BGCOLOR="#D9EAF7"><B>R2 / local files</B></TD></TR>
+      <TR><TD ALIGN="LEFT">private evidence bytes</TD></TR>
+    </TABLE>
+  >];
+
+  { rank=same; server; }
+  { rank=same; config; database; }
+  { rank=same; routes; handlers; helpers; }
+  { rank=same; pg; object_storage; }
+
+  server -> config;
+  server -> database;
+  server -> routes;
+  routes -> handlers;
+  handlers -> helpers;
+  handlers -> database;
+  helpers -> database;
+  helpers -> object_storage;
+  database -> pg;
+}
+@enddot

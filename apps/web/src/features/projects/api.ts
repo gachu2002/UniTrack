@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/axios'
-import type { ProgressUpdate, Project, ProjectMember, ProjectMilestone, ResourceLink, Task } from '@/types/api'
+import type { PaginatedResponse, ProgressUpdate, Project, ProjectMember, ProjectMilestone, ResourceLink, Task } from '@/types/api'
 
 export interface CreateProjectInput {
   name: string
@@ -13,6 +13,7 @@ export interface CreateProjectInput {
 
 export interface GetProjectsParams {
   limit?: number
+  page?: number
   unassigned?: boolean
   search?: string
   excludeArchived?: boolean
@@ -82,9 +83,14 @@ export interface DeleteResourceLinkInput {
   resourceLinkId: string
 }
 
-export async function getProjects(params?: GetProjectsParams) {
-  const { data } = await apiClient.get<Project[]>('/projects', { params })
+export async function getProjectsPage(params?: GetProjectsParams) {
+  const { data } = await apiClient.get<PaginatedResponse<Project>>('/projects', { params })
   return data
+}
+
+export async function getProjects(params?: GetProjectsParams) {
+  const data = await getProjectsPage(params)
+  return data.items
 }
 
 export async function createProject(input: CreateProjectInput) {

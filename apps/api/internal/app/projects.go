@@ -46,17 +46,17 @@ type updateProjectMemberRequest struct {
 
 func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	user, _ := currentUser(r)
-	limit, err := parseListLimit(r.URL.Query().Get("limit"), 24, 200)
+	pagination, err := parsePaginationParams(r.URL.Query(), 24, 200)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project list limit")
+		writeError(w, http.StatusBadRequest, "invalid project list pagination")
 		return
 	}
-	projects, err := s.listProjectsFiltered(r.Context(), user, limit, r.URL.Query().Get("unassigned") == "true", r.URL.Query().Get("search"), r.URL.Query().Get("excludeArchived") == "true")
+	projects, total, err := s.listProjectsFiltered(r.Context(), user, pagination.Limit, pagination.Offset, r.URL.Query().Get("unassigned") == "true", r.URL.Query().Get("search"), r.URL.Query().Get("excludeArchived") == "true")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load projects")
 		return
 	}
-	writeJSON(w, http.StatusOK, projects)
+	writeJSON(w, http.StatusOK, paginatedResponse[ProjectDTO]{Items: projects, Page: pagination.Page, Limit: pagination.Limit, Total: total})
 }
 
 func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
@@ -247,6 +247,10 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load project")
+		return
+	}
+	if err := requireProjectManagerTx(r.Context(), tx, user, projectID); err != nil {
+		writeProjectManagerAccessError(w, err, "only the supervising teacher or an admin can update this project")
 		return
 	}
 	current.Description = nullString(currentDescription)
@@ -461,9 +465,13 @@ func (s *Server) handleUpdateProjectMember(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	member, err := s.updateProjectMemberRole(r.Context(), user.ID, projectID, memberID, memberRole)
+	member, err := s.updateProjectMemberRole(r.Context(), user, projectID, memberID, memberRole)
 	if isNoRows(err) {
 		writeError(w, http.StatusNotFound, "project member not found")
+		return
+	}
+	if errors.Is(err, errProjectManagerAccessRequired) {
+		writeError(w, http.StatusForbidden, "only the supervising teacher or an admin can update project members")
 		return
 	}
 	if isProjectLifecycleError(err) {
@@ -471,7 +479,7 @@ func (s *Server) handleUpdateProjectMember(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not update project member")
+		writeStatusError(w, err, http.StatusInternalServerError, "could not update project member")
 		return
 	}
 	writeJSON(w, http.StatusOK, member)
@@ -510,6 +518,10 @@ func (s *Server) handleAddProjectMember(w http.ResponseWriter, r *http.Request) 
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
 	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "changing project members", projectAcceptsTeamChanges) {
+		return
+	}
+	if err := requireProjectManagerTx(r.Context(), tx, user, projectID); err != nil {
+		writeProjectManagerAccessError(w, err, "only the supervising teacher or an admin can add project members")
 		return
 	}
 
@@ -605,6 +617,18 @@ func (s *Server) handleRemoveProjectMember(w http.ResponseWriter, r *http.Reques
 	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "changing project members", projectAcceptsTeamChanges) {
 		return
 	}
+	if err := requireProjectManagerTx(r.Context(), tx, user, projectID); err != nil {
+		writeProjectManagerAccessError(w, err, "only the supervising teacher or an admin can remove project members")
+		return
+	}
+	if err := tx.QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM projects WHERE id = $1 AND supervisor_id = $2)`, projectID, memberID).Scan(&isSupervisor); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not verify project member")
+		return
+	}
+	if isSupervisor {
+		writeError(w, http.StatusBadRequest, "project supervisor cannot be removed")
+		return
+	}
 
 	assignmentResult, err := tx.Exec(r.Context(), `
 		DELETE FROM task_assignees
@@ -637,7 +661,7 @@ func (s *Server) handleRemoveProjectMember(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
 }
 
-func (s *Server) updateProjectMemberRole(ctx context.Context, actorID string, projectID string, memberID string, memberRole string) (ProjectMemberDTO, error) {
+func (s *Server) updateProjectMemberRole(ctx context.Context, user User, projectID string, memberID string, memberRole string) (ProjectMemberDTO, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return ProjectMemberDTO{}, err
@@ -646,24 +670,40 @@ func (s *Server) updateProjectMemberRole(ctx context.Context, actorID string, pr
 	if err := s.lockProjectLifecycleTx(ctx, tx, projectID, "changing project members", projectAcceptsTeamChanges); err != nil {
 		return ProjectMemberDTO{}, err
 	}
+	if err := requireProjectManagerTx(ctx, tx, user, projectID); err != nil {
+		return ProjectMemberDTO{}, err
+	}
 
-	rows, err := tx.Query(ctx, `SELECT student_id::text, member_role FROM project_members WHERE project_id = $1 ORDER BY student_id FOR UPDATE`, projectID)
+	rows, err := tx.Query(ctx, `
+		SELECT pm.student_id::text, pm.member_role, u.role, u.status
+		FROM project_members pm
+		JOIN users u ON u.id = pm.student_id
+		WHERE pm.project_id = $1
+		ORDER BY pm.student_id
+		FOR UPDATE OF pm, u
+	`, projectID)
 	if err != nil {
 		return ProjectMemberDTO{}, err
 	}
 	targetFound := false
 	previousMemberRole := ""
+	targetUserRole := ""
+	targetUserStatus := ""
 	demotedLeaderIDs := []string{}
 	for rows.Next() {
 		var currentMemberID string
 		var currentMemberRole string
-		if err := rows.Scan(&currentMemberID, &currentMemberRole); err != nil {
+		var currentUserRole string
+		var currentUserStatus string
+		if err := rows.Scan(&currentMemberID, &currentMemberRole, &currentUserRole, &currentUserStatus); err != nil {
 			rows.Close()
 			return ProjectMemberDTO{}, err
 		}
 		if currentMemberID == memberID {
 			targetFound = true
 			previousMemberRole = currentMemberRole
+			targetUserRole = currentUserRole
+			targetUserStatus = currentUserStatus
 		} else if memberRole == "leader" && currentMemberRole == "leader" {
 			demotedLeaderIDs = append(demotedLeaderIDs, currentMemberID)
 		}
@@ -675,6 +715,9 @@ func (s *Server) updateProjectMemberRole(ctx context.Context, actorID string, pr
 	rows.Close()
 	if !targetFound {
 		return ProjectMemberDTO{}, pgx.ErrNoRows
+	}
+	if targetUserRole != RoleStudent || targetUserStatus != "active" {
+		return ProjectMemberDTO{}, badRequestError("project member must be an active student")
 	}
 
 	if memberRole == "leader" {
@@ -698,7 +741,7 @@ func (s *Server) updateProjectMemberRole(ctx context.Context, actorID string, pr
 	if err != nil {
 		return ProjectMemberDTO{}, err
 	}
-	if err := insertProjectActivityLogTx(ctx, tx, actorID, projectID, "project.member_role_updated", "project_member", memberID, map[string]any{
+	if err := insertProjectActivityLogTx(ctx, tx, user.ID, projectID, "project.member_role_updated", "project_member", memberID, map[string]any{
 		"from":             previousMemberRole,
 		"to":               member.MemberRole,
 		"demotedLeaderIds": demotedLeaderIDs,
@@ -712,10 +755,11 @@ func (s *Server) updateProjectMemberRole(ctx context.Context, actorID string, pr
 }
 
 func (s *Server) listProjects(ctx context.Context, user User, limit int) ([]ProjectDTO, error) {
-	return s.listProjectsFiltered(ctx, user, limit, false, "", false)
+	projects, _, err := s.listProjectsFiltered(ctx, user, limit, 0, false, "", false)
+	return projects, err
 }
 
-func (s *Server) listProjectsFiltered(ctx context.Context, user User, limit int, unassigned bool, search string, excludeArchived bool) ([]ProjectDTO, error) {
+func (s *Server) listProjectsFiltered(ctx context.Context, user User, limit int, offset int, unassigned bool, search string, excludeArchived bool) ([]ProjectDTO, int64, error) {
 	where := ""
 	args := []any{}
 
@@ -737,14 +781,21 @@ func (s *Server) listProjectsFiltered(ctx context.Context, user User, limit int,
 	if search != "" {
 		args = append(args, search)
 		placeholder := "$" + strconv.Itoa(len(args))
-		where = appendProjectWhere(where, "(lower(p.name) LIKE '%' || "+placeholder+" || '%' OR lower(coalesce(p.topic, '')) LIKE '%' || "+placeholder+" || '%' OR lower(coalesce(p.description, '')) LIKE '%' || "+placeholder+" || '%' OR lower(u.full_name) LIKE '%' || "+placeholder+" || '%')")
+		where = appendProjectWhere(where, "(lower(p.name) LIKE '%' || "+placeholder+" || '%' OR lower(coalesce(p.topic, '')) LIKE '%' || "+placeholder+" || '%' OR lower(coalesce(p.description, '')) LIKE '%' || "+placeholder+" || '%' OR lower(u.full_name) LIKE '%' || "+placeholder+" || '%' OR lower(coalesce(cs.title, '')) LIKE '%' || "+placeholder+" || '%' OR lower(p.status) LIKE '%' || "+placeholder+" || '%' OR lower(p.official_progress_state) LIKE '%' || "+placeholder+" || '%')")
+	}
+	var total int64
+	if err := s.db.QueryRow(ctx, projectCountSQL(where), args...).Scan(&total); err != nil {
+		return nil, 0, err
 	}
 	args = append(args, limit)
-	query := projectSelectSQL(where, "ORDER BY p.updated_at DESC LIMIT $"+strconv.Itoa(len(args)))
+	limitPlaceholder := "$" + strconv.Itoa(len(args))
+	args = append(args, offset)
+	offsetPlaceholder := "$" + strconv.Itoa(len(args))
+	query := projectSelectSQL(where, "ORDER BY p.updated_at DESC, p.id DESC LIMIT "+limitPlaceholder+" OFFSET "+offsetPlaceholder)
 
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -752,11 +803,22 @@ func (s *Server) listProjectsFiltered(ctx context.Context, user User, limit int,
 	for rows.Next() {
 		project, err := scanProject(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		projects = append(projects, project)
 	}
-	return projects, rows.Err()
+	return projects, total, rows.Err()
+}
+
+func projectCountSQL(where string) string {
+	return `
+		SELECT COUNT(DISTINCT p.id)::bigint
+		FROM projects p
+		JOIN users u ON u.id = p.supervisor_id
+		LEFT JOIN course_section_projects csp ON csp.project_id = p.id
+		LEFT JOIN course_sections cs ON cs.id = csp.course_section_id
+		` + where + `
+	`
 }
 
 func appendProjectWhere(where string, condition string) string {
@@ -993,6 +1055,30 @@ func (s *Server) lockProjectLifecycleTx(ctx context.Context, tx pgx.Tx, projectI
 		return projectLifecycleError{status: status, action: action}
 	}
 	return nil
+}
+
+func (s *Server) requireProjectSupportWriteTx(w http.ResponseWriter, ctx context.Context, tx pgx.Tx, user User, projectID string, action string) (bool, bool) {
+	if !s.requireProjectLifecycleTx(w, ctx, tx, projectID, action, projectAcceptsSupportChanges) {
+		return false, false
+	}
+	canManageProject, err := canManageProjectTx(ctx, tx, user, projectID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not verify support permission")
+		return false, false
+	}
+	if canManageProject {
+		return true, true
+	}
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT status FROM projects WHERE id = $1`, projectID).Scan(&status); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not verify project lifecycle")
+		return false, false
+	}
+	if status == projectStatusOnHold {
+		writeError(w, http.StatusForbidden, "only project managers can change support while the project is on hold")
+		return false, false
+	}
+	return false, true
 }
 
 func writeProjectLifecycleError(w http.ResponseWriter, err error) {

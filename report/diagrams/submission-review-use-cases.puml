@@ -1,0 +1,43 @@
+@startdot
+digraph G {
+  graph [rankdir=LR, bgcolor="white", splines=line, nodesep=0.78, ranksep=1.28, pad=0.24, margin=0.05];
+  node [fontname="DejaVu Sans", fontsize=17, color="#111111", fontcolor="#111111", margin="0.18,0.10", penwidth=1.2];
+  edge [color="#111111", arrowsize=0.78, penwidth=1.2];
+
+  Student [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Sinh viên</TD></TR>
+    </TABLE>
+  >];
+  Manager [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Giảng viên<br/>Quản trị viên</TD></TR>
+    </TABLE>
+  >];
+
+  subgraph cluster_review {
+    label="Bài nộp, minh chứng và duyệt bài";
+    color="#111111";
+    fontname="DejaVu Sans";
+    fontsize=17;
+    style="rounded";
+    margin=28;
+    Submit [shape=ellipse, label="Nộp báo cáo\ntiến độ"];
+    Support [shape=ellipse, label="Gắn tài nguyên\nvà minh chứng"];
+    Decision [shape=ellipse, label="Duyệt\nbài nộp"];
+    History [shape=ellipse, label="Xem lịch sử\nphản hồi"];
+  }
+
+  Student -> Submit;
+  Student -> Support;
+  Student -> History;
+  Decision -> Manager [dir=back];
+  History -> Manager [dir=back];
+}
+@enddot

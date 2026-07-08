@@ -1,0 +1,25 @@
+@startuml
+!include includes/report-style.iuml
+
+start
+:React route guard and role-aware controls;
+:Protected action carries current target IDs;
+:API checks active session and role;
+:API checks project relation;
+:Load target and lifecycle state;
+:Recheck manager/access,\nlifecycle, and target inside transaction;
+:Database constraints backstop the write;
+if (All checks pass?) then (yes)
+  :Commit write;
+  :Invalidate affected queries;
+else (no)
+  :Return 401, 403, or 409;
+  :Refresh affected data when stale;
+endif
+stop
+
+note right
+  Access control is layered:
+  UI guard -> API authz -> transaction recheck -> DB constraints.
+end note
+@enduml

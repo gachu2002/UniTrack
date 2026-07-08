@@ -1,0 +1,32 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam sequenceArrowThickness 1
+hide footbox
+
+actor "Sinh viên" as Student
+participant "React task page" as Web
+participant "Go API" as API
+database "PostgreSQL" as DB
+database "Object storage" as Store
+actor "Giảng viên / quản trị" as Teacher
+
+Student -> Web : Submit work
+Web -> API : Create submission
+API -> DB : Lock project; validate; insert pending
+
+Student -> Web : Attach evidence
+Web -> API : Upload support
+API -> DB : Prevalidate lifecycle, access, target
+API -> Store : Store private object
+API -> DB : Recheck and insert metadata
+DB -> API : Trigger checks target
+
+Teacher -> Web : Review decision
+Web -> API : POST review
+API -> DB : Lock pending; write final review
+DB -> API : Freeze support
+API -> Web : Read-only history + evidence
+@enduml

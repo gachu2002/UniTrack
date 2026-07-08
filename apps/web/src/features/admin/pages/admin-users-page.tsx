@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, KeyRound, Pencil, Plus, Search, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, KeyRound, Pencil, Plus, Search, ShieldCheck, X } from 'lucide-react'
 import { useDeferredValue, useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
+import { PageHeader } from '@/components/layout/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ErrorState } from '@/components/shared/error-state'
 import { ForbiddenState } from '@/components/shared/forbidden-state'
 import { LoadingState } from '@/components/shared/loading-state'
+import { PaginationControls } from '@/components/shared/pagination-controls'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -15,7 +17,7 @@ import { Field as BaseField, FieldError, FieldLabel } from '@/components/ui/fiel
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { createAdminUser, getAdminUsers, setAdminUserPassword, updateAdminUser, type GetAdminUsersParams } from '@/features/admin/api'
+import { createAdminUser, getAdminUsers, getAdminUsersPage, setAdminUserPassword, updateAdminUser, type GetAdminUsersParams } from '@/features/admin/api'
 import { getErrorMessage, getErrorPayload, isForbiddenError } from '@/lib/axios'
 import { formatDateTime } from '@/lib/format'
 import { invalidateAdminAccountImpactData } from '@/lib/query-invalidation'
@@ -25,7 +27,7 @@ import type { User, UserRole } from '@/types/api'
 
 type RoleFilter = UserRole | 'all'
 type StatusFilter = User['status'] | 'all'
-const ACCOUNT_PAGE_SIZE = 25
+const ACCOUNT_PAGE_SIZE = 10
 
 interface AccountTransitionImpact {
   requiresReplacementSupervisor: boolean
@@ -52,11 +54,11 @@ export function AdminUsersPage() {
     search: deferredSearch.trim() || undefined,
     role: role === 'all' ? undefined : role,
     status: status === 'all' ? undefined : status,
-    limit: 200,
+    limit: ACCOUNT_PAGE_SIZE,
   }), [deferredSearch, role, status])
   const usersQuery = useQuery({
-    queryKey: queryKeys.adminUsersFiltered(filters),
-    queryFn: () => getAdminUsers(filters),
+    queryKey: queryKeys.adminUsersFiltered({ ...filters, page }),
+    queryFn: () => getAdminUsersPage({ ...filters, page }),
     placeholderData: (previousData) => previousData,
   })
   const adminForbidden = usersQuery.isError && isForbiddenError(usersQuery.error)
@@ -77,13 +79,23 @@ export function AdminUsersPage() {
     return <ErrorState message="Admin accounts could not be loaded." onRetry={() => void usersQuery.refetch()} />
   }
 
-  const users = usersQuery.data || []
+  const usersPage = usersQuery.data
+  const users = usersPage?.items || []
+  const totalUsers = usersPage?.total || 0
   const isRefreshing = usersQuery.isFetching && Boolean(usersQuery.data)
-  const totalPages = Math.max(1, Math.ceil(users.length / ACCOUNT_PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(totalUsers / ACCOUNT_PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
-  const startIndex = users.length === 0 ? 0 : (currentPage - 1) * ACCOUNT_PAGE_SIZE
-  const endIndex = Math.min(startIndex + ACCOUNT_PAGE_SIZE, users.length)
-  const visibleUsers = users.slice(startIndex, endIndex)
+  const startItem = totalUsers === 0 ? 0 : (currentPage - 1) * ACCOUNT_PAGE_SIZE + 1
+  const endItem = totalUsers === 0 ? 0 : Math.min(startItem + users.length - 1, totalUsers)
+  const visibleUsers = users
+  const hasActiveFilters = search.trim().length > 0 || role !== 'all' || status !== 'all'
+  const pageLabel = totalUsers === 0 ? 'No accounts' : `${startItem}-${endItem} of ${totalUsers} accounts`
+  const clearFilters = () => {
+    setSearch('')
+    setRole('all')
+    setStatus('all')
+    setPage(1)
+  }
 
   return (
     <div className="space-y-6">
@@ -97,28 +109,32 @@ export function AdminUsersPage() {
         {passwordTarget ? <PasswordForm user={passwordTarget} onSaved={() => setPasswordTarget(null)} onCancel={() => setPasswordTarget(null)} /> : null}
       </Dialog>
 
-      <section className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"><ShieldCheck className="size-4" /> Admin</p>
-          <h1 className="mt-2 font-heading text-4xl font-semibold tracking-tight text-ink md:text-5xl">Accounts</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Create users, set temporary passwords, and control role/status without public registration.</p>
-        </div>
-        <Button type="button" onClick={() => setCreateOpen(true)}><Plus className="size-4" /> Create account</Button>
-      </section>
+      <PageHeader
+        eyebrow={<span className="inline-flex items-center gap-2"><ShieldCheck className="size-4" /> Admin</span>}
+        title="Accounts"
+        description="Create users, set temporary passwords, and control role/status without public registration."
+        action={<Button type="button" onClick={() => setCreateOpen(true)}><Plus className="size-4" /> Create account</Button>}
+      />
 
-      <section className="overflow-hidden rounded-[1.65rem] border border-border bg-card shadow-sm">
-        <div className="sticky top-4 z-10 flex flex-col gap-3 border-b border-border bg-paper/95 p-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
-          <label className="relative block w-full lg:max-w-md">
-            <span className="sr-only">Search accounts</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="rounded-full bg-white pl-9" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search name or email" />
-          </label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {isRefreshing ? <span className="text-xs font-semibold text-muted-foreground">Refreshing...</span> : null}
-            {users.length >= 200 ? <span className="text-xs font-semibold text-amber-700">Showing first 200</span> : null}
-            <div className="grid gap-2 sm:grid-cols-2 lg:w-[24rem]">
+      <section className="overflow-hidden rounded-[1.85rem] border border-border bg-card shadow-panel">
+        <div className="border-b border-border bg-gradient-to-br from-paper via-white to-accent/35 p-4 sm:p-5">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                <span>Account directory</span>
+                <span className="rounded-full bg-white/85 px-2.5 py-1 text-[0.68rem] normal-case tracking-normal text-primary shadow-sm ring-1 ring-border">{pageLabel}</span>
+                {isRefreshing ? <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[0.68rem] normal-case tracking-normal text-primary">Refreshing...</span> : null}
+              </div>
+              <label className="relative block w-full xl:max-w-xl">
+                <span className="sr-only">Search accounts</span>
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input className="h-11 rounded-full bg-white pl-9 pr-10 shadow-sm" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search name or email" />
+                {search.trim() ? <button type="button" className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-ink" aria-label="Clear account search" onClick={() => { setSearch(''); setPage(1) }}><X className="size-3.5" /></button> : null}
+              </label>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,10rem)_minmax(0,10rem)_auto] sm:items-center xl:w-[26rem]">
               <Select value={role} onValueChange={(value) => { setRole(value as RoleFilter); setPage(1) }}>
-                <SelectTrigger className="bg-white"><SelectValue placeholder="Role" /></SelectTrigger>
+                <SelectTrigger className="bg-white shadow-sm"><SelectValue placeholder="Role" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All roles</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
@@ -127,69 +143,112 @@ export function AdminUsersPage() {
                 </SelectContent>
               </Select>
               <Select value={status} onValueChange={(value) => { setStatus(value as StatusFilter); setPage(1) }}>
-                <SelectTrigger className="bg-white"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectTrigger className="bg-white shadow-sm"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
                 </SelectContent>
               </Select>
+              <Button type="button" variant="ghost" size="sm" className="justify-center bg-white/75 shadow-sm" disabled={!hasActiveFilters} onClick={clearFilters}>Clear</Button>
             </div>
           </div>
         </div>
 
         {users.length === 0 ? (
-          <div className="py-12"><EmptyState title="No matching accounts" message="Clear filters or create a new account." /></div>
+          <div className="space-y-4 px-5 py-12 text-center">
+            <EmptyState title="No matching accounts" message="Clear filters or create a new account." />
+            {hasActiveFilters ? <Button type="button" variant="outline" onClick={clearFilters}>Clear filters</Button> : null}
+          </div>
         ) : (
           <>
-            <Table>
-              <TableHeader className="sticky top-0 z-[1]">
-                <TableRow>
-                  <TableHead>Account</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visibleUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 font-heading text-sm font-semibold text-primary">{initials(user.fullName)}</span>
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold text-ink">{user.fullName}{user.id === currentUser?.id ? <span className="ml-2 text-xs font-medium text-muted-foreground">You</span> : null}</p>
-                          <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell><StatusBadge value={user.role} tone={user.role === 'admin' ? 'teal' : user.role === 'teacher' ? 'blue' : 'slate'} /></TableCell>
-                    <TableCell><StatusBadge value={user.status} tone={user.status === 'active' ? 'blue' : 'slate'} /></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{user.createdAt ? formatDateTime(user.createdAt) : 'Unknown'}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setPasswordTarget(user)}><KeyRound className="size-4" /> Password</Button>
-                        <Button type="button" variant="edit" size="sm" onClick={() => setEditing(user)}><Pencil className="size-4" /> Edit</Button>
-                      </div>
-                    </TableCell>
+            <div className="hidden md:block">
+              <Table className="min-w-[58rem]">
+                <TableHeader className="bg-primary/5">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[42%] text-ink">Account</TableHead>
+                    <TableHead className="w-[10rem] text-ink">Role</TableHead>
+                    <TableHead className="w-[10rem] text-ink">Status</TableHead>
+                    <TableHead className="w-[14rem] text-ink">Created</TableHead>
+                    <TableHead className="w-[15rem] text-right text-ink">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            <div className="flex flex-col gap-3 border-t border-border bg-paper/80 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <span>Showing {startIndex + 1}-{endIndex} of {users.length} accounts</span>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button>
-                <span className="font-semibold text-ink">Page {currentPage} of {totalPages}</span>
-                <Button type="button" variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>Next</Button>
-              </div>
+                </TableHeader>
+                <TableBody>
+                  {visibleUsers.map((user) => (
+                    <TableRow key={user.id} className="group hover:bg-accent/35">
+                      <TableCell className="py-4"><AccountIdentity user={user} currentUserId={currentUser?.id} /></TableCell>
+                      <TableCell><StatusBadge value={user.role} tone={roleTone(user.role)} /></TableCell>
+                      <TableCell><StatusBadge value={user.status} tone={user.status === 'active' ? 'blue' : 'slate'} /></TableCell>
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{user.createdAt ? formatDateTime(user.createdAt) : 'Unknown'}</TableCell>
+                      <TableCell><AccountActions user={user} onPassword={() => setPasswordTarget(user)} onEdit={() => setEditing(user)} /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
+            <div className="grid gap-3 p-4 md:hidden">
+              {visibleUsers.map((user) => <AccountCard key={user.id} user={user} currentUserId={currentUser?.id} onPassword={() => setPasswordTarget(user)} onEdit={() => setEditing(user)} />)}
+            </div>
+            <PaginationControls page={currentPage} pageSize={ACCOUNT_PAGE_SIZE} totalItems={totalUsers} itemLabel="accounts" isLoading={usersQuery.isFetching} onPageChange={setPage} />
           </>
         )}
       </section>
     </div>
   )
+}
+
+function AccountIdentity({ user, currentUserId }: { user: User; currentUserId?: string }) {
+  const isCurrentUser = user.id === currentUserId
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/10 font-heading text-sm font-semibold text-primary ring-1 ring-primary/10">{initials(user.fullName)}</span>
+      <div className="min-w-0">
+        <p className="flex min-w-0 flex-wrap items-center gap-2 font-heading text-base font-semibold tracking-tight text-ink">
+          <span className="truncate">{user.fullName}</span>
+          {isCurrentUser ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[0.68rem] font-bold uppercase tracking-[0.12em] text-primary">You</span> : null}
+        </p>
+        <p className="mt-0.5 truncate text-xs font-medium text-muted-foreground" title={user.email}>{user.email}</p>
+      </div>
+    </div>
+  )
+}
+
+function AccountActions({ user, onPassword, onEdit, compact = false }: { user: User; onPassword: () => void; onEdit: () => void; compact?: boolean }) {
+  return (
+    <div className={compact ? 'grid grid-cols-2 gap-2' : 'flex justify-end gap-2'}>
+      <Button type="button" variant={compact ? 'outline' : 'ghost'} size="sm" className={compact ? 'justify-center' : undefined} onClick={onPassword} aria-label={`Set password for ${user.fullName}`}><KeyRound className="size-4" /> Password</Button>
+      <Button type="button" variant="edit" size="sm" className={compact ? 'justify-center' : undefined} onClick={onEdit} aria-label={`Edit ${user.fullName}`}><Pencil className="size-4" /> Edit</Button>
+    </div>
+  )
+}
+
+function AccountCard({ user, currentUserId, onPassword, onEdit }: { user: User; currentUserId?: string; onPassword: () => void; onEdit: () => void }) {
+  return (
+    <article className="rounded-2xl border border-border bg-white/85 p-4 shadow-sm">
+      <AccountIdentity user={user} currentUserId={currentUserId} />
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+        <AccountFact label="Role"><StatusBadge value={user.role} tone={roleTone(user.role)} /></AccountFact>
+        <AccountFact label="Status"><StatusBadge value={user.status} tone={user.status === 'active' ? 'blue' : 'slate'} /></AccountFact>
+        <AccountFact label="Created" className="col-span-2"><span className="text-sm font-semibold text-ink">{user.createdAt ? formatDateTime(user.createdAt) : 'Unknown'}</span></AccountFact>
+      </div>
+      <div className="mt-4 border-t border-border pt-3">
+        <AccountActions user={user} compact onPassword={onPassword} onEdit={onEdit} />
+      </div>
+    </article>
+  )
+}
+
+function AccountFact({ label, className = '', children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={`rounded-xl border border-border bg-paper/70 px-3 py-2 ${className}`}>
+      <p className="mb-1 text-[0.65rem] font-bold uppercase tracking-[0.13em] text-muted-foreground">{label}</p>
+      {children}
+    </div>
+  )
+}
+
+function roleTone(role: UserRole) {
+  return role === 'admin' ? 'teal' : role === 'teacher' ? 'blue' : 'slate'
 }
 
 function AccountForm({ user, onSaved, onCancel }: { user?: User; onSaved: () => void; onCancel: () => void }) {

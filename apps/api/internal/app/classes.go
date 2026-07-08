@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -36,12 +37,22 @@ func (s *Server) handleListCourseSections(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	items, err := s.listCourseSections(r.Context(), user)
+	pagination, err := parsePaginationParams(r.URL.Query(), 50, 200)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid folder list pagination")
+		return
+	}
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	if status != "" && !validCourseSectionStatus(status) {
+		writeError(w, http.StatusBadRequest, "invalid folder status")
+		return
+	}
+	items, total, err := s.listCourseSectionsFiltered(r.Context(), user, pagination.Limit, pagination.Offset, status, r.URL.Query().Get("search"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load folders")
 		return
 	}
-	writeJSON(w, http.StatusOK, items)
+	writeJSON(w, http.StatusOK, paginatedResponse[CourseSectionDTO]{Items: items, Page: pagination.Page, Limit: pagination.Limit, Total: total})
 }
 
 func (s *Server) handleCreateCourseSection(w http.ResponseWriter, r *http.Request) {
@@ -269,6 +280,10 @@ func (s *Server) handleLinkCourseSectionProject(w http.ResponseWriter, r *http.R
 	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "moving the project between folders", projectAcceptsMetadataChanges) {
 		return
 	}
+	if err := requireProjectManagerTx(r.Context(), tx, user, projectID); err != nil {
+		writeProjectManagerAccessError(w, err, "you cannot link this project")
+		return
+	}
 	supervisorID, err := projectSupervisorIDTx(r.Context(), tx, projectID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not verify project supervisor")
@@ -310,18 +325,42 @@ func (s *Server) handleLinkCourseSectionProject(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) listCourseSections(ctx context.Context, user User) ([]CourseSectionDTO, error) {
+	items, _, err := s.listCourseSectionsFiltered(ctx, user, 200, 0, "", "")
+	return items, err
+}
+
+func (s *Server) listCourseSectionsFiltered(ctx context.Context, user User, limit int, offset int, status string, search string) ([]CourseSectionDTO, int64, error) {
 	where := ""
 	args := []any{}
 	if user.Role == RoleTeacher {
 		where = "WHERE cs.owner_teacher_id = $1"
 		args = append(args, user.ID)
 	} else if user.Role != RoleAdmin {
-		return []CourseSectionDTO{}, nil
+		return []CourseSectionDTO{}, 0, nil
 	}
+	status = strings.TrimSpace(status)
+	if status != "" {
+		args = append(args, status)
+		where = appendCourseSectionWhere(where, "cs.status = $"+strconv.Itoa(len(args)))
+	}
+	search = strings.ToLower(strings.TrimSpace(search))
+	if search != "" {
+		args = append(args, search)
+		placeholder := "$" + strconv.Itoa(len(args))
+		where = appendCourseSectionWhere(where, "(lower(cs.title) LIKE '%' || "+placeholder+" || '%' OR lower(coalesce(cs.description, '')) LIKE '%' || "+placeholder+" || '%' OR lower(u.full_name) LIKE '%' || "+placeholder+" || '%' OR lower(cs.color) LIKE '%' || "+placeholder+" || '%' OR lower(cs.status) LIKE '%' || "+placeholder+" || '%')")
+	}
+	var total int64
+	if err := s.db.QueryRow(ctx, courseSectionCountSQL(where), args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, limit)
+	limitPlaceholder := "$" + strconv.Itoa(len(args))
+	args = append(args, offset)
+	offsetPlaceholder := "$" + strconv.Itoa(len(args))
 
-	rows, err := s.db.Query(ctx, courseSectionSelectSQL(where, "ORDER BY cs.updated_at DESC"), args...)
+	rows, err := s.db.Query(ctx, courseSectionSelectSQL(where, "ORDER BY pending_review_count DESC, overdue_task_count DESC, lower(cs.title), cs.id LIMIT "+limitPlaceholder+" OFFSET "+offsetPlaceholder), args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -329,11 +368,27 @@ func (s *Server) listCourseSections(ctx context.Context, user User) ([]CourseSec
 	for rows.Next() {
 		item, err := scanCourseSection(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	return items, total, rows.Err()
+}
+
+func courseSectionCountSQL(where string) string {
+	return `
+		SELECT COUNT(*)::bigint
+		FROM course_sections cs
+		JOIN users u ON u.id = cs.owner_teacher_id
+		` + where + `
+	`
+}
+
+func appendCourseSectionWhere(where string, condition string) string {
+	if where == "" {
+		return "WHERE " + condition
+	}
+	return where + " AND " + condition
 }
 
 func (s *Server) getCourseSectionByID(ctx context.Context, classID string) (CourseSectionDTO, error) {
@@ -480,9 +535,9 @@ func courseSectionSelectSQL(where string, suffix string) string {
 			cs.owner_teacher_id::text,
 			u.full_name,
 			cs.status,
-			COUNT(DISTINCT csp.project_id)::bigint,
-			COUNT(DISTINCT pu.id) FILTER (WHERE p.status <> 'archived' AND pu.review_status = 'pending_review' AND rt.parent_task_id IS NULL)::bigint,
-			COUNT(DISTINCT t.id) FILTER (WHERE p.status = 'active' AND t.parent_task_id IS NULL AND t.deadline < current_date AND t.status <> 'done' AND t.official_progress_state <> 'completed')::bigint,
+			COUNT(DISTINCT csp.project_id)::bigint AS project_count,
+			COUNT(DISTINCT pu.id) FILTER (WHERE p.status <> 'archived' AND pu.review_status = 'pending_review' AND rt.parent_task_id IS NULL)::bigint AS pending_review_count,
+			COUNT(DISTINCT t.id) FILTER (WHERE p.status = 'active' AND t.parent_task_id IS NULL AND t.deadline < current_date AND t.status <> 'done' AND t.official_progress_state <> 'completed')::bigint AS overdue_task_count,
 			cs.created_at,
 			cs.updated_at
 		FROM course_sections cs

@@ -24,7 +24,7 @@ const taskSchema = z.object({
   description: z.string().optional(),
   priority: z.enum(['low', 'medium', 'high']),
   deadline: z.string().optional(),
-  milestoneId: z.string().min(1, 'Milestone is required.'),
+  milestoneId: z.string().min(1, 'Checkpoint is required.'),
   assignAll: z.boolean(),
   assigneeIds: z.array(z.string()),
 })
@@ -294,17 +294,17 @@ function TaskForm({
           <Textarea className={compact ? 'min-h-24' : undefined} placeholder="Expected outcome, evidence, and review notes for students" {...form.register('description')} />
         </Field>
         {milestones.length > 0 ? (
-          <Field label="Milestone" description="Required checkpoint this assignment belongs under." error={form.formState.errors.milestoneId?.message}>
+          <Field label="Checkpoint" description="Required checkpoint this assignment belongs under." error={form.formState.errors.milestoneId?.message}>
             <Select value={selectedMilestoneId} onValueChange={(value) => form.setValue('milestoneId', value, { shouldDirty: true, shouldValidate: true })}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose milestone" />
+                <SelectValue placeholder="Choose checkpoint" />
               </SelectTrigger>
               <SelectContent>
                 {milestones.map((milestone) => <SelectItem key={milestone.id} value={milestone.id}>{milestone.title}</SelectItem>)}
               </SelectContent>
             </Select>
           </Field>
-        ) : <p className="rounded-xl border border-dashed border-border bg-paper px-3 py-2 text-sm text-muted-foreground">Create a milestone before adding assignments.</p>}
+        ) : <p className="rounded-xl border border-dashed border-border bg-paper px-3 py-2 text-sm text-muted-foreground">Create a checkpoint before adding assignments.</p>}
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Priority" description="Used for scanning the supervision plan.">
             <Select value={priority} onValueChange={(value) => form.setValue('priority', value as TaskValues['priority'], { shouldDirty: true, shouldValidate: true })}>

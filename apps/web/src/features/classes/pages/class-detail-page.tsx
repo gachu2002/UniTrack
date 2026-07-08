@@ -1,16 +1,18 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ArrowUpRight, Plus, Search, X } from 'lucide-react'
+import { ArrowLeft, Plus, Search, X } from 'lucide-react'
 import { useDeferredValue, useId, useState, type ReactNode } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+import { PageHeader, PageHeaderPill } from '@/components/layout/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ErrorState } from '@/components/shared/error-state'
 import { ForbiddenState } from '@/components/shared/forbidden-state'
 import { LoadingState } from '@/components/shared/loading-state'
+import { PaginationControls } from '@/components/shared/pagination-controls'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -24,6 +26,7 @@ import { projectNeedsAttention } from '@/features/projects/attention'
 import { CreateProjectDialog } from '@/features/projects/components/create-project-dialog'
 import { ProjectCard } from '@/features/projects/components/project-card'
 import { getErrorMessage, isForbiddenError } from '@/lib/axios'
+import { pageItems } from '@/lib/pagination'
 import { projectAcceptsMetadataChanges } from '@/lib/permissions'
 import { refreshClassDataOnStaleError, refreshProjectDataOnStaleError } from '@/lib/query-invalidation'
 import { queryKeys } from '@/lib/query-keys'
@@ -38,7 +41,7 @@ const classEditSchema = z.object({
   status: z.enum(['active', 'archived']),
 })
 
-const FOLDER_PROJECT_INITIAL_COUNT = 36
+const FOLDER_PROJECT_PAGE_SIZE = 8
 
 type ClassEditValues = z.infer<typeof classEditSchema>
 
@@ -129,31 +132,15 @@ export function ClassDetailPage() {
           <EditClassForm item={item} onUpdated={() => setEditOpen(false)} />
         </Dialog>
 
-        <header className="space-y-4 border-b border-black/5 pb-5">
-          <Button asChild variant="ghost" className="-ml-2 h-9 px-2 text-muted-foreground hover:bg-accent hover:text-primary">
-            <Link to="/workspace"><ArrowLeft className="size-4" /> Back to workspace</Link>
-          </Button>
-
-          <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-heading text-4xl font-semibold tracking-tight text-ink md:text-5xl">{item.title}</h1>
-                {item.status !== 'active' ? <StatusBadge value={item.status} /> : null}
-              </div>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{item.description || 'Drop related projects here to keep the workspace easy to scan.'}</p>
-              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                <span className="font-semibold text-ink">{item.projectCount} project{item.projectCount === 1 ? '' : 's'}</span>
-                <span>Owner: {item.ownerTeacherName}</span>
-                {item.pendingReviewCount > 0 ? <span className="font-semibold text-destructive">{item.pendingReviewCount} review{item.pendingReviewCount === 1 ? '' : 's'}</span> : null}
-                {item.overdueTaskCount > 0 ? <span className="font-semibold text-destructive">{item.overdueTaskCount} overdue</span> : null}
-              </div>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row lg:justify-end">
-              <Button type="button" variant="edit" onClick={() => setEditOpen(true)}>Edit folder</Button>
-              {canCreateProjectInClass && folderAcceptsProjects ? <CreateProjectDialog classId={resolvedClassId} onCreated={(project) => navigate(`/workspace/projects/${project.id}`)} /> : null}
-            </div>
-          </section>
-        </header>
+        <PageHeader
+          back={<Button asChild variant="ghost" className="-ml-2 h-9 px-2 text-muted-foreground hover:bg-accent hover:text-primary"><Link to="/workspace"><ArrowLeft className="size-4" /> Back to workspace</Link></Button>}
+          eyebrow="Workspace folder"
+          title={item.title}
+          description={item.description || 'Drop related projects here to keep the workspace easy to scan.'}
+          badges={item.status !== 'active' ? <StatusBadge value={item.status} /> : null}
+          meta={<><PageHeaderPill>{item.projectCount} project{item.projectCount === 1 ? '' : 's'}</PageHeaderPill><PageHeaderPill>Owner <span className="truncate text-ink">{item.ownerTeacherName}</span></PageHeaderPill>{item.pendingReviewCount > 0 ? <PageHeaderPill><span className="text-destructive">{item.pendingReviewCount} review{item.pendingReviewCount === 1 ? '' : 's'}</span></PageHeaderPill> : null}{item.overdueTaskCount > 0 ? <PageHeaderPill><span className="text-destructive">{item.overdueTaskCount} overdue</span></PageHeaderPill> : null}</>}
+          action={<><Button type="button" variant="edit" onClick={() => setEditOpen(true)}>Edit folder</Button>{canCreateProjectInClass && folderAcceptsProjects ? <CreateProjectDialog classId={resolvedClassId} onCreated={(project) => navigate(`/workspace/projects/${project.id}`)} /> : null}</>}
+        />
 
         <section className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -176,7 +163,7 @@ export function ClassDetailPage() {
               />
             ) : <p className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950">Reactivate this folder before adding projects.</p>}
           </div>
-          <ProjectGroupCards projects={folderProjects} unlinkingProjectId={unlinkingProjectId} onUnlink={(project) => unlinkMutation.mutate({ projectId: project.id, classId: '' })} />
+          <ProjectGroupCards projects={folderProjects} canUnlinkProjects={folderAcceptsProjects} unlinkingProjectId={unlinkingProjectId} onUnlink={(project) => unlinkMutation.mutate({ projectId: project.id, classId: '' })} />
         </section>
       </div>
     </div>
@@ -286,11 +273,11 @@ function ProjectCandidateOption({ project, isSubmitting, onSubmit }: { project: 
   )
 }
 
-function ProjectGroupCards({ projects, unlinkingProjectId, onUnlink }: { projects: Project[]; unlinkingProjectId?: string; onUnlink: (project: Project) => void }) {
+function ProjectGroupCards({ projects, canUnlinkProjects, unlinkingProjectId, onUnlink }: { projects: Project[]; canUnlinkProjects: boolean; unlinkingProjectId?: string; onUnlink: (project: Project) => void }) {
   const [search, setSearch] = useState('')
-  const [showAll, setShowAll] = useState(false)
+  const [page, setPage] = useState(1)
   const visibleProjects = filterProjectCandidates(projects, search)
-  const shownProjects = showAll ? visibleProjects : visibleProjects.slice(0, FOLDER_PROJECT_INITIAL_COUNT)
+  const { currentPage, items: shownProjects } = pageItems(visibleProjects, page, FOLDER_PROJECT_PAGE_SIZE)
 
   if (projects.length === 0) {
     return <EmptyState title="This folder is empty" message="Create a project here or move an existing project into this folder." />
@@ -302,25 +289,19 @@ function ProjectGroupCards({ projects, unlinkingProjectId, onUnlink }: { project
         <label className="relative block max-w-md">
           <span className="sr-only">Search folder projects</span>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="rounded-full bg-white pl-9" value={search} onChange={(event) => { setSearch(event.target.value); setShowAll(false) }} placeholder="Search projects in this folder" />
+          <Input className="rounded-full bg-white pl-9" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search projects in this folder" />
         </label>
       ) : null}
       {visibleProjects.length === 0 ? <EmptyState title="No matching projects" message="Try another project name, topic, supervisor, or status." /> : null}
       {visibleProjects.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {shownProjects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
               actions={(
                 <>
-                  <Button asChild variant="secondary" size="sm" className="bg-white/90 shadow-sm" title="Open project">
-                    <Link to={`/workspace/projects/${project.id}`} aria-label={`Open ${project.name}`}>
-                      Open
-                      <ArrowUpRight className="size-4" />
-                    </Link>
-                  </Button>
-                  {projectAcceptsMetadataChanges(project) ? (
+                  {canUnlinkProjects && projectAcceptsMetadataChanges(project) ? (
                     <Button type="button" variant="outline" size="icon" className="size-8 bg-white/90 shadow-sm" title="Remove from folder" aria-label={`Remove ${project.name} from folder`} disabled={unlinkingProjectId === project.id} onClick={() => onUnlink(project)}>
                       <X className="size-4" />
                     </Button>
@@ -331,12 +312,7 @@ function ProjectGroupCards({ projects, unlinkingProjectId, onUnlink }: { project
           ))}
         </div>
       ) : null}
-      {visibleProjects.length > FOLDER_PROJECT_INITIAL_COUNT ? (
-        <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-border bg-white/70 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>Showing {shownProjects.length} of {visibleProjects.length} projects.</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowAll((value) => !value)}>{showAll ? 'Show fewer' : 'Show all'}</Button>
-        </div>
-      ) : null}
+      {visibleProjects.length > 0 ? <PaginationControls page={currentPage} pageSize={FOLDER_PROJECT_PAGE_SIZE} totalItems={visibleProjects.length} itemLabel="projects" onPageChange={setPage} /> : null}
     </div>
   )
 }

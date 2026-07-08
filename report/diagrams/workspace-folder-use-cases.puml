@@ -1,0 +1,42 @@
+@startdot
+digraph G {
+  graph [rankdir=LR, bgcolor="white", splines=line, nodesep=0.78, ranksep=1.28, pad=0.24, margin=0.05];
+  node [fontname="DejaVu Sans", fontsize=17, color="#111111", fontcolor="#111111", margin="0.18,0.10", penwidth=1.2];
+  edge [color="#111111", arrowsize=0.78, penwidth=1.2];
+
+  Manager [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Giảng viên<br/>Quản trị viên</TD></TR>
+    </TABLE>
+  >];
+  Student [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Sinh viên</TD></TR>
+    </TABLE>
+  >];
+
+  subgraph cluster_workspace {
+    label="Workspace và thư mục";
+    color="#111111";
+    fontname="DejaVu Sans";
+    fontsize=17;
+    style="rounded";
+    margin=28;
+    View [shape=ellipse, label="Xem và tìm\nWorkspace"];
+    Folder [shape=ellipse, label="Quản lý\nthư mục"];
+    AddProject [shape=ellipse, label="Gán dự án\nvào thư mục"];
+    StudentProjects [shape=ellipse, label="Xem dự án\nđược tham gia"];
+  }
+
+  Manager -> View;
+  Manager -> Folder;
+  Manager -> AddProject;
+  StudentProjects -> Student [dir=back];
+}
+@enddot

@@ -175,6 +175,9 @@ func (s *Server) storeUploadedFileFromRequest(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusInternalServerError, "could not prepare file storage")
 		return UploadedFileDTO{}, false
 	}
+	if !s.validateUploadedFileInsert(w, r, projectID, beforeInsert) {
+		return UploadedFileDTO{}, false
+	}
 	if err := s.fileStore.Put(r.Context(), storageKey, bytes.NewReader(data), contentType, written); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not store file")
 		return UploadedFileDTO{}, false
@@ -219,6 +222,19 @@ func (s *Server) storeUploadedFileFromRequest(w http.ResponseWriter, r *http.Req
 		return UploadedFileDTO{}, false
 	}
 	return record.UploadedFileDTO, true
+}
+
+func (s *Server) validateUploadedFileInsert(w http.ResponseWriter, r *http.Request, projectID string, beforeInsert func(context.Context, pgx.Tx) bool) bool {
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not verify file metadata")
+		return false
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "uploading evidence", projectAcceptsStudentSubmissions) {
+		return false
+	}
+	return beforeInsert == nil || beforeInsert(r.Context(), tx)
 }
 
 func (s *Server) handleDownloadUploadedFile(w http.ResponseWriter, r *http.Request) {
@@ -300,7 +316,8 @@ func (s *Server) handleDeleteUploadedFile(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
-	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "deleting evidence files", projectAcceptsSupportChanges) {
+	canManageProject, ok := s.requireProjectSupportWriteTx(w, r.Context(), tx, user, projectID, "deleting evidence files")
+	if !ok {
 		return
 	}
 	allowed, err = canViewProjectTx(r.Context(), tx, user, projectID)
@@ -337,13 +354,13 @@ func (s *Server) handleDeleteUploadedFile(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	canManageProject, err := canManageProjectTx(r.Context(), tx, user, projectID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not verify file permission")
-		return
-	}
 	if !canManageProject && record.UploadedBy != user.ID {
 		writeError(w, http.StatusForbidden, "you cannot delete this file")
+		return
+	}
+
+	if err := s.deleteStoredFile(record.StoragePath); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not remove stored file")
 		return
 	}
 
@@ -358,10 +375,6 @@ func (s *Server) handleDeleteUploadedFile(w http.ResponseWriter, r *http.Request
 	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete file")
-		return
-	}
-	if err := s.deleteStoredFile(record.StoragePath); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not remove stored file")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -484,10 +497,6 @@ func detectMultipartFileType(file io.ReadSeeker, headerType string) (string, err
 		contentType = http.DetectContentType(buffer[:n])
 	}
 	return contentType, nil
-}
-
-func canManageUploadedFile(user User, file UploadedFileDTO) bool {
-	return user.Role == RoleAdmin || user.Role == RoleTeacher || file.UploadedBy == user.ID
 }
 
 func (s *Server) deleteStoredFile(key string) error {

@@ -1,0 +1,27 @@
+@startuml
+!include includes/report-style.iuml
+
+start
+:Student or manager creates, edits,\nor deletes a link/evidence file;
+:Support API checks project access;
+:Check target belongs to same project;
+:Check project lifecycle and\npending submission state;
+if (Operation includes file object?) then (yes)
+  if (Upload?) then (yes)
+    :Prevalidate metadata, then store\nprivate object in local/R2;
+  else (delete)
+    :Remove private object before\ndeleting metadata;
+  endif
+endif
+:Persist support metadata;
+:Reviewer opens review desk;
+:Load submission support data;
+:Insert final review decision;
+:Database trigger freezes\nreviewed support records;
+if (Later action is read/download?) then (yes)
+  :Allow while viewer can view project;
+else (write/delete)
+  :Block in API and database trigger;
+endif
+stop
+@enduml

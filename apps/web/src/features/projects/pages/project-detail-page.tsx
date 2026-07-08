@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowDown, ArrowUp, CalendarClock, CheckCircle2, ChevronDown, Clock, Link2, Pencil, Plus, Search, Star, Trash2, Users } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CalendarClock, CheckCircle2, ChevronDown, Clock, Link2, Pencil, Plus, Search, Star, Trash2, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
+import { PageHeader, PageHeaderPill } from '@/components/layout/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ErrorState } from '@/components/shared/error-state'
 import { ForbiddenState } from '@/components/shared/forbidden-state'
@@ -70,11 +71,18 @@ export function ProjectDetailPage() {
   const canCreateAssignments = canManage && projectAcceptsNewAssignments(project)
   const assignmentMembersReady = membersQuery.isSuccess
   const assignmentMembersError = membersQuery.isError
-  const canManageResources = projectAcceptsSupportChanges(project) && resourcesQuery.isSuccess
+  const assignmentPlanReady = membersQuery.isSuccess && milestonesQuery.isSuccess
+  const assignmentPlanError = membersQuery.isError || milestonesQuery.isError
+  const assignmentCreateDisabledReason = canCreateAssignments && !assignmentPlanReady
+    ? assignmentPlanError
+      ? 'Student list or checkpoints could not be loaded.'
+      : 'Student list and checkpoints are still loading.'
+    : undefined
+  const canManageResources = projectAcceptsSupportChanges(project) && resourcesQuery.isSuccess && (project.status === 'active' || canManage)
   const canManageTeam = canManage && projectAcceptsTeamChanges(project)
   const openTaskCreate = (milestoneId = '') => {
-    if (!assignmentMembersReady) {
-      toast.error(assignmentMembersError ? 'Student list could not be loaded.' : 'Student list is still loading.')
+    if (!assignmentPlanReady) {
+      toast.error(assignmentPlanError ? 'Student list or checkpoints could not be loaded.' : 'Student list and checkpoints are still loading.')
       return
     }
     setTaskCreateMilestoneId(milestoneId)
@@ -86,12 +94,17 @@ export function ProjectDetailPage() {
       <ProjectCommandHeader
         project={project}
         canManage={canManage}
+        canPlan={canPlan}
+        canCreateAssignments={canCreateAssignments}
+        assignmentCreateDisabledReason={assignmentCreateDisabledReason}
         members={members}
         canManageTeam={canManageTeam}
         isTeamLoading={membersQuery.isLoading}
         isTeamError={membersQuery.isError}
         onTeamRetry={() => { void membersQuery.refetch() }}
         onEdit={() => setEditOpen(true)}
+        onCreateMilestone={() => setCreateMilestoneOpen(true)}
+        onCreateTask={() => openTaskCreate('')}
       />
 
       <Dialog open={editOpen} onOpenChange={setEditOpen} title="Edit project" description="Update project metadata, timeline, and lifecycle state." className="max-w-4xl">
@@ -100,7 +113,7 @@ export function ProjectDetailPage() {
       <Dialog open={taskCreateOpen} onOpenChange={setTaskCreateOpen} title="New assignment" description="Create teacher-owned work inside this checkpoint and assign current students." className="max-w-4xl">
         <CreateTaskForm projectId={resolvedProjectId} members={members} milestones={milestones} milestoneId={taskCreateMilestoneId} onCreated={() => setTaskCreateOpen(false)} />
       </Dialog>
-      <Dialog open={createMilestoneOpen} onOpenChange={setCreateMilestoneOpen} title="New checkpoint" description="Add a planning checkpoint before creating milestone-scoped assignments.">
+      <Dialog open={createMilestoneOpen} onOpenChange={setCreateMilestoneOpen} title="New checkpoint" description="Add a planning checkpoint before creating assignments for students.">
         <InlineMilestoneForm projectId={resolvedProjectId} mode="dialog" onSaved={() => setCreateMilestoneOpen(false)} onCancel={() => setCreateMilestoneOpen(false)} />
       </Dialog>
       <main className="min-w-0">
@@ -111,7 +124,7 @@ export function ProjectDetailPage() {
 }
 
 type Tone = 'slate' | 'blue' | 'teal' | 'amber' | 'red'
-type AssignmentFilter = 'all' | 'review' | 'overdue' | 'mine'
+type AssignmentFilter = 'all' | 'review' | 'overdue' | 'revision' | 'mine'
 
 interface ProjectAttentionItem {
   task: Task
@@ -127,47 +140,75 @@ const TEAM_MEMBER_VISIBLE_COUNT = 60
 interface ProjectCommandHeaderProps {
   project: Project
   canManage: boolean
+  canPlan: boolean
+  canCreateAssignments: boolean
+  assignmentCreateDisabledReason?: string
   members: ProjectMember[]
   canManageTeam: boolean
   isTeamLoading: boolean
   isTeamError: boolean
   onTeamRetry: () => void
   onEdit: () => void
+  onCreateMilestone: () => void
+  onCreateTask: () => void
 }
 
-function ProjectCommandHeader({ project, canManage, members, canManageTeam, isTeamLoading, isTeamError, onTeamRetry, onEdit }: ProjectCommandHeaderProps) {
+function ProjectCommandHeader({ project, canManage, canPlan, canCreateAssignments, assignmentCreateDisabledReason, members, canManageTeam, isTeamLoading, isTeamError, onTeamRetry, onEdit, onCreateMilestone, onCreateTask }: ProjectCommandHeaderProps) {
   const summary = project.topic || project.description || ''
+  const primaryAction = projectPrimaryAction(project, canManage, canPlan, canCreateAssignments)
 
   return (
-    <section className="border-b border-border pb-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground"><Link className="underline-offset-4 hover:text-primary hover:underline" to="/workspace">Workspace</Link> / Project</p>
-          <h1 className="mt-3 max-w-4xl font-heading text-3xl font-semibold tracking-tight text-ink md:text-4xl">{project.name}</h1>
-          {summary ? <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{summary}</p> : null}
-          <ProjectMetaLine project={project} />
-          <ProjectLifecycleNotice project={project} />
-        </div>
-
-        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
-          {canManage ? <Button type="button" variant="edit" size="sm" onClick={onEdit}><Pencil className="size-4" /> Edit project</Button> : null}
-          <ProjectTeamPopover project={project} members={members} canManage={canManageTeam} isLoading={isTeamLoading} isError={isTeamError} onRetry={onTeamRetry} />
-        </div>
-      </div>
-    </section>
+    <div className="space-y-3">
+      <PageHeader
+        eyebrow={<><Link className="underline-offset-4 hover:text-primary hover:underline" to="/workspace">Workspace</Link> / Project</>}
+        title={project.name}
+        description={summary || 'Assignments, submissions, resources, and project team activity in one supervision space.'}
+        badges={<><StatusBadge value={project.status} /><StatusBadge value={project.officialProgressState} />{project.pendingReviewCount > 0 ? <StatusBadge value="pending_review" tone="amber" /> : null}</>}
+        meta={<ProjectHeaderMeta project={project} />}
+        action={<><ProjectPrimaryActionButton action={primaryAction} assignmentCreateDisabledReason={assignmentCreateDisabledReason} onCreateMilestone={onCreateMilestone} onCreateTask={onCreateTask} />{canManage ? <Button type="button" variant="edit" size="sm" onClick={onEdit}><Pencil className="size-4" /> Edit project</Button> : null}<ProjectTeamPopover project={project} members={members} canManage={canManageTeam} isLoading={isTeamLoading} isError={isTeamError} onRetry={onTeamRetry} /></>}
+      />
+      <ProjectLifecycleNotice project={project} />
+    </div>
   )
 }
 
-function ProjectMetaLine({ project }: { project: Project }) {
+function projectPrimaryAction(project: Project, canManage: boolean, canPlan: boolean, canCreateAssignments: boolean) {
+  if (canManage && project.pendingReviewCount > 0 && projectAcceptsReviews(project)) {
+    return { kind: 'review' as const, label: 'Review submissions' }
+  }
+  if (!canManage && project.pendingReviewCount > 0) {
+    return { kind: 'open-plan' as const, label: 'Open work plan' }
+  }
+  if (canPlan && project.milestoneCount === 0) {
+    return { kind: 'create-checkpoint' as const, label: 'Create checkpoint' }
+  }
+  if (canCreateAssignments && project.milestoneCount > 0) {
+    return { kind: 'create-assignment' as const, label: 'Add assignment' }
+  }
+  return { kind: 'open-plan' as const, label: 'Open work plan' }
+}
+
+function ProjectPrimaryActionButton({ action, assignmentCreateDisabledReason, onCreateMilestone, onCreateTask }: { action: ReturnType<typeof projectPrimaryAction>; assignmentCreateDisabledReason?: string; onCreateMilestone: () => void; onCreateTask: () => void }) {
+  if (action.kind === 'create-checkpoint') {
+    return <Button type="button" size="sm" onClick={onCreateMilestone}><Plus className="size-4" /> {action.label}</Button>
+  }
+  if (action.kind === 'create-assignment') {
+    return <Button type="button" size="sm" disabled={Boolean(assignmentCreateDisabledReason)} title={assignmentCreateDisabledReason} onClick={onCreateTask}><Plus className="size-4" /> {action.label}</Button>
+  }
+  if (action.kind === 'review') {
+    return <Button asChild size="sm"><a href="#work-board"><CheckCircle2 className="size-4" /> {action.label}</a></Button>
+  }
+  return <Button asChild variant="outline" size="sm"><a href="#work-board"><ArrowRight className="size-4" /> {action.label}</a></Button>
+}
+
+function ProjectHeaderMeta({ project }: { project: Project }) {
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
-      <StatusBadge value={project.status} />
-      <StatusBadge value={project.officialProgressState} />
-      {project.pendingReviewCount > 0 ? <StatusBadge value="pending_review" tone="amber" /> : null}
-      <span>{projectTimelineLabel(project)}</span>
-      <span>Supervisor <span className="font-semibold text-ink">{project.supervisorName}</span></span>
-      {project.classTitle ? <span>Folder <span className="font-semibold text-ink">{project.classTitle}</span></span> : null}
-    </div>
+    <>
+      <PageHeaderPill>{projectTimelineLabel(project)}</PageHeaderPill>
+      <PageHeaderPill>Supervisor <span className="truncate text-ink">{project.supervisorName}</span></PageHeaderPill>
+      <PageHeaderPill>Folder <span className="truncate text-ink">{project.classTitle || 'Standalone'}</span></PageHeaderPill>
+      <PageHeaderPill>{project.plannedProgressPercent}% planned</PageHeaderPill>
+    </>
   )
 }
 
@@ -284,6 +325,7 @@ function ProjectPlanTree({ project, user, tasks, milestones, resources, resource
   const filteredTasks = tasksForAssignmentFilter(filter, tasks, user)
   const visibleTasks = filterTasks(filteredTasks, search)
   const groups = checkpointTaskGroups(milestones, tasksByMilestone, visibleTasks, filter, search)
+  const emptyPlanCopy = workPlanEmptyCopy(project, canPlan)
 
   if (isLoading) {
     return <LoadingState label="Loading project plan" />
@@ -306,19 +348,20 @@ function ProjectPlanTree({ project, user, tasks, milestones, resources, resource
         }}
       />
 
-      <ProjectMissionControl project={project} user={user} tasks={tasks} canManage={canManage} />
+      <ProjectNextUpPanel project={project} user={user} tasks={tasks} canManage={canManage} activeFilter={filter} onSelectFilter={(nextFilter) => { setFilter(nextFilter); setSearch('') }} />
       {resourcesUnavailable ? <ResourceLoadWarning onRetry={onRetryResources} /> : null}
 
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:items-start">
-        <section id="work-board" className="min-w-0 overflow-hidden rounded-2xl border border-border bg-white/80 shadow-sm">
-          <div className="border-b border-border px-4 py-4 sm:px-5">
+        <section id="work-board" className="min-w-0 scroll-mt-24 overflow-hidden rounded-[1.75rem] border border-border bg-white/90 shadow-panel">
+          <div className="border-b border-border bg-gradient-to-r from-white via-sky-50/70 to-white px-4 py-4 sm:px-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <h2 className="font-heading text-2xl font-semibold tracking-tight text-ink">Work plan</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Checkpoint ledger · {milestones.length} checkpoint{milestones.length === 1 ? '' : 's'} · {tasks.length} assignment{tasks.length === 1 ? '' : 's'}</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">Checkpoint sequence for assignments, due dates, reviews, and shared resources.</p>
               </div>
               <div className="flex flex-wrap gap-2 sm:justify-end">
-                {canPlan ? <Button type="button" variant={managePlan ? 'secondary' : 'outline'} size="sm" className="shrink-0" onClick={() => setManagePlan((value) => !value)}>{managePlan ? 'Done managing' : 'Manage plan'}</Button> : null}
+                <span className="inline-flex items-center rounded-full border border-border bg-white/80 px-3 py-1 text-xs font-semibold text-muted-foreground">{milestones.length} checkpoint{milestones.length === 1 ? '' : 's'} · {tasks.length} assignment{tasks.length === 1 ? '' : 's'}</span>
+                {canPlan ? <Button type="button" variant={managePlan ? 'secondary' : 'outline'} size="sm" className="shrink-0" onClick={() => setManagePlan((value) => !value)}>{managePlan ? 'Done editing' : 'Edit plan'}</Button> : null}
                 {canPlan && managePlan ? <Button type="button" size="sm" className="shrink-0" onClick={onCreateMilestone}><Plus className="size-4" /> New checkpoint</Button> : null}
               </div>
             </div>
@@ -344,7 +387,7 @@ function ProjectPlanTree({ project, user, tasks, milestones, resources, resource
               </div>
 
               {groups.length > 0 ? (
-                <div className="divide-y divide-border">
+                <div className="space-y-4 bg-paper/45 p-4 sm:p-5">
                   {groups.map(({ milestone, tasks: groupTasks, index }) => (
                     <CheckpointSection
                       key={milestone.id}
@@ -356,7 +399,7 @@ function ProjectPlanTree({ project, user, tasks, milestones, resources, resource
                       milestoneResources={resourcesForTarget(resources, 'milestone', milestone.id)}
                       taskResources={(task) => resourcesForTarget(resources, 'task', task.id)}
                       canPlan={canPlan && managePlan}
-                      canCreateAssignment={canCreateAssignments && managePlan}
+                      canCreateAssignment={canCreateAssignments}
                       assignmentMembersReady={assignmentMembersReady}
                       assignmentMembersError={assignmentMembersError}
                       canManageResources={canManageResources && managePlan}
@@ -377,7 +420,7 @@ function ProjectPlanTree({ project, user, tasks, milestones, resources, resource
             </>
           ) : (
             <div className="py-8">
-              <EmptyState title="No checkpoints yet" message="Create the first checkpoint to turn this project into an actionable work sequence." />
+              <EmptyState title={emptyPlanCopy.title} message={emptyPlanCopy.message} />
               {canPlan ? <div className="mt-4 flex justify-center"><Button type="button" onClick={onCreateMilestone}><Plus className="size-4" /> Create checkpoint</Button></div> : null}
             </div>
           )}
@@ -389,44 +432,63 @@ function ProjectPlanTree({ project, user, tasks, milestones, resources, resource
   )
 }
 
-function ProjectMissionControl({ project, user, tasks, canManage }: { project: Project; user?: User | null; tasks: Task[]; canManage: boolean }) {
+function workPlanEmptyCopy(project: Project, canPlan: boolean) {
+  if (canPlan) {
+    return { title: 'No checkpoints yet', message: 'Create the first checkpoint to turn this project into an actionable work sequence.' }
+  }
+  if (project.status === 'archived') {
+    return { title: 'Work plan is read-only', message: 'This archived project has no checkpoints yet. Reactivate it before planning new work.' }
+  }
+  if (project.status === 'completed') {
+    return { title: 'No checkpoints recorded', message: 'This completed project is closed to new planning; existing project details remain available.' }
+  }
+  if (project.status === 'on_hold') {
+    return { title: 'No checkpoints recorded', message: 'This project is on hold. The Work Plan is readable, but only a project manager can maintain checkpoints.' }
+  }
+  return { title: 'No checkpoints yet', message: 'A project manager has not added checkpoints yet.' }
+}
+
+function ProjectNextUpPanel({ project, user, tasks, canManage, activeFilter, onSelectFilter }: { project: Project; user?: User | null; tasks: Task[]; canManage: boolean; activeFilter: AssignmentFilter; onSelectFilter: (filter: AssignmentFilter) => void }) {
   const visibleTasks = user?.role === 'student' ? tasks.filter((task) => isTaskMine(task, user)) : tasks
   const items = projectAttentionItems(project, visibleTasks, user, canManage)
   const visibleItems = items.slice(0, 3)
   const headline = projectAttentionHeadline(project, items, user)
   const completedLabel = project.taskCount > 0 ? `${project.completedTaskCount}/${project.taskCount}` : '0'
   const lastApprovedLabel = project.lastApprovedUpdateAt ? formatDate(project.lastApprovedUpdateAt) : 'No approved work'
+  const filterButtons = [
+    { key: 'review' as const, label: user?.role === 'student' ? 'Waiting review' : 'Needs review', count: tasksForAssignmentFilter('review', tasks, user).length },
+    { key: 'overdue' as const, label: 'Overdue', count: tasksForAssignmentFilter('overdue', tasks, user).length },
+    { key: 'revision' as const, label: 'Needs revision', count: tasksForAssignmentFilter('revision', tasks, user).length },
+  ].filter((option) => option.count > 0)
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-primary/10 bg-white/85 shadow-sm">
-      <div className="grid gap-px bg-border/70 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)]">
-        <div className="bg-white px-4 py-3 sm:px-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Mission control</p>
-          <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <h2 className="font-heading text-2xl font-semibold tracking-tight text-ink">{headline}</h2>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">The board below stays for planning; this strip only surfaces the next decisions.</p>
-            </div>
-            {items.length > visibleItems.length ? <a className="text-sm font-semibold text-primary underline-offset-4 hover:underline" href="#work-board">View all {items.length} signals</a> : null}
-          </div>
-          <div className="mt-3 grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
-            <ProjectHealthMetric label="Done" value={completedLabel} detail={`${project.plannedProgressPercent}% planned`} tone={project.completedTaskCount === project.taskCount && project.taskCount > 0 ? 'teal' : 'blue'} />
-            <ProjectHealthMetric label="Reviews" value={String(project.pendingReviewCount)} detail="Waiting" tone={project.pendingReviewCount > 0 ? 'amber' : 'slate'} />
-            <ProjectHealthMetric label="Overdue" value={String(project.overdueTaskCount)} detail="Past due" tone={project.overdueTaskCount > 0 ? 'red' : 'slate'} />
-            <ProjectHealthMetric label="Last approved" value={lastApprovedLabel} detail="Accepted work" tone={project.lastApprovedUpdateAt ? 'teal' : 'slate'} />
-          </div>
+    <section className="border-b border-border/80 pb-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Next up</p>
+          <h2 className="mt-1 font-heading text-xl font-semibold tracking-tight text-ink">{headline}</h2>
         </div>
-        <div className="bg-paper/80 px-4 py-3 sm:px-5">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-muted-foreground">Next actions</h3>
-            {items.length > 0 ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">{items.length}</span> : null}
-          </div>
-          {visibleItems.length > 0 ? (
-            <div className="mt-2 space-y-1.5">
-              {visibleItems.map((item) => <ProjectAttentionRow key={`${item.eyebrow}-${item.task.id}`} item={item} />)}
-            </div>
-          ) : <p className="mt-2 text-sm leading-6 text-muted-foreground">No urgent action is open. Use the Work Plan for planning and reference.</p>}
+        <div className="flex flex-wrap gap-2 lg:justify-end">
+          {filterButtons.length > 0 ? filterButtons.map((option) => (
+            <button key={option.key} type="button" className={cn('rounded-full border px-3 py-1.5 text-xs font-bold transition', activeFilter === option.key ? 'border-primary bg-primary text-white' : 'border-border bg-card text-muted-foreground hover:border-primary/30 hover:text-primary')} onClick={() => onSelectFilter(option.key)}>
+              {option.label}<span className="ml-1 opacity-75">{option.count}</span>
+            </button>
+          )) : <a className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-primary underline-offset-4 hover:underline" href="#work-board">Open work plan <ArrowRight className="size-3.5" /></a>}
+          {items.length > visibleItems.length ? <a className="inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold text-primary underline-offset-4 hover:underline" href="#work-board">View all {items.length}</a> : null}
         </div>
+      </div>
+
+      {visibleItems.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {visibleItems.map((item) => <ProjectAttentionRow key={`${item.eyebrow}-${item.task.id}`} item={item} />)}
+        </div>
+      ) : <p className="mt-3 text-sm leading-6 text-muted-foreground">No urgent action is open. Use the Work Plan for planning, reference links, and assignment history.</p>}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ProjectHealthMetric label="Done" value={completedLabel} detail={`${project.plannedProgressPercent}% planned`} tone={project.completedTaskCount === project.taskCount && project.taskCount > 0 ? 'teal' : 'blue'} />
+        <ProjectHealthMetric label="Reviews" value={String(project.pendingReviewCount)} detail="Waiting" tone={project.pendingReviewCount > 0 ? 'amber' : 'slate'} />
+        <ProjectHealthMetric label="Overdue" value={String(project.overdueTaskCount)} detail="Past due" tone={project.overdueTaskCount > 0 ? 'red' : 'slate'} />
+        <ProjectHealthMetric label="Last approved" value={lastApprovedLabel} detail="Accepted work" tone={project.lastApprovedUpdateAt ? 'teal' : 'slate'} />
       </div>
     </section>
   )
@@ -434,10 +496,10 @@ function ProjectMissionControl({ project, user, tasks, canManage }: { project: P
 
 function ProjectHealthMetric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: Tone }) {
   return (
-    <section className={cn('min-w-0 bg-white px-3 py-2.5', metricToneClasses(tone))}>
-      <p className="text-[0.68rem] font-bold uppercase tracking-[0.14em] opacity-70">{label}</p>
-      <p className="mt-0.5 truncate font-heading text-lg font-semibold tracking-tight">{value}</p>
-      <p className="truncate text-xs opacity-75">{detail}</p>
+    <section className={cn('inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-1.5 text-xs shadow-sm', metricToneClasses(tone))}>
+      <span className="font-bold uppercase tracking-[0.12em] opacity-70">{label}</span>
+      <span className="truncate font-heading font-semibold tracking-tight">{value}</span>
+      <span className="truncate opacity-75">{detail}</span>
     </section>
   )
 }
@@ -454,13 +516,14 @@ function ResourceLoadWarning({ onRetry }: { onRetry: () => void }) {
 function ProjectAttentionRow({ item }: { item: ProjectAttentionItem }) {
   const Icon = item.tone === 'red' ? AlertTriangle : item.tone === 'amber' ? Clock : item.tone === 'teal' ? CheckCircle2 : CalendarClock
   return (
-    <Link className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-white" to={`/workspace/projects/${item.task.projectId}/tasks/${item.task.id}`}>
-      <span className={cn('grid size-7 place-items-center rounded-lg', attentionIconClasses(item.tone))}><Icon className="size-3.5" /></span>
+    <Link className="group inline-flex max-w-full items-start gap-2 rounded-xl border border-border bg-card/80 px-3 py-2 text-left shadow-sm transition hover:border-primary/25 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25" to={`/workspace/projects/${item.task.projectId}/tasks/${item.task.id}`}>
+      <span className={cn('mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg', attentionIconClasses(item.tone))}><Icon className="size-3.5" /></span>
       <span className="min-w-0">
         <span className="block text-[0.66rem] font-bold uppercase tracking-[0.14em] text-muted-foreground">{item.eyebrow}</span>
-        <span className="block truncate text-sm font-semibold text-ink">{item.task.title}</span>
+        <span className="mt-0.5 block truncate text-sm font-semibold leading-5 text-ink">{item.task.title}</span>
+        <span className="mt-0.5 block truncate text-xs leading-5 text-muted-foreground">{item.description}</span>
       </span>
-      <span className="text-xs font-bold text-primary">{item.actionLabel}</span>
+      <span className="mt-1 inline-flex shrink-0 items-center gap-1 text-xs font-bold text-primary">{item.actionLabel} <ArrowRight className="size-3.5 transition group-hover:translate-x-0.5" /></span>
     </Link>
   )
 }
@@ -572,6 +635,21 @@ function attentionIconClasses(tone: Tone) {
   }
 }
 
+function checkpointAccentClasses(tone: Tone) {
+  switch (tone) {
+    case 'blue':
+      return 'bg-primary'
+    case 'teal':
+      return 'bg-secondary'
+    case 'amber':
+      return 'bg-amber-500'
+    case 'red':
+      return 'bg-destructive'
+    default:
+      return 'bg-slate-300'
+  }
+}
+
 function isAssignmentComplete(task: Task) {
   return task.status === 'done' || task.officialProgressState === 'completed'
 }
@@ -581,18 +659,17 @@ function taskAssigneeLabel(task: Task) {
 }
 
 function ProjectSideRail({ project, resources, canManageResources, onManageResources }: { project: Project; resources: ResourceLink[]; canManageResources: boolean; onManageResources: () => void }) {
+  const resourceActionLabel = canManageResources ? (resources.length > 0 ? 'Manage' : 'Add') : 'View'
   return (
     <aside className="grid gap-4 lg:grid-cols-2 2xl:sticky 2xl:top-6 2xl:block 2xl:space-y-4">
       <section className="rounded-[1.5rem] border border-border bg-card p-4 shadow-sm sm:p-5">
-        <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"><CalendarClock className="size-3.5" /> Details</p>
-        <div className="mt-4 space-y-3 text-sm">
-          <ProjectDetailRow label="Timeline" value={projectTimelineLabel(project)} />
-          <ProjectDetailRow label="Supervisor" value={project.supervisorName} />
-          <ProjectDetailRow label="Folder" value={project.classTitle || 'Standalone'} />
-          <ProjectDetailRow label="Progress" value={`${project.plannedProgressPercent}% planned`} />
-          <ProjectDetailRow label="Assignments" value={`${project.completedTaskCount}/${project.taskCount} complete`} />
-          <ProjectDetailRow label="Checkpoints" value={`${project.completedMilestoneCount}/${project.milestoneCount} complete`} />
-          {project.lastApprovedUpdateAt ? <ProjectDetailRow label="Last approved" value={formatDate(project.lastApprovedUpdateAt)} /> : null}
+        <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"><CalendarClock className="size-3.5" /> Snapshot</p>
+        <h2 className="mt-1 font-heading text-lg font-semibold tracking-tight text-ink">Project at a glance</h2>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <ProjectSnapshotTile label="Students" value={String(project.memberCount)} />
+          <ProjectSnapshotTile label="Assignments" value={`${project.completedTaskCount}/${project.taskCount}`} detail="complete" />
+          <ProjectSnapshotTile label="Checkpoints" value={`${project.completedMilestoneCount}/${project.milestoneCount}`} detail="complete" />
+          <ProjectSnapshotTile label="Last approved" value={project.lastApprovedUpdateAt ? formatDate(project.lastApprovedUpdateAt) : 'None'} />
         </div>
         {project.progressSummary ? <p className="mt-4 rounded-xl border border-border bg-paper/70 px-3 py-2 text-sm leading-6 text-muted-foreground">{project.progressSummary}</p> : null}
       </section>
@@ -601,9 +678,9 @@ function ProjectSideRail({ project, resources, canManageResources, onManageResou
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"><Link2 className="size-3.5" /> References</p>
-            <h2 className="mt-1 font-heading text-lg font-semibold tracking-tight text-ink">Project links</h2>
+            <h2 className="mt-1 font-heading text-lg font-semibold tracking-tight text-ink">Shared project links</h2>
           </div>
-          {resources.length > 0 || canManageResources ? <Button type="button" variant="ghost" size="sm" onClick={onManageResources}>{resources.length > 0 ? 'Manage' : 'Add'}</Button> : null}
+          {resources.length > 0 || canManageResources ? <Button type="button" variant="ghost" size="sm" onClick={onManageResources}>{resourceActionLabel}</Button> : null}
         </div>
         {resources.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -615,11 +692,12 @@ function ProjectSideRail({ project, resources, canManageResources, onManageResou
   )
 }
 
-function ProjectDetailRow({ label, value }: { label: string; value: string }) {
+function ProjectSnapshotTile({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-border pb-2 last:border-b-0 last:pb-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-semibold text-ink">{value}</span>
+    <div className="min-w-0 rounded-xl border border-border bg-paper/70 px-3 py-2">
+      <p className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate font-heading text-lg font-semibold tracking-tight text-ink" title={value}>{value}</p>
+      {detail ? <p className="text-xs text-muted-foreground">{detail}</p> : null}
     </div>
   )
 }
@@ -681,17 +759,18 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
   const shownTasks = showAll ? tasks : tasks.slice(0, CHECKPOINT_TASK_INITIAL_COUNT)
   if (editing) {
     return (
-      <section className="bg-violet-50/40 px-4 py-4 sm:px-5">
+      <section className="rounded-[1.5rem] border border-violet-200 bg-violet-50/60 p-4 shadow-sm">
         <InlineMilestoneForm projectId={milestone.projectId} milestone={milestone} onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />
       </section>
     )
   }
 
   return (
-    <section id={`checkpoint-${milestone.id}`} className={cn('px-4 py-3 sm:px-5', isCurrent ? 'bg-primary/[0.02]' : '')}>
+    <section id={`checkpoint-${milestone.id}`} className={cn('relative overflow-hidden rounded-[1.5rem] border bg-white p-4 shadow-sm transition sm:p-5', isCurrent ? 'border-primary/30 bg-primary/[0.025] shadow-panel' : 'border-border')}>
+      <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', checkpointAccentClasses(tone))} />
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 gap-3">
-          <span className="mt-0.5 w-8 shrink-0 font-heading text-lg font-semibold tabular-nums text-muted-foreground">{String(index + 1).padStart(2, '0')}</span>
+          <span className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-2xl border border-border bg-paper font-heading text-base font-semibold tabular-nums text-muted-foreground">{String(index + 1).padStart(2, '0')}</span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
               <StatusDot tone={tone} small />
@@ -699,7 +778,7 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
               {isCurrent ? <span className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">Current</span> : null}
               <span>{milestoneDateLabel(milestone)}</span>
             </div>
-            <h3 className="mt-1 font-heading text-lg font-semibold tracking-tight text-ink">{milestone.title}</h3>
+            <h3 className="mt-1 break-words font-heading text-xl font-semibold tracking-tight text-ink">{milestone.title}</h3>
             {milestone.description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{milestone.description}</p> : null}
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-muted-foreground">
               <span>{milestone.taskCount} assignment{milestone.taskCount === 1 ? '' : 's'}</span>
@@ -711,7 +790,7 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
         </div>
 
         <div className="flex flex-wrap items-center gap-2 md:justify-end">
-          {milestoneResources.length > 0 || canManageResources ? <ResourceLinkButton count={milestoneResources.length} onClick={onResourcesMilestone} ariaLabel={`Manage resources for ${milestone.title}`} /> : null}
+          {milestoneResources.length > 0 || canManageResources ? <ResourceLinkButton count={milestoneResources.length} onClick={onResourcesMilestone} ariaLabel={`${canManageResources ? 'Manage' : 'View'} resources for ${milestone.title}`} /> : null}
           {canCreateAssignment ? <Button type="button" variant="secondary" size="sm" disabled={!assignmentMembersReady} title={!assignmentMembersReady ? assignmentMembersError ? 'Student list could not be loaded.' : 'Student list is still loading.' : undefined} onClick={onCreateTask}><Plus className="size-4" /> {assignmentMembersReady ? 'Add assignment' : assignmentMembersError ? 'Students unavailable' : 'Loading students...'}</Button> : null}
           {canPlan ? <Button type="button" variant="ghost" size="icon" className="size-9" disabled={!canMoveUp || isMoving} onClick={onMoveUp} aria-label={`Move ${milestone.title} up`}><ArrowUp className="size-4" /></Button> : null}
           {canPlan ? <Button type="button" variant="ghost" size="icon" className="size-9" disabled={!canMoveDown || isMoving} onClick={onMoveDown} aria-label={`Move ${milestone.title} down`}><ArrowDown className="size-4" /></Button> : null}
@@ -719,17 +798,17 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
           {canPlan ? <Button type="button" variant="ghost" size="icon" className="size-9 text-muted-foreground hover:text-destructive" disabled={isDeleting} onClick={onDelete} aria-label={`Delete ${milestone.title}`}><Trash2 className="size-4" /></Button> : null}
         </div>
       </div>
-      <div className="mt-3 h-1 overflow-hidden rounded-full bg-slate-100">
-        <div className="h-full rounded-full bg-primary transition-all duration-700 ease-out" style={{ width: `${milestone.completionPercent}%` }} />
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 shadow-inner">
+        <div className="h-full rounded-full bg-gradient-to-r from-primary to-secondary transition-all duration-700 ease-out" style={{ width: `${milestone.completionPercent}%` }} />
       </div>
-      {shownTasks.length > 0 ? <div className="mt-3 divide-y divide-border border-y border-border/80">{shownTasks.map((task) => <TaskLedgerRow key={task.id} task={task} resources={taskResources(task)} canManageResources={canManageResources} onResources={() => onResourcesTask(task)} />)}</div> : null}
+      {shownTasks.length > 0 ? <div className="mt-4 grid gap-2">{shownTasks.map((task) => <TaskLedgerRow key={task.id} task={task} resources={taskResources(task)} canManageResources={canManageResources} onResources={() => onResourcesTask(task)} />)}</div> : null}
       {tasks.length > CHECKPOINT_TASK_INITIAL_COUNT ? (
         <div className="mt-3 flex flex-col gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>Showing {shownTasks.length} of {tasks.length} assignments.</span>
           <Button type="button" variant="outline" size="sm" onClick={() => setShowAll((value) => !value)}>{showAll ? 'Show fewer' : 'Show all'}</Button>
         </div>
       ) : null}
-      {tasks.length === 0 && showEmpty ? <p className="mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">No assignments in this checkpoint yet.</p> : null}
+      {tasks.length === 0 && showEmpty ? <p className="mt-4 rounded-xl border border-dashed border-border bg-paper/70 px-4 py-3 text-sm text-muted-foreground">No assignments in this checkpoint yet.</p> : null}
     </section>
   )
 }
@@ -768,6 +847,7 @@ function assignmentFilterOptions(allTasks: Task[], user?: User | null) {
     { key: 'all' as const, label: 'All', count: tasksForAssignmentFilter('all', allTasks, user).length },
     { key: 'review' as const, label: user?.role === 'student' ? 'Waiting review' : 'Needs review', count: tasksForAssignmentFilter('review', allTasks, user).length },
     { key: 'overdue' as const, label: 'Overdue', count: tasksForAssignmentFilter('overdue', allTasks, user).length },
+    { key: 'revision' as const, label: 'Needs revision', count: tasksForAssignmentFilter('revision', allTasks, user).length },
     user?.role === 'student' ? { key: 'mine' as const, label: 'Mine', count: tasksForAssignmentFilter('mine', allTasks, user).length } : null,
   ].filter((option): option is { key: AssignmentFilter; label: string; count: number } => Boolean(option))
   return options
@@ -780,6 +860,8 @@ function tasksForAssignmentFilter(filter: AssignmentFilter, allTasks: Task[], us
       return allTasks.filter((task) => task.pendingReviewCount > 0 && (!studentScoped || isTaskMine(task, user)))
     case 'overdue':
       return allTasks.filter((task) => task.isOverdue && (!studentScoped || isTaskMine(task, user)))
+    case 'revision':
+      return allTasks.filter((task) => task.officialProgressState === 'needs_changes' && (!studentScoped || isTaskMine(task, user)))
     case 'mine':
       return allTasks.filter((task) => isTaskMine(task, user))
     case 'all':
@@ -803,16 +885,25 @@ function TaskLedgerRow({ task, resources, canManageResources, onResources }: { t
   const assignmentState = getAssignmentState(task)
   const assigneeLabel = task.assignees.length > 0 ? task.assignees.map((assignee) => assignee.fullName).join(', ') : 'No assignees'
   return (
-    <article className="py-2.5">
-      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <article className="rounded-2xl border border-border bg-paper/60 px-3 py-3 transition hover:border-primary/20 hover:bg-white sm:px-4">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <StatusBadge value={assignmentState.key} tone={assignmentState.tone} />
-            <Link className="min-w-0 truncate font-heading text-sm font-semibold tracking-tight text-ink underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${task.projectId}/tasks/${task.id}`}>{task.title}</Link>
+            <Link className="min-w-0 truncate font-heading text-base font-semibold tracking-tight text-ink underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${task.projectId}/tasks/${task.id}`}>{task.title}</Link>
           </div>
-          <p className="mt-1 truncate text-xs leading-5 text-muted-foreground">{taskDeadlineLabel(task)} · {assigneeLabel} · {task.progressUpdateCount} submission{task.progressUpdateCount === 1 ? '' : 's'}{task.pendingReviewCount > 0 ? ` · ${task.pendingReviewCount} waiting review` : ''}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{assignmentState.description}</p>
+          <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-muted-foreground">
+            <span>{taskDeadlineLabel(task)}</span>
+            <span>{assigneeLabel}</span>
+            <span>{task.progressUpdateCount} submission{task.progressUpdateCount === 1 ? '' : 's'}</span>
+            {task.pendingReviewCount > 0 ? <span className="text-amber-700">{task.pendingReviewCount} waiting review</span> : null}
+          </p>
         </div>
-        {resources.length > 0 || canManageResources ? <div className="shrink-0"><ResourceLinkButton count={resources.length} onClick={onResources} ariaLabel={`Manage resources for ${task.title}`} /></div> : null}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
+          {resources.length > 0 || canManageResources ? <ResourceLinkButton count={resources.length} onClick={onResources} ariaLabel={`${canManageResources ? 'Manage' : 'View'} resources for ${task.title}`} /> : null}
+          <Button asChild variant="outline" size="sm"><Link to={`/workspace/projects/${task.projectId}/tasks/${task.id}`}>Open <ArrowRight className="size-4" /></Link></Button>
+        </div>
       </div>
     </article>
   )
@@ -897,6 +988,7 @@ function ProjectTeamPopover({ project, members, canManage, isLoading, isError, o
   const teamCountLabel = displayedMemberCount > 99 ? '99+' : String(displayedMemberCount)
   const memberCountCopy = inactiveMemberCount > 0 ? `${members.length} student${members.length === 1 ? '' : 's'} (${inactiveMemberCount} inactive)` : `${members.length} student${members.length === 1 ? '' : 's'}`
   const isTeamMutationPending = roleMutation.isPending || removeMutation.isPending
+  const emptyTeamCopy = teamEmptyCopy(project, canManage)
 
   return (
     <Popover>
@@ -983,7 +1075,7 @@ function ProjectTeamPopover({ project, members, canManage, isLoading, isError, o
                         )) : <p className="px-3 py-3 text-sm text-muted-foreground">No matching members.</p>}
                         {visibleMembers.length > TEAM_MEMBER_VISIBLE_COUNT ? <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">Showing {TEAM_MEMBER_VISIBLE_COUNT} of {visibleMembers.length}. Search by name, email, or role to narrow the team.</p> : null}
                       </div>
-                    ) : <EmptyState title="No students yet" message="Add existing students to give them access to this project." />}
+                    ) : <EmptyState title={emptyTeamCopy.title} message={emptyTeamCopy.message} />}
                   </section>
                 </>
               ) : null}
@@ -1006,6 +1098,22 @@ function ProjectTeamPopover({ project, members, canManage, isLoading, isError, o
       />
     </Popover>
   )
+}
+
+function teamEmptyCopy(project: Project, canManage: boolean) {
+  if (canManage) {
+    return { title: 'No students yet', message: 'Add existing students to give them access to this project.' }
+  }
+  if (project.status === 'archived') {
+    return { title: 'No students recorded', message: 'This archived project is read-only until a manager reactivates it.' }
+  }
+  if (project.status === 'completed') {
+    return { title: 'No students recorded', message: 'Team changes are closed for this completed project.' }
+  }
+  if (project.status === 'on_hold') {
+    return { title: 'No students recorded', message: 'This project is on hold. Only a project manager can add students.' }
+  }
+  return { title: 'No students recorded', message: 'A project manager has not added students yet.' }
 }
 
 function ProjectMemberRow({ member, canManage, actionsDisabled, onToggleRole, onRemove }: { member: ProjectMember; canManage: boolean; actionsDisabled: boolean; onToggleRole: () => void; onRemove: () => void }) {

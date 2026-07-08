@@ -1,0 +1,86 @@
+@startuml
+!include includes/report-style.iuml
+hide circle
+left to right direction
+skinparam linetype ortho
+skinparam Nodesep 44
+skinparam Ranksep 44
+
+package "Identity" as Identity {
+  entity "users" as Users {
+    * id : uuid <<PK>>
+    --
+    full_name : text
+    email : text <<UQ>>
+    role : admin|teacher|student
+    status : active|inactive
+  }
+
+  entity "sessions" as Sessions {
+    * id : uuid <<PK>>
+    --
+    user_id : uuid <<FK>>
+    token_hash : text <<UQ>>
+    expires_at, revoked_at
+  }
+
+  entity "activity_logs" as Logs {
+    * id : uuid <<PK>>
+    --
+    actor_id : uuid <<FK>>
+    project_id : uuid <<FK>>
+    action, metadata
+  }
+}
+
+package "Workspace" as Workspace {
+  entity "projects" as Projects {
+    * id : uuid <<PK>>
+    --
+    supervisor_id : uuid <<FK>>
+    status : active|on_hold|completed|archived
+    start_date, end_date
+  }
+
+  entity "project_members" as Members {
+    * id : uuid <<PK>>
+    --
+    project_id : uuid <<FK>>
+    student_id : uuid <<FK>>
+    member_role : leader|member
+    UQ(project_id, student_id)
+  }
+
+  entity "course_sections" as Folders {
+    * id : uuid <<PK>>
+    --
+    owner_teacher_id : uuid <<FK>>
+    title, description, color
+    status : active|archived
+  }
+
+  entity "course_section_projects" as FolderProjects {
+    * id : uuid <<PK>>
+    --
+    course_section_id : uuid <<FK>>
+    project_id : uuid <<FK>> <<UQ>>
+    added_by : uuid <<FK>>
+  }
+}
+
+Users ||--o{ Sessions : owns
+Users ||--o{ Projects : supervises
+Users ||--o{ Members : joins as student
+Users ||--o{ Folders : owns
+Users ||--o{ FolderProjects : added_by
+Users ||--o{ Logs : actor
+Projects ||--o{ Members : team
+Folders ||--o{ FolderProjects : contains
+Projects ||--o| FolderProjects : optional folder
+Projects ||--o{ Logs : project scope
+
+note bottom of FolderProjects
+  Deferred trigger requires folder owner_teacher_id
+  to match the linked project's supervisor_id at commit.
+end note
+@enduml

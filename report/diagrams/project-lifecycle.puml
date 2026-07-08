@@ -1,0 +1,31 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor white
+skinparam shadowing false
+top to bottom direction
+skinparam state {
+  BorderColor #111111
+  FontColor #111111
+  FontSize 16
+  AttributeFontSize 14
+  BackgroundColor #FFFFFF
+}
+skinparam ArrowColor #111111
+skinparam ArrowFontSize 13
+
+title State machine vòng đời dự án và quyền ghi
+
+state "active\n--\nGhi mới: nhiệm vụ, phân công,\nbài nộp, tài nguyên, minh chứng\nBảo trì: metadata, nhóm,\nkế hoạch, duyệt bài" as active #D9EAD3
+state "on_hold\n--\nCho phép: metadata, nhóm,\nsắp xếp kế hoạch, duyệt pending\nChặn: nhiệm vụ mới, bài nộp mới,\nsupport write của sinh viên" as on_hold #FFF2CC
+state "completed\n--\nCho phép: metadata, đổi trạng thái,\nduyệt bài còn pending\nChặn: công việc mới, thành viên mới,\ntài nguyên/file mới" as completed #D9EAF7
+state "archived\n--\nChỉ đọc: hồ sơ, lịch sử duyệt,\ntài nguyên và minh chứng\nChặn: mọi ghi nghiệp vụ\nCó thể kích hoạt lại" as archived #E7E6E6
+
+[*] --> active : create
+active --> on_hold : pause
+on_hold --> active : resume
+active --> completed : finish
+on_hold --> completed : finish
+completed --> archived : archive
+completed --> active : reopen
+archived --> active : reactivate
+@enduml

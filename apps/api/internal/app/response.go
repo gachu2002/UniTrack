@@ -17,6 +17,28 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
+type statusError struct {
+	status  int
+	message string
+}
+
+func (err statusError) Error() string {
+	return err.message
+}
+
+func badRequestError(message string) error {
+	return statusError{status: http.StatusBadRequest, message: message}
+}
+
+func writeStatusError(w http.ResponseWriter, err error, fallbackStatus int, fallbackMessage string) {
+	var httpErr statusError
+	if errors.As(err, &httpErr) {
+		writeError(w, httpErr.status, httpErr.message)
+		return
+	}
+	writeError(w, fallbackStatus, fallbackMessage)
+}
+
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

@@ -1,5 +1,12 @@
 import { apiClient } from '@/lib/axios'
-import type { ClassFolder, ClassFolderDetail } from '@/types/api'
+import type { ClassFolder, ClassFolderDetail, PaginatedResponse } from '@/types/api'
+
+export interface GetClassesParams {
+  limit?: number
+  page?: number
+  status?: ClassFolder['status']
+  search?: string
+}
 
 export interface CreateClassFolderInput {
   title: string
@@ -22,9 +29,14 @@ export interface LinkClassProjectInput {
   projectId: string
 }
 
-export async function getClasses() {
-  const { data } = await apiClient.get<ClassFolder[]>('/classes')
+export async function getClassesPage(params?: GetClassesParams) {
+  const { data } = await apiClient.get<PaginatedResponse<ClassFolder>>('/classes', { params })
   return data
+}
+
+export async function getClasses(params?: GetClassesParams) {
+  const data = await getClassesPage({ limit: 200, ...params })
+  return data.items
 }
 
 export async function createClass(input: CreateClassFolderInput) {

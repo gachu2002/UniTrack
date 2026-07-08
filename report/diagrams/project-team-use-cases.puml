@@ -1,0 +1,43 @@
+@startdot
+digraph G {
+  graph [rankdir=LR, bgcolor="white", splines=line, nodesep=0.78, ranksep=1.28, pad=0.24, margin=0.05];
+  node [fontname="DejaVu Sans", fontsize=17, color="#111111", fontcolor="#111111", margin="0.18,0.10", penwidth=1.2];
+  edge [color="#111111", arrowsize=0.78, penwidth=1.2];
+
+  Manager [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Giảng viên<br/>Quản trị viên</TD></TR>
+    </TABLE>
+  >];
+  Student [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Sinh viên</TD></TR>
+    </TABLE>
+  >];
+
+  subgraph cluster_project {
+    label="Dự án và nhóm";
+    color="#111111";
+    fontname="DejaVu Sans";
+    fontsize=17;
+    style="rounded";
+    margin=28;
+    Project [shape=ellipse, label="Quản lý\nhồ sơ dự án"];
+    Lifecycle [shape=ellipse, label="Cập nhật\nvòng đời dự án"];
+    Detail [shape=ellipse, label="Xem hồ sơ\nvà tổng hợp tiến độ"];
+    Team [shape=ellipse, label="Quản lý\nthành viên"];
+  }
+
+  Manager -> Project;
+  Manager -> Lifecycle;
+  Manager -> Detail;
+  Manager -> Team;
+  Detail -> Student [dir=back];
+}
+@enddot

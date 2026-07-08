@@ -53,7 +53,7 @@ function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, ca
   const canChangeSupport = update.reviewStatus === 'pending_review'
   const canUploadToUpdate = canChangeSupport && canUploadEvidence && (canManageEvidence || update.submittedBy === currentUserId)
   const showEvidence = canUploadToUpdate || files.length > 0
-  const canManageSubmissionResources = canChangeSupport && canManageResources && Boolean(onManageResources)
+  const canManageSubmissionResources = canChangeSupport && canManageResources && (canManageEvidence || update.submittedBy === currentUserId) && Boolean(onManageResources)
   const reviewTone = update.latestReview ? latestReviewTone(update.latestReview.reviewStatus) : null
   return (
     <article id={`progress-${update.id}`} className="scroll-mt-24 px-5 py-5">

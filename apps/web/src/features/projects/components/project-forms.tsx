@@ -43,7 +43,7 @@ const NO_CLASS_VALUE = '__no_folder__'
 export function CreateProjectForm({ classId, onCreated, onCancel }: { classId?: string; onCreated?: (project: Project) => void; onCancel?: () => void }) {
   const queryClient = useQueryClient()
   const user = useAuthStore((state) => state.user)
-  const classesQuery = useQuery({ queryKey: queryKeys.classes, queryFn: getClasses, enabled: !classId })
+  const classesQuery = useQuery({ queryKey: queryKeys.classes, queryFn: () => getClasses(), enabled: !classId })
   const form = useForm<ProjectValues>({
     resolver: zodResolver(projectSchema),
     defaultValues: { name: '', topic: '', description: '', classId: classId || '', startDate: '', endDate: '', status: 'active' },
@@ -147,7 +147,7 @@ export function CreateProjectForm({ classId, onCreated, onCancel }: { classId?: 
 
 export function EditProjectForm({ project, onUpdated, onCancel }: { project: Project; onUpdated?: (project: Project) => void; onCancel?: () => void }) {
   const queryClient = useQueryClient()
-  const classesQuery = useQuery({ queryKey: queryKeys.classes, queryFn: getClasses })
+  const classesQuery = useQuery({ queryKey: queryKeys.classes, queryFn: () => getClasses() })
   const archivedLocked = project.status === 'archived'
   const form = useForm<EditProjectValues>({
     resolver: zodResolver(editProjectSchema),

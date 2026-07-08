@@ -1,21 +1,209 @@
 \chapter{CÁC GIẢI PHÁP VÀ ĐÓNG GÓP NỔI BẬT}
 
-\section{Kiểm soát truy cập theo vai trò và dự án}
+Chương này trình bày các giải pháp kỹ thuật có vai trò nổi bật trong đồ án. Trọng tâm không nằm ở các thao tác tạo, đọc, cập nhật và xóa đơn lẻ mà ở những ràng buộc bảo vệ phía sau: kiểm soát quyền theo dự án, kiểm tra lại quyền và vòng đời khi ghi dữ liệu, bảo toàn minh chứng sau khi duyệt và chuẩn hóa cấu hình session khi triển khai. Mỗi mục được trình bày theo ba phần: vấn đề, giải pháp và kết quả đạt được.
 
-Một đóng góp quan trọng của UniTrack là kiểm soát quyền truy cập theo cả vai trò người dùng và quan hệ của người dùng với dự án. Quản trị viên, giảng viên và sinh viên có quyền khác nhau. Ngoài ra, giảng viên chỉ quản lý các dự án thuộc phạm vi phụ trách, còn sinh viên chỉ thao tác trên dự án mà mình là thành viên.
+\tableintro{tab:contribution-overview}{tổng hợp các đóng góp nổi bật và kết quả tương ứng trong UniTrack}
+\begin{table}[H]
+\caption{Tổng hợp các đóng góp nổi bật của UniTrack}
+\label{tab:contribution-overview}
+\centering
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[0.95,l]X[1.45,l]X[1.45,l]},
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Đóng góp & Vấn đề giải quyết & Kết quả trong UniTrack \\
+Cookie session an toàn & Giao diện/API khác host, cookie dễ cấu hình sai, session cũ có thể còn sau khi tài khoản thay đổi & Kiểm tra origin, parse cấu hình nghiêm ngặt lúc khởi động, thu hồi session và đồng bộ đăng nhập với thao tác tài khoản \\
+Phân quyền theo dự án & Vai trò thôi chưa đủ; giảng viên/sinh viên chỉ được thao tác trong dự án liên quan & Helper phân quyền, guard ở giao diện, recheck trong transaction và trạng thái bị từ chối rõ ràng \\
+Khóa vòng đời dự án & Trạng thái hoặc giảng viên phụ trách có thể đổi trong lúc form đang mở & Handler khóa dự án và kiểm tra lại quyền quản lý/vòng đời bằng \code{SELECT ... FOR UPDATE} trước khi ghi \\
+Toàn vẹn dữ liệu & Ghi trực tiếp hoặc request đồng thời có thể tạo dữ liệu lệch dự án & Khóa ngoại tổng hợp, một bài chờ duyệt và trigger deferred \\
+Minh chứng sau duyệt không đổi & Minh chứng sau khi duyệt không được bị thay đổi & API guard và trigger cơ sở dữ liệu chặn thêm/sửa/xóa dữ liệu hỗ trợ đã duyệt \\
+Giao diện sổ học thuật & Layout thiếu ngữ cảnh hành động làm người dùng khó xác định việc tiếp theo & Hàng đợi theo vai trò, kế hoạch công việc, trang duyệt bài và vùng minh chứng \\
+\end{tblr}
+\end{table}
 
-\section{Ràng buộc dữ liệu và giao dịch an toàn}
+\section{Bảo mật session và kiểm soát tài khoản}
 
-Các nghiệp vụ như thêm thành viên, giao nhiệm vụ, nộp bài, duyệt bài và di chuyển dự án giữa thư mục cần đảm bảo dữ liệu nhất quán. Hệ thống sử dụng ràng buộc cơ sở dữ liệu, giao dịch và kiểm tra lại trạng thái hiện tại trong backend để hạn chế lỗi do dữ liệu stale hoặc thao tác đồng thời.
+\subsection{Vấn đề}
 
-\section{Quản lý vòng đời dự án}
+UniTrack dùng cookie-based session vì phù hợp với ứng dụng Web và tránh lưu token trong local storage. Tuy nhiên, cookie có nhiều rủi ro khi giao diện và API chạy trên hai host khác nhau: cấu hình \code{SameSite=None} nhưng không bật \code{Secure}, CORS dùng wildcard cho request có credential, hoặc write request không có origin tin cậy. Một rủi ro khác là tài khoản có thể bị vô hiệu hóa hoặc đặt lại mật khẩu trong khi session cũ vẫn còn hiệu lực.
 
-Trạng thái dự án quyết định các thao tác được phép. Dự án đang hoạt động cho phép giao việc và nộp bài. Dự án tạm dừng hạn chế công việc mới. Dự án hoàn tất giữ lại khả năng xử lý một số bài nộp đang chờ. Dự án lưu trữ chủ yếu ở trạng thái chỉ đọc. Chính sách này giúp dữ liệu phản ánh đúng tiến trình thực tế của dự án.
+\subsection{Giải pháp}
 
-\section{Quản lý minh chứng và tài nguyên}
+Backend tạo session bằng token ngẫu nhiên và chỉ lưu token hash trong cơ sở dữ liệu. Khi đăng nhập, hệ thống khóa dòng tài khoản, kiểm tra mật khẩu và tạo session trong cùng transaction. Đăng xuất thu hồi session nếu có và luôn làm hết hạn cookie. Khi vô hiệu hóa tài khoản hoặc đặt lại mật khẩu, các session đang hoạt động bị thu hồi. Lớp kiểm tra origin chặn write request từ origin không tin cậy, còn kiểm tra lúc khởi động parse nghiêm ngặt biến môi trường và từ chối các cấu hình cookie/CORS nguy hiểm. Cách tiếp cận này phù hợp với nguyên tắc bảo vệ theo nhiều lớp và giảm quyền mặc định trong thiết kế hệ thống an toàn \cite{saltzer1975protection}.
 
-Sinh viên có thể đính kèm tệp minh chứng cho bài nộp đang chờ duyệt. Sau khi bài nộp đã được đánh giá, dữ liệu hỗ trợ được giữ lại để tham khảo nhưng bị chặn chỉnh sửa nhằm bảo toàn bằng chứng. Tài nguyên liên kết cũng được kiểm tra theo target và trạng thái dự án để tránh ghi dữ liệu sai phạm vi.
+\figurelead{fig:account-control-lock.png}{cho thấy thao tác tạo session được đồng bộ với các thay đổi tài khoản để tránh tạo phiên đăng nhập từ trạng thái tài khoản đã lỗi thời}
+\figAccountControlLock
 
-\section{Frontend state và xử lý dữ liệu stale}
+\tableintro{tab:auth-session-contribution-evidence}{tổng hợp rủi ro xác thực/session và dấu vết triển khai hoặc kiểm thử tương ứng}
+\begin{table}[H]
+\caption{Bằng chứng triển khai cho đóng góp xác thực/session}
+\label{tab:auth-session-contribution-evidence}
+\centering
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[0.95,l]X[1.45,l]X[1.35,l]},
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Rủi ro & Cách xử lý & Bằng chứng trong hệ thống \\
+Cookie cross-site cấu hình sai & Khởi động từ chối bool/duration/\code{SameSite} sai định dạng, \code{SameSite=None} thiếu \code{Secure}, CORS wildcard hoặc origin HTTP trong production & Kiểm thử cấu hình khởi động và origin guard \\
+Session còn sau đặt lại mật khẩu & Đặt mật khẩu thu hồi session và tự đăng xuất nếu người dùng tự đặt lại & Luồng quản lý tài khoản và kiểm thử vòng đời session \\
+Đăng nhập đua với vô hiệu hóa & Đăng nhập và thao tác tài khoản được serialize trên dòng tài khoản & Kiểm thử account-control lock \\
+Write request thiếu origin & Origin guard chặn request ghi session cookie hoặc request unsafe có session cookie nhưng thiếu origin tin cậy & Kiểm thử origin guard \\
+Đoán mật khẩu cơ bản & Giới hạn đăng nhập theo email/IP và làm cứng thời gian phản hồi khi tài khoản không tồn tại & Luồng xác thực và kiểm thử cấu hình bảo mật \\
+\end{tblr}
+\end{table}
 
-Frontend sử dụng TanStack Query để quản lý dữ liệu từ API. Các query key và helper invalidation được tập trung hóa để giảm lỗi quên làm mới dữ liệu sau mutation. Một số tình huống stale như bị từ chối quyền hoặc xung đột trạng thái sẽ kích hoạt refresh dữ liệu liên quan để giao diện không tiếp tục hiển thị hành động đã hết hiệu lực.
+\subsection{Kết quả}
+
+Nhóm test xác thực/session, khóa thao tác tài khoản, đặt lại mật khẩu, kiểm tra origin và parse cấu hình xác nhận các ràng buộc chính. Hệ thống chấp nhận triển khai giao diện/API khác host, đồng thời buộc production dùng HTTPS, CORS origin chính xác, cookie secure và giá trị cấu hình hợp lệ.
+
+\section{Kiểm soát truy cập theo vai trò và quan hệ dự án}
+
+\subsection{Vấn đề}
+
+Trong một hệ thống dự án, vai trò \textit{teacher} không tự động có quyền với mọi dự án. Giảng viên chỉ nên quản lý dự án mình phụ trách. Sinh viên chỉ nên xem dự án mình là thành viên và chỉ nộp nhiệm vụ được phân công. Quản trị viên có phạm vi rộng hơn nhưng vẫn phải tôn trọng các luật như thư mục khớp giảng viên phụ trách và trạng thái vòng đời dự án.
+
+\subsection{Giải pháp}
+
+UniTrack dùng helper phân quyền theo ba lớp: vai trò/trạng thái tài khoản, quan hệ với dự án và trạng thái vòng đời/đối tượng đích. Guard ở giao diện giúp trải nghiệm tốt hơn, nhưng backend vẫn kiểm tra lại ở mọi route. Các route chi tiết dự án, thành viên, nhiệm vụ, bài nộp, tài nguyên và file đều đi qua kiểm tra quyền xem hoặc quản lý dự án; các thao tác quản lý còn kiểm tra lại quyền hiện tại trong transaction trước khi ghi.
+
+\figurelead{fig:access-control-layers.png}{trình bày các lớp điều kiện cần thỏa mãn trước khi người dùng được đọc hoặc ghi dữ liệu thuộc một dự án}
+\figAccessControlLayers
+
+\subsection{Kết quả}
+
+Nhóm test backend về thành viên/giảng viên phụ trách, quyền truy cập thư mục, recheck quyền sau khóa transaction và browser test về access-control xác nhận các trường hợp bị chặn. Sinh viên ngoài dự án bị từ chối khi đọc chi tiết; giảng viên khác người phụ trách bị từ chối khi sửa dự án; người ngoài vai trò quản trị không vào \route{/admin/users}; sinh viên không quản lý thư mục.
+
+\tableintro{tab:project-access-control-conditions}{phân tích các điều kiện kiểm soát truy cập theo từng route hoặc luồng nghiệp vụ quan trọng}
+\begin{table}[H]
+\caption{Các lớp điều kiện trong kiểm soát truy cập theo dự án}
+\label{tab:project-access-control-conditions}
+\centering
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[0.9,l]X[1.55,l]X[1.45,l]},
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Route/luồng & Điều kiện cho phép & Khi bị từ chối \\
+Chi tiết dự án & Quản trị viên, giảng viên phụ trách hoặc sinh viên thành viên được xem & Backend trả forbidden; giao diện hiển thị trạng thái bị giới hạn \\
+Chi tiết thư mục & Giảng viên/quản trị viên quản lý thư mục hoặc có phạm vi phù hợp & Sinh viên không vào được \stackcell{\route{/workspace/classes/}\\\route{:classId}} \\
+Nộp nhiệm vụ & Sinh viên active, là thành viên dự án, nằm trong danh sách phân công và dự án active & \code{403}/\code{409}; giao diện refresh dữ liệu nhiệm vụ/dự án \\
+Duyệt bài & Giảng viên/quản trị viên quản lý dự án, bài nộp đang chờ duyệt và dự án chưa archived & Duyệt bài từ dữ liệu cũ bị chặn; lỗi tải minh chứng làm nút duyệt bị vô hiệu \\
+Tải minh chứng & Người có quyền xem dự án còn quyền đọc & Không stream object nếu người dùng không còn quan hệ hợp lệ với dự án \\
+\end{tblr}
+\end{table}
+
+\section{Quản lý vòng đời dự án bằng khóa transaction}
+
+\subsection{Vấn đề}
+
+Trạng thái dự án quyết định thao tác ghi: \code{active} cho phép công việc mới, \code{on\_hold} chặn nhiệm vụ/bài nộp mới, \code{completed} chỉ còn xử lý bài đang chờ duyệt trong phạm vi hạn chế, \code{archived} gần như chỉ đọc. Nếu trạng thái hoặc quyền quản lý chỉ được kiểm tra lúc render giao diện nhưng không kiểm tra lại lúc ghi dữ liệu, người dùng có thể gửi request cũ sau khi dự án đã bị completed/archived hoặc sau khi giảng viên phụ trách đã thay đổi.
+
+\subsection{Giải pháp}
+
+Các thao tác ghi theo dự án kiểm tra quan hệ và vòng đời trước để trả lỗi rõ ràng, sau đó kiểm tra lại quyền quản lý hiện tại và trạng thái trong transaction bằng khóa dòng dự án. Thao tác đổi trạng thái dự án cũng khóa cùng dòng, vì vậy việc ghi dữ liệu, đổi giảng viên phụ trách và chuyển trạng thái được serialize với nhau; đây là cách áp dụng trực tiếp nguyên tắc kiểm soát đồng thời để giữ dữ liệu nhất quán khi nhiều request cùng tác động lên một dự án \cite{bernstein1987concurrency}.
+
+\tableintro{tab:project-lifecycle-write-matrix}{mô tả ma trận thao tác được phép theo từng trạng thái vòng đời dự án}
+\begin{table}[H]
+\caption{Ma trận thao tác theo vòng đời dự án}
+\label{tab:project-lifecycle-write-matrix}
+\centering
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[1.05,l]X[0.7,c]X[0.7,c]X[0.7,c]X[0.85,c]},
+  rows={valign=m},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Trạng thái & \stackcell{Tạo\\nhiệm vụ} & \stackcell{Sửa\\nhiệm vụ} & \stackcell{Nộp\\bài} & \stackcell{Duyệt\\bài chờ} \\
+\code{active} & Có & Có & Có & Có \\
+\code{on\_hold} & Không & Có & Không & Có \\
+\code{completed} & Không & Không & Không & Có \\
+\code{archived} & Không & Không & Không & Không \\
+\end{tblr}
+\end{table}
+
+Trong triển khai, trạng thái hiển thị trên giao diện chỉ là tín hiệu ban đầu. Luồng ghi luôn đi qua ba tầng: kiểm tra nhanh quyền/vòng đời để trả lỗi dễ hiểu, mở transaction và khóa dòng dự án bằng \code{SELECT ... FOR UPDATE}, sau đó đọc lại quyền quản lý, trạng thái mới nhất và đối tượng liên quan trước khi ghi. Nếu dữ liệu đã cũ hoặc vòng đời đã chặn thao tác, request bị từ chối bằng lỗi phù hợp.
+
+\subsection{Kết quả}
+
+Nhóm test khóa vòng đời và recheck quyền kiểm tra cả ngữ nghĩa lẫn request đồng thời: stale request sau khi dự án completed/archived bị từ chối, giảng viên mất quyền sau khi đổi supervisor không thể ghi tiếp, on-hold vẫn cho phép bảo trì phù hợp, completed chỉ còn xử lý bài chờ duyệt trong phạm vi hạn chế.
+
+\section{Ràng buộc dữ liệu ở database}
+
+\subsection{Vấn đề}
+
+Backend đã kiểm tra dữ liệu trước khi ghi, nhưng nếu chỉ dựa vào API thì ràng buộc nghiệp vụ vẫn có thể bị phá bởi ghi SQL trực tiếp, migration lỗi hoặc request đồng thời. Ví dụ, phân công nhiệm vụ có thể trỏ sang sinh viên không thuộc dự án, bài nộp có thể khai báo thuộc dự án A nhưng trỏ tới nhiệm vụ của dự án B, hoặc tài nguyên có thể gắn vào bài nộp của dự án khác.
+
+\subsection{Giải pháp}
+
+Đồ án bổ sung các ràng buộc ở PostgreSQL: khóa ngoại tổng hợp cho nhiệm vụ/dự án, ràng buộc một bài nộp chờ duyệt, trigger deferred cho việc khớp chủ thư mục/giảng viên phụ trách, kiểm tra đích tài nguyên/minh chứng và khóa dữ liệu sau duyệt. Việc đưa invariant quan trọng xuống cơ sở dữ liệu phù hợp với vai trò của hệ quản trị quan hệ trong bảo vệ toàn vẹn dữ liệu \cite{silberschatz2020database}. Trigger deferred cho phép một transaction hợp lệ cập nhật nhiều dòng cùng lúc, nhưng vẫn chặn trạng thái sai ở thời điểm commit.
+
+\tableintro{tab:database-invariant-mechanisms}{liệt kê các invariant dữ liệu và cơ chế database bảo vệ từng invariant}
+\begin{table}[H]
+\caption{Các invariant dữ liệu được database bảo vệ}
+\label{tab:database-invariant-mechanisms}
+\centering
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[1.0,l]X[1.4,l]X[1.35,l]},
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Invariant & Cơ chế database & Lợi ích \\
+Nhiệm vụ cùng dự án & Khóa ngoại tổng hợp giữa người được giao và nhiệm vụ cùng dự án & Không phân công nhầm nhiệm vụ từ dự án khác \\
+Người được giao là thành viên & \stackcell{FK tới \smallcode{project\_members}\\theo dự án/sinh viên} & Khi xóa thành viên, hệ thống dọn liên kết phân công liên quan \\
+Một bài chờ duyệt & Ràng buộc duy nhất trên trạng thái chờ duyệt & Không có hai bài chờ duyệt cùng nhiệm vụ \\
+Đích tài nguyên/minh chứng cùng dự án & Trigger deferred trên tài nguyên/file và đối tượng đích & Chặn tài nguyên/minh chứng lệch dự án \\
+Dữ liệu sau duyệt không đổi & Trigger deferred cho insert/update/delete và trạng thái duyệt cuối & Bảo toàn minh chứng lịch sử sau duyệt \\
+\end{tblr}
+\end{table}
+
+\subsection{Kết quả}
+
+Nhóm test toàn vẹn dữ liệu xác nhận cơ sở dữ liệu từ chối dữ liệu sai ngay cả khi ghi trực tiếp: nhiệm vụ con sai dự án, liên kết thư mục-dự án lệch giảng viên phụ trách, đích tài nguyên/minh chứng sai dự án, người nộp không được phân công và sửa dữ liệu hỗ trợ đã duyệt. Phần này bổ sung góc nhìn đóng góp; danh sách migration cụ thể đã được tóm tắt ở Bảng~\ref{tab:key-migrations} để tránh lặp lại nội dung thiết kế của Chương 4.
+
+\section{Bảo toàn tài nguyên và minh chứng sau duyệt}
+
+\subsection{Vấn đề}
+
+File minh chứng và resource link là cơ sở để giảng viên duyệt bài. Nếu sau khi duyệt, sinh viên vẫn có thể xóa hoặc thay đổi minh chứng, lịch sử đánh giá không còn tin cậy. Tuy nhiên, hệ thống vẫn phải cho phép đọc và tải minh chứng ở dự án completed/archived để lưu hồ sơ.
+
+\subsection{Giải pháp}
+
+UniTrack phân biệt rõ đọc và ghi. Người có quyền xem dự án có thể đọc tài nguyên/minh chứng khi còn quyền. Thao tác ghi bị chặn theo hai lớp: vòng đời dự án và trạng thái duyệt của bài nộp. Nếu bài nộp đã có quyết định duyệt cuối cùng, mọi thao tác thêm/sửa/xóa tài nguyên hoặc tải lên/xóa minh chứng đều bị chặn ở API và cơ sở dữ liệu. Với file, upload tiền kiểm metadata trước khi ghi object, còn delete gỡ object trước metadata để lỗi storage còn có thể thử lại.
+
+\figurelead{fig:support-lifecycle.png}{mô tả sự chuyển đổi của tài nguyên và minh chứng từ trạng thái có thể cập nhật sang trạng thái chỉ đọc sau khi bài nộp được duyệt}
+\figSupportLifecycle
+
+\subsection{Kết quả}
+
+Các test backend về vòng đời/khóa minh chứng và Playwright cho trạng thái chỉ đọc xác nhận bản ghi completed/archived vẫn đọc/tải xuống được, còn nút tải lên/xóa bị ẩn và backend vẫn chặn nếu request được gửi thủ công.
+
+\section{Đóng góp về UI và khả năng sử dụng}
+
+\subsection{Vấn đề}
+
+Một dashboard hoặc trang dự án dễ trở thành tập hợp thẻ thông tin thiếu ngữ cảnh hành động. Với UniTrack, người dùng cần câu trả lời rõ: hôm nay cần duyệt bài nào, nhiệm vụ nào quá hạn, dự án nào cần chú ý, sinh viên phải nộp bài nào, hoặc bài nộp đã nhận phản hồi gì.
+
+\subsection{Giải pháp}
+
+Giao diện được thiết kế theo hướng sổ theo dõi học thuật. Dashboard ưu tiên hàng đợi hành động thay vì các thẻ số liệu tổng quát. Chi tiết dự án có dải thao tác chính và kế hoạch công việc. Chi tiết nhiệm vụ tách vùng duyệt bài của giảng viên và vùng nộp bài của sinh viên. Vùng minh chứng được thiết kế riêng để file minh chứng dễ quan sát. Hộp thoại, xác nhận thao tác, skip link và radio control được kiểm tra khả năng truy cập.
+
+\subsection{Kết quả}
+
+Người dùng có đường đi rõ ràng từ dashboard tới trang duyệt bài, từ kế hoạch dự án tới chi tiết nhiệm vụ, từ lịch sử bài nộp tới minh chứng. Playwright accessibility test xác nhận skip link, hành vi đóng/focus hộp thoại và chọn màu thư mục bằng bàn phím. Phần này nêu giá trị sử dụng của thiết kế; ảnh minh họa và bảng đối chiếu từng màn hình đã nằm ở Bảng~\ref{tab:ui-screenshot-rationale} trong Chương 4.
+
+\section{Đánh giá đóng góp}
+
+Các giải pháp trên giúp UniTrack có nền tảng dữ liệu và bảo mật tốt hơn một ứng dụng CRUD thông thường. Phần đáng chú ý nhất là sự phối hợp giữa giao diện, backend và cơ sở dữ liệu: giao diện hướng dẫn người dùng; backend quyết định quyền và vòng đời; cơ sở dữ liệu chặn ràng buộc bị phá. Cách tiếp cận này phù hợp với bài toán giám sát dự án sinh viên, trong đó lịch sử duyệt bài và minh chứng cần có độ tin cậy, còn nhiều người có thể thao tác đồng thời trên cùng một dự án.
+
+Các đóng góp trên đã được phân tích theo cấu trúc vấn đề, giải pháp và kết quả. Chương 6 tổng kết mức độ hoàn thành mục tiêu, hạn chế còn lại và hướng phát triển tiếp theo của hệ thống.

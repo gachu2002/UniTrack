@@ -58,9 +58,9 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = user
 
-	limit, err := parseListLimit(r.URL.Query().Get("limit"), 50, 200)
+	pagination, err := parsePaginationParams(r.URL.Query(), 50, 200)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid user list limit")
+		writeError(w, http.StatusBadRequest, "invalid user list pagination")
 		return
 	}
 	search := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("search")))
@@ -74,6 +74,17 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid user status")
 		return
 	}
+	var total int64
+	if err := s.db.QueryRow(r.Context(), `
+		SELECT COUNT(*)::bigint
+		FROM users
+		WHERE ($1 = '' OR lower(full_name) LIKE '%' || $1 || '%' OR lower(email) LIKE '%' || $1 || '%')
+		  AND ($2 = '' OR role = $2)
+		  AND ($3 = '' OR status = $3)
+	`, search, role, status).Scan(&total); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not count users")
+		return
+	}
 
 	rows, err := s.db.Query(r.Context(), `
 		SELECT id::text, full_name, email, role, status, avatar_url, created_at, updated_at
@@ -81,9 +92,9 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 		WHERE ($1 = '' OR lower(full_name) LIKE '%' || $1 || '%' OR lower(email) LIKE '%' || $1 || '%')
 		  AND ($2 = '' OR role = $2)
 		  AND ($3 = '' OR status = $3)
-		ORDER BY created_at DESC
-		LIMIT $4
-	`, search, role, status, limit)
+		ORDER BY created_at DESC, id DESC
+		LIMIT $4 OFFSET $5
+	`, search, role, status, pagination.Limit, pagination.Offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load users")
 		return
@@ -103,7 +114,7 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load users")
 		return
 	}
-	writeJSON(w, http.StatusOK, users)
+	writeJSON(w, http.StatusOK, paginatedResponse[UserDTO]{Items: users, Page: pagination.Page, Limit: pagination.Limit, Total: total})
 }
 
 func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {

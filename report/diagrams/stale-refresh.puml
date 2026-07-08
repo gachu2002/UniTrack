@@ -1,0 +1,25 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+
+start
+:Cached view;
+:Mutation submit;
+if (Session and relation valid?) then (yes)
+  :Lock current row;
+  :Recheck manager/access, lifecycle, target;
+  if (Target still valid?) then (yes)
+    :Commit write;
+  else (no)
+    :403 / 409 stale response;
+  endif
+else (missing)
+  :401 only clear auth;
+endif
+:Shared queryKeys;
+:Invalidate affected data;
+:Fresh affordances;
+stop
+@enduml

@@ -1,0 +1,27 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam sequenceArrowThickness 1
+hide footbox
+
+actor "Sinh viên" as Student
+participant "Go API" as API
+database "PostgreSQL" as DB
+database "Object storage" as Storage
+actor "Giảng viên / quản trị viên" as Manager
+
+Student -> API : Submit report
+API -> DB : Lock project; validate; insert pending
+
+Student -> API : Upload links/files
+API -> Storage : Store private object
+API -> DB : Insert metadata; recheck target
+
+Manager -> API : Open review desk
+API -> DB : Load submission + support
+Manager -> API : Approve / revise / reject
+API -> DB : Lock pending; decide; freeze support
+API -> Student : Show read-only result
+@enduml

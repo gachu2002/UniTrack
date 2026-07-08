@@ -1,0 +1,24 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam sequenceArrowThickness 1
+hide footbox
+
+actor "Giảng viên / quản trị viên" as Manager
+participant "Go API" as API
+database "Project row" as Project
+database "User row" as Account
+database "Membership + audit" as DB
+
+Manager -> API : Add student by email
+API -> API : Check manage-project permission
+API -> Project : BEGIN; lock project lifecycle
+Project -> API : Current status
+API -> Account : Lock student account row
+Account -> API : role/status and membership state
+API -> DB : Insert member; enforce constraints
+DB -> API : Write activity log and commit
+API -> Manager : Return refreshed team or 400/403/409
+@enduml

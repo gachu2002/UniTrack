@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -37,6 +39,11 @@ type seedProject struct {
 	SupervisorID string
 	MemberIDs    []string
 	Milestones   []seedMilestone
+}
+
+type seedFolder struct {
+	ID             string
+	OwnerTeacherID string
 }
 
 type seedMilestone struct {
@@ -74,6 +81,7 @@ func main() {
 	projectCount := flag.Int("projects", 72, "number of demo projects to create")
 	reset := flag.Bool("reset", false, "delete previous UniTrack demo seed data before inserting")
 	resetConfirm := flag.String("confirm-reset", "", "required confirmation value for -reset; use demo.unitrack.local")
+	allowNonLocal := flag.Bool("allow-non-local", false, "allow seeding a non-local DATABASE_URL; requires DEMO_SEED_PASSWORD")
 	flag.Parse()
 
 	if *teacherCount < 4 || *studentCount < 12 || *projectCount < 4 {
@@ -86,6 +94,19 @@ func main() {
 	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is required")
+	}
+	localDatabase := isLocalDatabaseURL(databaseURL)
+	seedPasswordValue := os.Getenv("DEMO_SEED_PASSWORD")
+	if !localDatabase {
+		if !*allowNonLocal {
+			log.Fatal("refusing to seed a non-local DATABASE_URL; rerun with -allow-non-local and DEMO_SEED_PASSWORD after verifying the target database")
+		}
+		if len(seedPasswordValue) < 12 {
+			log.Fatal("DEMO_SEED_PASSWORD must be at least 12 characters for non-local seeding")
+		}
+	}
+	if seedPasswordValue == "" {
+		seedPasswordValue = seedPassword
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -113,7 +134,7 @@ func main() {
 	}
 
 	rng := rand.New(rand.NewSource(20260609))
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(seedPassword), bcrypt.DefaultCost)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(seedPasswordValue), bcrypt.DefaultCost)
 	if err != nil {
 		log.Fatalf("hash seed password: %v", err)
 	}
@@ -128,7 +149,11 @@ func main() {
 	}
 
 	fmt.Printf("UniTrack demo seed complete.\n")
-	fmt.Printf("Login password for all demo users: %s\n", seedPassword)
+	if seedPasswordValue == seedPassword {
+		fmt.Printf("Login password for all demo users: %s\n", seedPassword)
+	} else {
+		fmt.Printf("Login password for all demo users: value from DEMO_SEED_PASSWORD\n")
+	}
 	fmt.Printf("Demo admin: demo.admin@%s\n", seedDomain)
 	fmt.Printf("Created %d admins, %d teachers, %d students, %d folders, %d projects, %d members, %d milestones, %d assignments, %d assignees, %d submissions, %d reviews, %d resources, %d activity logs.\n",
 		sum.Admins,
@@ -145,6 +170,19 @@ func main() {
 		sum.Resources,
 		sum.ActivityLogs,
 	)
+}
+
+func isLocalDatabaseURL(databaseURL string) bool {
+	parsed, err := url.Parse(databaseURL)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "localhost" {
+		return true
+	}
+	parsedIP := net.ParseIP(host)
+	return parsedIP != nil && parsedIP.IsLoopback()
 }
 
 func cleanupSeed(ctx context.Context, tx pgx.Tx) error {
@@ -257,14 +295,14 @@ func seedStudents(ctx context.Context, tx pgx.Tx, passwordHash string, count int
 	return students, nil
 }
 
-func seedClassFolders(ctx context.Context, tx pgx.Tx, rng *rand.Rand, adminID string, teachers []seedUser, now time.Time) ([]string, error) {
+func seedClassFolders(ctx context.Context, tx pgx.Tx, rng *rand.Rand, adminID string, teachers []seedUser, now time.Time) ([]seedFolder, error) {
 	folderTemplates := []string{
 		"AI Research Studio", "Capstone Supervision", "Applied Software Lab", "Data Product Clinic", "Human-Centered Systems", "Cloud Engineering Studio",
 		"Mobile Product Lab", "Cybersecurity Projects", "IoT Prototype Studio", "Digital Transformation Lab", "Research Methods Cohort", "Graduation Project Board",
 	}
 	colors := []string{"blue", "teal", "amber", "rose", "violet", "slate"}
 	folderCount := min(max(len(teachers), 12), len(teachers)+8)
-	folders := make([]string, 0, folderCount)
+	folders := make([]seedFolder, 0, folderCount)
 	for i := 0; i < folderCount; i++ {
 		owner := teachers[i%len(teachers)]
 		status := "active"
@@ -285,12 +323,12 @@ func seedClassFolders(ctx context.Context, tx pgx.Tx, rng *rand.Rand, adminID st
 		if err != nil {
 			return nil, err
 		}
-		folders = append(folders, id)
+		folders = append(folders, seedFolder{ID: id, OwnerTeacherID: owner.ID})
 	}
 	return folders, nil
 }
 
-func seedProjects(ctx context.Context, tx pgx.Tx, rng *rand.Rand, adminID string, teachers []seedUser, students []seedUser, folders []string, count int, now time.Time, summary *summary) ([]seedProject, error) {
+func seedProjects(ctx context.Context, tx pgx.Tx, rng *rand.Rand, adminID string, teachers []seedUser, students []seedUser, folders []seedFolder, count int, now time.Time, summary *summary) ([]seedProject, error) {
 	projectTemplates := []struct {
 		Name  string
 		Topic string
@@ -345,7 +383,8 @@ func seedProjects(ctx context.Context, tx pgx.Tx, rng *rand.Rand, adminID string
 		}
 
 		if len(folders) > 0 && i%5 != 4 {
-			if _, err := tx.Exec(ctx, `INSERT INTO course_section_projects (course_section_id, project_id, added_by, added_at) VALUES ($1, $2, $3, $4)`, folders[i%len(folders)], id, supervisor.ID, start.AddDate(0, 0, 1)); err != nil {
+			folderID := folderForSupervisor(folders, supervisor.ID, i)
+			if _, err := tx.Exec(ctx, `INSERT INTO course_section_projects (course_section_id, project_id, added_by, added_at) VALUES ($1, $2, $3, $4)`, folderID, id, supervisor.ID, start.AddDate(0, 0, 1)); err != nil {
 				return nil, err
 			}
 		}
@@ -373,6 +412,16 @@ func seedProjects(ctx context.Context, tx pgx.Tx, rng *rand.Rand, adminID string
 		summary.Projects++
 	}
 	return projects, nil
+}
+
+func folderForSupervisor(folders []seedFolder, supervisorID string, offset int) string {
+	for index := range folders {
+		folder := folders[(offset+index)%len(folders)]
+		if folder.OwnerTeacherID == supervisorID {
+			return folder.ID
+		}
+	}
+	return folders[offset%len(folders)].ID
 }
 
 func seedProjectDetails(ctx context.Context, tx pgx.Tx, rng *rand.Rand, projects []seedProject, now time.Time, summary *summary) error {

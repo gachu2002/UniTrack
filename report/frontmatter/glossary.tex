@@ -1,23 +1,46 @@
 \chapter*{DANH MỤC THUẬT NGỮ}
 
-\begin{longtable}{|>{\bfseries}p{0.24\textwidth}|p{0.68\textwidth}|}
+\begingroup\small
+\begin{longtable}{|>{\bfseries\raggedright\arraybackslash}p{0.25\textwidth}|>{\raggedright\arraybackslash}p{0.66\textwidth}|}
 \hline
-Thuật ngữ & Ý nghĩa \\
+\rowcolor{black!7}\textbf{Thuật ngữ} & \textbf{Ý nghĩa} \\
 \hline
-Workspace & Khu vực chính để giảng viên và sinh viên quản lý dự án, thư mục lớp, nhiệm vụ và tiến độ. \\
+\endfirsthead
+\hline
+\rowcolor{black!7}\textbf{Thuật ngữ} & \textbf{Ý nghĩa} \\
+\hline
+\endhead
+Workspace & Khu vực làm việc chính của UniTrack, nơi giảng viên và sinh viên quản lý dự án, thư mục lớp, nhiệm vụ và tiến độ. \\
+\hline
+Thư mục lớp & Nhóm dự án nhẹ trong Workspace, dùng để tổ chức các dự án có cùng lớp hoặc nhóm quản lý. \\
 \hline
 Dự án & Đơn vị trung tâm của UniTrack, bao gồm thông tin dự án, thành viên, mốc kế hoạch, nhiệm vụ, tài nguyên và báo cáo tiến độ. \\
 \hline
-Assignment & Nhiệm vụ chính thức được giảng viên giao cho sinh viên trong phạm vi một dự án. \\
+Vòng đời dự án & Tập trạng thái active, on hold, completed và archived quyết định những thao tác được phép trên dự án. \\
 \hline
-Submission & Bài nộp hoặc báo cáo tiến độ của sinh viên cho một nhiệm vụ được giao. \\
+Mốc kế hoạch & Mốc kế hoạch trong dự án, dùng để nhóm các nhiệm vụ chính thức theo từng giai đoạn thực hiện. \\
 \hline
-Review & Quy trình giảng viên xem xét, chấp nhận, trả lại hoặc từ chối bài nộp của sinh viên. \\
+Nhiệm vụ & Nhiệm vụ chính thức được giảng viên giao cho sinh viên trong phạm vi một dự án. \\
 \hline
-Evidence & Tệp minh chứng sinh viên đính kèm vào bài nộp, ví dụ hình ảnh, tài liệu hoặc sản phẩm liên quan. \\
+Người được giao & Sinh viên được phân công thực hiện một nhiệm vụ cụ thể. \\
 \hline
-Role & Vai trò người dùng trong hệ thống, gồm quản trị viên, giảng viên và sinh viên. \\
+Bài nộp & Bài nộp hoặc báo cáo tiến độ của sinh viên cho một nhiệm vụ được giao. \\
 \hline
-Session & Phiên đăng nhập được lưu bằng cookie để xác thực người dùng khi gọi API. \\
+Duyệt bài & Quy trình giảng viên xem xét, chấp nhận, trả lại hoặc từ chối bài nộp của sinh viên. \\
+\hline
+Tài nguyên & Resource link tham khảo gắn với dự án, mốc kế hoạch, nhiệm vụ hoặc bài nộp. \\
+\hline
+Minh chứng & File minh chứng sinh viên đính kèm vào bài nộp, ví dụ hình ảnh, tài liệu hoặc sản phẩm liên quan. \\
+\hline
+Minh chứng chỉ đọc & Trạng thái minh chứng sau khi bài nộp đã được duyệt; người dùng còn quyền đọc/tải xuống nhưng không được sửa/xóa. \\
+\hline
+Vai trò & Vai trò người dùng trong hệ thống, gồm quản trị viên, giảng viên và sinh viên. \\
+\hline
+Session & Session được lưu bằng cookie để xác thực người dùng khi gọi API. \\
+\hline
+Dữ liệu cũ & Dữ liệu trên giao diện đã cũ so với trạng thái thực tế trên server, thường xảy ra khi có nhiều người thao tác đồng thời. \\
+\hline
+Cache refresh & Cơ chế refresh cache giao diện sau khi dữ liệu thay đổi hoặc khi server báo xung đột trạng thái. \\
 \hline
 \end{longtable}
+\endgroup

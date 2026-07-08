@@ -1,0 +1,24 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam sequenceArrowThickness 1
+hide footbox
+
+actor "Admin UI" as Admin
+participant "Go API" as API
+database "PostgreSQL users row" as DB
+actor "Concurrent login" as Login
+
+Admin -> API : Account-control mutation
+API -> DB : BEGIN; SELECT users FOR UPDATE
+API -> API : Last-admin and transition checks
+API -> DB : Update account and revoke sessions
+Login -> API : Login with same email
+API -> DB : Wait for same users row lock
+DB -> API : Commit mutation and release lock
+API -> DB : Login rereads current account state
+API -> Login : Create session or reject
+API -> Admin : Return audited result
+@enduml

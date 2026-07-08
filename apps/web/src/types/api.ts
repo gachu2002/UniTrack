@@ -1,5 +1,12 @@
 export type UserRole = 'admin' | 'teacher' | 'student'
 
+export interface PaginatedResponse<T> {
+  items: T[]
+  page: number
+  limit: number
+  total: number
+}
+
 export interface User {
   id: string
   fullName: string

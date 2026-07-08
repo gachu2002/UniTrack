@@ -58,23 +58,24 @@ test.beforeAll(async ({ request }) => {
   fixture = await createDashboardFixture()
 })
 
-test('role dashboards render actionable queues and admin counts', async ({ page }) => {
+test('role dashboards render actionable queues', async ({ page }) => {
   const data = requireFixture()
 
   await signIn(page, adminEmail, adminPassword)
-  await expect(page.getByRole('heading', { name: 'Global review queue' })).toBeVisible()
-  await expect(page.getByLabel('Dashboard summary')).toContainText(/teacher/i)
-  await expect(page.getByLabel('Dashboard summary')).toContainText(/student/i)
+  await expect(page.getByRole('heading', { name: 'Review work' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Pending reviews' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Overdue assignments' })).toBeVisible()
 
   await signIn(page, data.teacher.email, userPassword)
-  await expect(page.getByRole('heading', { name: 'Review queue' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review work' })).toBeVisible()
   await expect(page.getByText(data.waitingUpdate.title ?? data.waitingTask.title)).toBeVisible()
   await expect(page.getByText(data.overdueTask.title)).toBeVisible()
 
   await signIn(page, data.student.email, userPassword)
   await expect(page.getByRole('heading', { name: 'Do next' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Needs revision' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Overdue' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Open assignments' })).toBeVisible()
+  await expect(page.getByText(/Needs Revision/i).first()).toBeVisible()
+  await expect(page.getByText(/Overdue/i).first()).toBeVisible()
   await expect(page.getByRole('link', { name: data.revisionTask.title, exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: data.overdueTask.title, exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: data.waitingUpdate.title ?? data.waitingTask.title, exact: true })).toBeVisible()

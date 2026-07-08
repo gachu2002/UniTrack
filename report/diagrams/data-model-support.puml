@@ -1,0 +1,85 @@
+@startuml
+!include includes/report-style.iuml
+hide circle
+left to right direction
+skinparam linetype ortho
+skinparam Nodesep 44
+skinparam Ranksep 44
+
+package "Valid targets" as Targets {
+  entity "projects" as Projects {
+    * id : uuid <<PK>>
+    --
+    status
+    supervisor_id
+  }
+
+  entity "project_milestones" as Milestones {
+    * id : uuid <<PK>>
+    --
+    project_id : uuid <<FK>>
+  }
+
+  entity "tasks" as Tasks {
+    * id : uuid <<PK>>
+    --
+    project_id : uuid <<FK>>
+    milestone_id : uuid <<FK>>
+  }
+
+  entity "progress_updates" as Progress {
+    * id : uuid <<PK>>
+    --
+    project_id : uuid <<FK>>
+    task_id : uuid <<FK>>
+    review_status
+  }
+}
+
+package "Support records" as Support {
+  entity "resource_links" as Resources {
+    * id : uuid <<PK>>
+    --
+    project_id : uuid <<FK>>
+    related_entity_type
+    related_entity_id
+    url, type
+  }
+
+  entity "uploaded_files" as Files {
+    * id : uuid <<PK>>
+    --
+    project_id : uuid <<FK>>
+    related_entity_type
+    related_entity_id
+    storage_path
+  }
+}
+
+entity "object_storage" as Storage {
+  * storage_path
+  --
+  Local filesystem
+  Cloudflare R2
+}
+
+Projects ||--o{ Milestones : contains
+Milestones ||--o{ Tasks : scopes
+Tasks ||--o{ Progress : receives
+Projects ||--o{ Resources : project FK
+Projects ||--o{ Files : project FK
+Projects ||..o{ Resources : target project
+Milestones ||..o{ Resources : target milestone
+Tasks ||..o{ Resources : target assignment
+Progress ||..o{ Resources : target submission
+Projects ||..o{ Files : target project
+Tasks ||..o{ Files : target assignment
+Progress ||..o{ Files : target submission
+Resources ||..o{ Files : target resource_link
+Files }o--|| Storage : private object key
+
+note bottom of Support
+  Deferred triggers check target_type/target_id belongs to project_id.
+  Reviewed submission support is immutable; downloads remain available by access.
+end note
+@enduml

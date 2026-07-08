@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"net/mail"
 	"net/url"
 	"os"
@@ -38,23 +39,52 @@ type Config struct {
 	R2ObjectPrefix         string
 }
 
-func Load() Config {
+func Load() (Config, error) {
+	readTimeout, err := getduration("HTTP_READ_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	writeTimeout, err := getduration("HTTP_WRITE_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	idleTimeout, err := getduration("HTTP_IDLE_TIMEOUT", 60*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	shutdownTimeout, err := getduration("HTTP_SHUTDOWN_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	sessionTTL, err := getduration("SESSION_TTL", 7*24*time.Hour)
+	if err != nil {
+		return Config{}, err
+	}
+	sessionSecure, err := getbool("SESSION_SECURE", false)
+	if err != nil {
+		return Config{}, err
+	}
+	sessionSameSite, err := getsamesite("SESSION_SAME_SITE", "lax")
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		AppName:                getenv("APP_NAME", "UniTrack API"),
 		AppEnv:                 getenv("APP_ENV", "development"),
 		AppVersion:             getenv("APP_VERSION", "0.1.0"),
 		HTTPHost:               getenv("HTTP_HOST", "0.0.0.0"),
 		HTTPPort:               getenv("HTTP_PORT", getenv("PORT", "8080")),
-		HTTPReadTimeout:        getduration("HTTP_READ_TIMEOUT", 10*time.Second),
-		HTTPWriteTimeout:       getduration("HTTP_WRITE_TIMEOUT", 10*time.Second),
-		HTTPIdleTimeout:        getduration("HTTP_IDLE_TIMEOUT", 60*time.Second),
-		HTTPShutdownTimeout:    getduration("HTTP_SHUTDOWN_TIMEOUT", 10*time.Second),
+		HTTPReadTimeout:        readTimeout,
+		HTTPWriteTimeout:       writeTimeout,
+		HTTPIdleTimeout:        idleTimeout,
+		HTTPShutdownTimeout:    shutdownTimeout,
 		CORSAllowedOrigins:     getlist("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
 		DatabaseURL:            strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		SessionCookieName:      getenv("SESSION_COOKIE_NAME", "unitrack_session"),
-		SessionTTL:             getduration("SESSION_TTL", 7*24*time.Hour),
-		SessionSecure:          getbool("SESSION_SECURE", false),
-		SessionSameSite:        getsamesite("SESSION_SAME_SITE", "lax"),
+		SessionTTL:             sessionTTL,
+		SessionSecure:          sessionSecure,
+		SessionSameSite:        sessionSameSite,
 		BootstrapAdminEmail:    strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_BOOTSTRAP_ADMIN_EMAIL"))),
 		BootstrapAdminPassword: os.Getenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD"),
 		UploadStorageBackend:   strings.ToLower(getenv("UPLOAD_STORAGE_BACKEND", "local")),
@@ -65,7 +95,7 @@ func Load() Config {
 		R2SecretAccessKey:      strings.TrimSpace(os.Getenv("R2_SECRET_ACCESS_KEY")),
 		R2Region:               getenv("R2_REGION", "auto"),
 		R2ObjectPrefix:         strings.Trim(strings.TrimSpace(os.Getenv("R2_OBJECT_PREFIX")), "/"),
-	}
+	}, nil
 }
 
 func (cfg Config) Validate() error {
@@ -155,37 +185,40 @@ func getenv(key string, fallback string) string {
 	return value
 }
 
-func getduration(key string, fallback time.Duration) time.Duration {
+func getduration(key string, fallback time.Duration) (time.Duration, error) {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
-		return fallback
+		return fallback, nil
 	}
 	parsed, err := time.ParseDuration(value)
 	if err != nil {
-		return fallback
+		return 0, fmt.Errorf("%s must be a valid duration: %w", key, err)
 	}
-	return parsed
+	if parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive duration", key)
+	}
+	return parsed, nil
 }
 
-func getbool(key string, fallback bool) bool {
+func getbool(key string, fallback bool) (bool, error) {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
-		return fallback
+		return fallback, nil
 	}
 	parsed, err := strconv.ParseBool(value)
 	if err != nil {
-		return fallback
+		return false, fmt.Errorf("%s must be a valid boolean: %w", key, err)
 	}
-	return parsed
+	return parsed, nil
 }
 
-func getsamesite(key string, fallback string) string {
+func getsamesite(key string, fallback string) (string, error) {
 	value := strings.ToLower(strings.TrimSpace(getenv(key, fallback)))
 	switch value {
 	case "strict", "lax", "none":
-		return value
+		return value, nil
 	default:
-		return fallback
+		return "", fmt.Errorf("%s must be strict, lax, or none", key)
 	}
 }
 

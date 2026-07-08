@@ -1,0 +1,67 @@
+@startuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam activity {
+  BorderColor #111111
+  FontColor #111111
+  FontSize 17
+  DiamondFontSize 15
+  StartColor #111111
+  EndColor #111111
+  BarColor #111111
+  BackgroundColor #F8FBFC
+}
+skinparam partition {
+  BorderColor #AAB7C2
+  BackgroundColor #F8FBFC
+  FontStyle bold
+}
+skinparam ArrowColor #111111
+skinparam ArrowFontSize 14
+
+title Quy trình nghiệp vụ đổi trạng thái dự án
+
+start
+
+partition "Giảng viên / quản trị viên" {
+  :Chọn trạng thái mới
+  cho dự án đang quản lý;
+}
+
+partition "Giao diện" {
+  if (Chuyển trạng thái
+  có hợp lệ?) then (Có)
+    :Gửi yêu cầu cập nhật
+    trạng thái dự án;
+  else (Không)
+    :Thông báo lý do
+    không cho chuyển;
+    stop
+  endif
+}
+
+partition "Backend" {
+  :Khóa dòng dự án
+  và đọc lại dữ liệu mới nhất;
+  if (Còn quyền quản lý
+  và vòng đời cho phép?) then (Có)
+    :Lưu trạng thái mới;
+  else (Không)
+    :Từ chối yêu cầu
+    bằng 403 hoặc 409;
+  endif
+}
+
+partition "Giao diện" {
+  if (Cập nhật thành công?) then (Có)
+    :Refresh project,
+    workspace và dashboard;
+  else (Không)
+    :Refresh dữ liệu liên quan
+    để ẩn thao tác đã cũ;
+  endif
+}
+
+stop
+@enduml

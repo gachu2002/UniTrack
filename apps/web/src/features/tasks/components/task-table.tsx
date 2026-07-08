@@ -31,7 +31,7 @@ export function TaskTable({ tasks, emptyTitle, emptyMessage, showProject = false
           <TableRow>
             <TableHead>Assignment</TableHead>
             {showProject ? <TableHead className="hidden md:table-cell">Project</TableHead> : null}
-            <TableHead className="hidden xl:table-cell">Milestone</TableHead>
+            <TableHead className="hidden xl:table-cell">Checkpoint</TableHead>
             <TableHead>Due</TableHead>
             {showAssignees ? <TableHead className="hidden lg:table-cell">Assignees</TableHead> : null}
             <TableHead>State</TableHead>
@@ -57,7 +57,7 @@ export function TaskTable({ tasks, emptyTitle, emptyMessage, showProject = false
                   <Link className="underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${task.projectId}`}>{task.projectName}</Link>
                 </TableCell>
               ) : null}
-              <TableCell className="hidden max-w-48 truncate text-muted-foreground xl:table-cell">{task.milestoneTitle || 'Missing milestone'}</TableCell>
+              <TableCell className="hidden max-w-48 truncate text-muted-foreground xl:table-cell">{task.milestoneTitle || 'Missing checkpoint'}</TableCell>
               <TableCell className={assignmentState.key === 'overdue' ? 'text-destructive' : 'text-muted-foreground'}>
                 <span className="inline-flex items-center gap-1.5">
                   <CalendarClock className="size-4" />

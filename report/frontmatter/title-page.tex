@@ -1,3 +1,4 @@
+\newcommand{\unitrackcoverpage}[1]{%
 \begin{titlepage}
   \centering
   {\bfseries\Large \UniversityName\par}
@@ -6,23 +7,23 @@
 
   {\bfseries\Huge \ReportType\par}
 
-  \vspace{1.5cm}
+  \vspace{1.2cm}
 
   {\bfseries\Large \ReportTitle\par}
 
-  \vspace{1.5cm}
+  \vspace{1.2cm}
 
-  {\bfseries\large \StudentName\par}
+  {\bfseries\large \StudentNameCover\par}
   {\large \StudentEmail\par}
 
-  \vspace{1cm}
-  {\bfseries\large \MajorName\par}
+  \vspace{0.8cm}
+  {\bfseries\large Chương trình đào tạo: \TrainingProgram\par}
 
-  \vspace{2.6cm}
+  \vspace{2.4cm}
 
   \begin{tabularx}{\textwidth}{>{\bfseries}l X r}
-    Giảng viên hướng dẫn: & \SupervisorName & \rule{3.2cm}{0.4pt} \\
-    & & Chữ kí GVHD \\
+    Giảng viên hướng dẫn: & \SupervisorName & #1 \\
+    & & \if\relax\detokenize{#1}\relax\else Chữ kí GVHD\fi \\
     [1em]
     Khoa: & \FacultyName & \\
     [1em]
@@ -31,4 +32,8 @@
 
   \vfill
   {\bfseries\large \ReportLocationDate\par}
-\end{titlepage}
+\end{titlepage}%
+}
+
+\unitrackcoverpage{}
+\unitrackcoverpage{\rule{3.2cm}{0.4pt}}

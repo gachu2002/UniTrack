@@ -1,39 +1,116 @@
-\chapter{CÔNG NGHỆ SỬ DỤNG}
+\chapter{NỀN TẢNG LÝ THUYẾT VÀ CÔNG NGHỆ SỬ DỤNG}
 
-\section{Frontend với React và TypeScript}
+Các lựa chọn công nghệ của UniTrack xuất phát từ yêu cầu đã phân tích ở Chương 2: giao diện có nhiều trạng thái theo vai trò, API rõ ràng, dữ liệu quan hệ chặt chẽ, kiểm thử tự động và khả năng triển khai với chi phí thấp. Theo quan điểm kỹ nghệ phần mềm, quyết định kỹ thuật cần có khả năng truy ngược về bài toán và rủi ro cần kiểm soát \cite{sommerville2016software}. Vì vậy, chương này không chỉ liệt kê công nghệ được dùng mà còn nêu yêu cầu cần giải quyết, các lựa chọn thay thế và lý do chọn giải pháp hiện tại.
 
-Frontend của UniTrack được xây dựng bằng React và TypeScript. React hỗ trợ phát triển giao diện theo component, phù hợp với các màn hình có nhiều trạng thái như dashboard, workspace, chi tiết dự án và chi tiết nhiệm vụ. TypeScript giúp kiểm tra kiểu dữ liệu trong quá trình phát triển, giảm lỗi khi tích hợp với API backend \cite{react,typescript}.
+\tableintro{tab:technology-alternatives}{đối chiếu yêu cầu của UniTrack với các lựa chọn công nghệ thay thế và lý do chọn stack hiện tại}
+\begin{longtblr}[
+  caption={Đối chiếu yêu cầu, lựa chọn thay thế và công nghệ được chọn},
+  label={tab:technology-alternatives},
+]{
+  width=\textwidth,
+  colspec={X[0.95,l]X[1.15,l]X[1.25,l]X[1.45,l]},
+  rowhead=1,
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Yêu cầu từ Chương 2 & Lựa chọn thay thế & Công nghệ chọn & Lý do chọn \\
+Giao diện theo vai trò, nhiều trạng thái và nhiều hộp thoại & Vue, Angular, render phía server & React, TypeScript, Vite & React phù hợp SPA nhiều trạng thái; TypeScript giúp kiểm soát DTO; Vite tạo môi trường phát triển nhanh \\
+Thiết kế UI nhất quán và có khả năng truy cập & CSS thuần, Bootstrap, Material UI & Tailwind CSS, shadcn/Radix & Tailwind dễ bám visual system riêng; Radix hỗ trợ focus, dialog, popover và select tốt \\
+Cache dữ liệu server và xử lý stale state & Tự viết fetch/cache, Redux Toolkit Query & TanStack Query, Zustand & TanStack Query phù hợp invalidation theo route/dữ liệu; Zustand chỉ dùng cho session state nhỏ \\
+API REST, transaction và triển khai gọn & Node.js/Express, Java Spring Boot, Python/FastAPI & Go, chi, pgx & Go build gọn; chi đơn giản; pgx cho phép kiểm soát SQL, transaction và khóa dòng rõ ràng \\
+Dữ liệu quan hệ và ràng buộc nghiệp vụ mạnh & MySQL, MongoDB, SQLite & PostgreSQL, goose & PostgreSQL hỗ trợ FK, partial unique index, trigger và transaction phù hợp dữ liệu cùng dự án \\
+Minh chứng riêng tư và triển khai cloud chi phí thấp & Lưu file public, S3, disk local production & Local filesystem dev, Cloudflare R2 production & R2 private bucket phù hợp object storage chi phí thấp; download đi qua API để kiểm tra quyền \\
+Kiểm thử luồng nghiệp vụ và giao diện & Cypress, Selenium, test thủ công & Go test, Playwright & Go test kiểm tra backend trực tiếp; Playwright kiểm tra browser flow và accessibility ở mức người dùng \\
+\end{longtblr}
 
-\section{Backend với Go}
+\section{Giao diện Web}
 
-Backend sử dụng Go để xây dựng API REST. Go có ưu điểm là biên dịch nhanh, runtime gọn, thư viện chuẩn mạnh và phù hợp cho các dịch vụ Web cần xử lý đồng thời. Hệ thống sử dụng router HTTP, các handler theo từng lát tính năng và truy vấn SQL trực tiếp để kiểm soát rõ ràng luồng dữ liệu \cite{go}.
+Phần giao diện được xây dựng bằng React, TypeScript và Vite. React phù hợp với các màn hình như dashboard, Workspace, hồ sơ dự án và trang nhiệm vụ, nơi dữ liệu thay đổi theo vai trò người dùng, trạng thái dự án và kết quả trả về từ API. TypeScript giúp thống nhất kiểu dữ liệu giữa giao diện và backend, giảm lỗi khi thay đổi các đối tượng như dự án, nhiệm vụ, bài nộp, tài nguyên hoặc minh chứng. Vite được dùng để chạy môi trường phát triển và tạo bản build nhanh cho ứng dụng SPA \cite{react,typescript,vite}.
 
-\section{Cơ sở dữ liệu PostgreSQL}
+Giao diện UniTrack dùng Tailwind CSS cùng các primitive của shadcn/Radix. Tailwind giúp triển khai nhất quán phong cách sổ theo dõi học thuật: nền xanh đậm, khối nội dung sáng, tiêu đề lệnh gọn, dấu trạng thái rõ và các danh sách phân tách bằng đường kẻ mảnh. Radix hỗ trợ các thành phần cần khả năng truy cập tốt như hộp thoại, popover, select và kiểm soát focus \cite{tailwind,radix}.
 
-PostgreSQL được dùng làm hệ quản trị cơ sở dữ liệu quan hệ. Đây là lựa chọn phù hợp cho các nghiệp vụ cần ràng buộc toàn vẹn, giao dịch và truy vấn dữ liệu có quan hệ phức tạp như dự án, thành viên, nhiệm vụ, bài nộp và đánh giá \cite{postgresql}.
+So với các UI framework đóng gói sẵn như Bootstrap hoặc Material UI, cách kết hợp Tailwind với shadcn/Radix giúp UniTrack giữ được ngôn ngữ thiết kế riêng nhưng vẫn có nền tảng accessibility cho các thành phần tương tác phức tạp. Đây là yêu cầu quan trọng vì hệ thống có nhiều hộp thoại tạo/sửa, popover nhóm và vùng duyệt bài cần focus rõ ràng.
 
-\section{RESTful API và phiên đăng nhập}
+\section{Quản lý trạng thái phía trình duyệt}
 
-Frontend giao tiếp với backend thông qua API REST. Các endpoint sử dụng JSON làm định dạng trao đổi dữ liệu. Phiên đăng nhập được lưu bằng cookie, backend kiểm tra phiên hiện tại trước khi cho phép truy cập các tài nguyên được bảo vệ.
+UniTrack dùng TanStack Query để quản lý dữ liệu lấy từ server. Một thao tác như tạo nhiệm vụ, thêm sinh viên, nộp bài hoặc duyệt bài có thể ảnh hưởng đồng thời tới dashboard, Workspace, hồ sơ dự án và trang nhiệm vụ. Vì vậy, hệ thống đặt query key và hàm làm mới dữ liệu tập trung trong lớp tiện ích của giao diện. Zustand được dùng cho phần state nhỏ của session, đặc biệt là current user \cite{tanstackquery,zustand}.
 
-\section{Thư viện và công cụ hỗ trợ}
+Giao diện phải xử lý stale state. Nếu người dùng đang mở form tạo nhiệm vụ trong lúc dự án bị chuyển sang \code{completed} ở session khác, backend sẽ từ chối request và giao diện cần tải lại dữ liệu để ẩn thao tác không còn hợp lệ.
 
+Nếu tự viết cache hoặc lưu toàn bộ dữ liệu vào một global store, mỗi mutation sẽ phải tự quyết định vùng dữ liệu nào cần làm mới. TanStack Query phù hợp hơn vì query key, stale time, invalidation và refetch có thể chuẩn hóa theo từng nhóm chức năng, trong khi Zustand chỉ giữ phần session nhỏ để tránh biến giao diện thành một kho trạng thái cục bộ lớn.
+
+\section{Backend và API}
+
+Backend được viết bằng Go, sử dụng chi để đăng ký route và pgx để làm việc với PostgreSQL. Go phù hợp với kiểu triển khai một API server nhỏ gọn, dễ build và dễ đưa lên các nền tảng như Render. chi giữ phần định tuyến đơn giản, trong khi pgx cho phép viết SQL trực tiếp và kiểm soát rõ transaction, khóa dòng và các truy vấn tổng hợp \cite{go,chi,pgx}.
+
+API dùng mô hình REST dưới tiền tố \route{/api/v1}, lấy tài nguyên và thao tác HTTP làm ranh giới giao tiếp giữa giao diện và backend \cite{fielding2000rest}. Các request JSON đi qua strict JSON decoder: giới hạn kích thước, từ chối trường lạ và không nhận body có nhiều giá trị JSON nối tiếp. Với các route có route ID, backend kiểm tra UUID trước khi truy vấn để trả lỗi rõ ràng, tránh để lỗi ép kiểu từ cơ sở dữ liệu rơi ra ngoài. Các helper nghiệp vụ có thể trả lỗi trạng thái có kiểu rõ ràng để phân biệt lỗi dữ liệu người dùng với lỗi hạ tầng.
+
+Các framework backend lớn hơn như Spring Boot hoặc NestJS có nhiều thành phần tích hợp sẵn, nhưng cũng làm tăng độ phức tạp đối với một đồ án cần kiểm soát rõ transaction và SQL. Go với chi và pgx giữ đường đi request ngắn hơn: route, middleware, handler, helper phân quyền, transaction và câu SQL đều nằm trong phạm vi dễ đọc.
+
+\section{Cơ sở dữ liệu}
+
+PostgreSQL là lớp bảo vệ quan trọng của hệ thống. Ngoài việc lưu dữ liệu, UniTrack cần giữ đúng quan hệ giữa dự án, thành viên, mốc kế hoạch, nhiệm vụ, bài nộp, duyệt bài, tài nguyên và minh chứng. Các khái niệm khóa ngoại, ràng buộc toàn vẹn, transaction và phục hồi khi lỗi là nền tảng của hệ quản trị cơ sở dữ liệu quan hệ \cite{silberschatz2020database}. PostgreSQL hỗ trợ khóa ngoại, chỉ mục duy nhất, transaction và trigger, phù hợp với các ràng buộc mà backend cũng kiểm tra ở tầng ứng dụng \cite{postgresql}.
+
+Với những thao tác có thể xảy ra đồng thời, transaction và khóa dòng giúp hệ thống đọc lại trạng thái mới nhất trước khi ghi. Cách tiếp cận này dựa trên nguyên tắc kiểm soát đồng thời trong hệ cơ sở dữ liệu: thao tác hợp lệ phải giữ được tính nhất quán ngay cả khi nhiều request cùng tác động lên một đối tượng \cite{bernstein1987concurrency}.
+
+Migration được quản lý bằng goose. Ngoài schema nền tảng, các migration còn bổ sung nhiều ràng buộc an toàn như session revocation, thư mục Workspace, nhiệm vụ bắt buộc thuộc mốc kế hoạch, bài nộp cùng dự án, ràng buộc đích minh chứng, khóa minh chứng sau duyệt và kiểm tra người nộp bài \cite{goose}.
+
+\tableintro{tab:postgres-integrity-role}{phân tích vai trò của PostgreSQL trong việc bảo vệ các ràng buộc dữ liệu nghiệp vụ của UniTrack}
 \begin{table}[H]
+\caption{Vai trò của PostgreSQL trong việc giữ toàn vẹn dữ liệu}
+\label{tab:postgres-integrity-role}
 \centering
-\begin{tabularx}{\textwidth}{|p{0.28\textwidth}|X|}
-\hline
-Nhóm công cụ & Công nghệ \\
-\hline
-Frontend & React, TypeScript, Vite, Tailwind CSS, shadcn/Radix, TanStack Query, Zustand \\
-\hline
-Backend & Go, chi, pgx, REST API \\
-\hline
-Database & PostgreSQL, goose migrations \\
-\hline
-Kiểm thử & Go test, Playwright \\
-\hline
-Triển khai tham khảo & Vercel, Render, Neon, Cloudflare R2 \\
-\hline
-\end{tabularx}
-\caption{Danh sách công nghệ chính của UniTrack}
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[1.1,l]X[1.25,l]X[1.45,l]},
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Yêu cầu dữ liệu & Cơ chế dùng trong PostgreSQL & Ý nghĩa trong UniTrack \\
+Nhiệm vụ và thành viên cùng dự án & Khóa ngoại tổng hợp & Không phân công nhầm sinh viên từ dự án khác \\
+Một nhiệm vụ chỉ có một bài chờ duyệt & Chỉ mục duy nhất có điều kiện & Người duyệt luôn biết bài nào đang cần xử lý \\
+Tài nguyên/minh chứng đúng đối tượng & Trigger kiểm tra ở cuối transaction & Không gắn minh chứng của dự án này sang dự án khác \\
+Minh chứng đã duyệt không bị sửa & API guard và trigger & Bảo toàn căn cứ đánh giá sau khi đã có quyết định \\
+Thư mục đúng giảng viên phụ trách & Trigger ràng buộc chủ thư mục và dự án & Tránh đặt dự án vào sai phạm vi quản lý \\
+\end{tblr}
 \end{table}
+
+\section{Session và file storage}
+
+UniTrack dùng cookie-based session. Khi đăng nhập thành công, backend sinh token ngẫu nhiên, lưu token hash trong bảng \code{sessions} và gửi cookie HttpOnly về browser. Cách làm này tránh lưu access token trong local storage. Các cấu hình \code{Secure}, \code{SameSite} và CORS được parse nghiêm ngặt và kiểm tra lúc khởi động; giá trị bool/duration/\code{SameSite} sai định dạng hoặc cấu hình production nguy hiểm làm API thoát lỗi thay vì chạy với trạng thái không an toàn.
+
+Minh chứng trong môi trường phát triển được lưu trên local filesystem với quyền file riêng tư. Khi triển khai, backend được thiết kế để dùng Cloudflare R2 private bucket. File không public trực tiếp; người dùng tải qua API để backend kiểm tra quyền xem dự án trước khi truyền nội dung. Luồng upload kiểm tra metadata trước khi ghi object, còn luồng xóa gỡ object trước metadata để lỗi storage còn có thể thử lại \cite{cloudflarer2}.
+
+\section{Kiểm thử và triển khai}
+
+Backend dùng Go test để kiểm tra các ràng buộc nghiệp vụ quan trọng như session, phân quyền, vòng đời dự án, bài nộp, duyệt bài, minh chứng và trigger cơ sở dữ liệu. Frontend dùng Playwright cho các browser flow có rủi ro cao như đăng nhập, phân quyền, khả năng truy cập, dashboard và stale UI state \cite{playwright}.
+
+Stack triển khai tham khảo gồm Vercel cho frontend, Render cho Go API, Neon cho PostgreSQL và Cloudflare R2 cho lưu trữ minh chứng. Cách chọn này phù hợp với mục tiêu đồ án: dễ vận hành ban đầu, có HTTPS sẵn, có cơ sở dữ liệu quản lý và không cần tự dựng CDN hoặc load balancer riêng \cite{vercel,render,neon,cloudflarer2}.
+
+\tableintro{tab:technology-stack-role}{tóm tắt các công nghệ chính và vai trò của từng công nghệ trong kiến trúc UniTrack}
+\begin{table}[H]
+\caption{Danh sách công nghệ và vai trò trong UniTrack}
+\label{tab:technology-stack-role}
+\centering
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[0.75,l]X[1.15,l]X[2.05,l]},
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Lớp & Công nghệ & Vai trò trong UniTrack \\
+Giao diện & React, TypeScript, Vite & Ứng dụng SPA, route bảo vệ, màn hình theo vai trò \\
+Thiết kế UI & Tailwind CSS, shadcn/Radix & Giao diện học thuật, hộp thoại, form và điều khiển có hỗ trợ truy cập \\
+State & TanStack Query, Zustand & Cache dữ liệu server, làm mới dữ liệu sau thao tác ghi và lưu current user \\
+Backend & Go, chi, pgx & API REST, middleware, phân quyền, truy vấn SQL và transaction \\
+Dữ liệu & PostgreSQL, goose & Schema, migration, khóa ngoại, chỉ mục và trigger \\
+Lưu trữ & Local filesystem, Cloudflare R2 & File minh chứng và tải xuống qua API riêng tư \\
+Kiểm thử & Go test, Playwright & Kiểm tra nghiệp vụ backend và browser flow quan trọng \\
+Triển khai & Vercel, Render, Neon, R2 & Hạ tầng production đầu tiên với chi phí thấp \\
+\end{tblr}
+\end{table}
+
+Các công nghệ trên được chọn theo yêu cầu cụ thể của bài toán thay vì chỉ liệt kê theo stack. Những lựa chọn về React, Go, PostgreSQL, storage riêng tư và kiểm thử tự động là nền tảng để Chương 4 trình bày thiết kế, triển khai, công cụ phát triển và đánh giá hệ thống ở mức chi tiết hơn.

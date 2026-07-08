@@ -1,4 +1,4 @@
-.PHONY: install web-dev web-build web-lint web-test-e2e web-test-e2e-headed web-test-e2e-report api-run api-run-local api-build api-test db-create db-status db-up db-down db-reset db-validate db-local-up db-local-down db-local-reset db-status-local db-up-local diagram report report-watch report-clean report-deps-check
+.PHONY: install web-dev web-build web-lint web-test-e2e web-test-e2e-headed web-test-e2e-report api-run api-run-local api-build api-test db-create db-status db-up db-down db-reset db-validate db-local-up db-local-down db-local-reset db-status-local db-up-local diagram report-diagrams report report-watch report-clean report-deps-check report-visual-check
 
 API_DIR := apps/api
 GOOSE_VERSION := v3.27.0
@@ -11,6 +11,9 @@ AUTH_LOCAL_ADMIN_PASSWORD ?= admin12345
 REPORT_DIR := report
 REPORT_MAIN := report/main.tex
 REPORT_BUILD_DIR := build
+PLANTUML ?= plantuml
+REPORT_DIAGRAM_SRC_DIR := $(REPORT_DIR)/diagrams
+REPORT_DIAGRAM_OUT_DIR := $(REPORT_DIR)/assets/diagrams
 
 install:
 	pnpm install
@@ -98,6 +101,16 @@ diagram:
 	@mkdir -p docs/diagrams
 	@test -f "docs/diagrams/$(name).mmd" || printf "flowchart TD\n    A[%s]\n" "$(name)" > "docs/diagrams/$(name).mmd"
 
+report-diagrams:
+	@command -v "$(PLANTUML)" >/dev/null || (printf "plantuml is required to render report diagrams. Install PlantUML and Graphviz; see report/README.md.\n" && exit 1)
+	@mkdir -p "$(REPORT_DIAGRAM_OUT_DIR)"
+	@for file in "$(REPORT_DIAGRAM_SRC_DIR)"/*.puml; do \
+		test -e "$$file" || continue; \
+		name=$$(basename "$$file" .puml); \
+		printf "Rendering %s\n" "$$name"; \
+		"$(PLANTUML)" -tpng -o "../assets/diagrams" "$$file"; \
+	done
+
 report-deps-check:
 	@command -v latexmk >/dev/null || (printf "latexmk is required. Install TeX Live; see report/README.md.\n" && exit 1)
 	@command -v xelatex >/dev/null || (printf "xelatex is required. Install TeX Live; see report/README.md.\n" && exit 1)
@@ -105,6 +118,9 @@ report-deps-check:
 report: report-deps-check
 	@mkdir -p "$(REPORT_DIR)/$(REPORT_BUILD_DIR)"
 	latexmk -cd -xelatex -interaction=nonstopmode -file-line-error -outdir="$(REPORT_BUILD_DIR)" "$(REPORT_MAIN)"
+
+report-visual-check: report
+	sh "$(REPORT_DIR)/scripts/visual-check.sh"
 
 report-watch: report-deps-check
 	@mkdir -p "$(REPORT_DIR)/$(REPORT_BUILD_DIR)"

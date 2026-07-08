@@ -1,21 +1,30 @@
-\documentclass[12pt,a4paper]{report}
+\documentclass[a4paper,oneside]{report}
 
-\usepackage[a4paper,top=2.5cm,bottom=2.5cm,left=3cm,right=2cm]{geometry}
+\usepackage{scrextend}
+\changefontsizes{13pt}
+\usepackage[a4paper,top=2cm,bottom=2cm,left=3.5cm,right=2.5cm]{geometry}
 \usepackage{fontspec}
 \setmainfont{TeX Gyre Termes}
 \usepackage{graphicx}
 \usepackage{float}
+\usepackage{placeins}
+\usepackage[table]{xcolor}
+\usepackage{amsmath}
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{tabularx}
 \usepackage{longtable}
+\usepackage{tabularray}
 \usepackage{caption}
 \usepackage{enumitem}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
 \usepackage{url}
+\usepackage{pdflscape}
 \usepackage[hidelinks]{hyperref}
 \usepackage{bookmark}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.multipart,fit,calc,matrix}
 
 \graphicspath{{assets/}{assets/screenshots/}{assets/diagrams/}}
 
@@ -28,11 +37,12 @@
 \renewcommand{\chaptername}{CHƯƠNG}
 \renewcommand{\figurename}{Hình}
 \renewcommand{\tablename}{Bảng}
+\setcounter{secnumdepth}{3}
 
-\titleformat{\chapter}[display]
+\titleformat{\chapter}[block]
   {\bfseries\centering\Large}
   {CHƯƠNG \thechapter.}
-  {0.5em}
+  {0.65em}
   {}
 \titlespacing*{\chapter}{0pt}{0pt}{2em}
 
@@ -48,10 +58,18 @@
   {1em}
   {}
 
+\titleformat{\subsubsection}
+  {\bfseries\normalsize}
+  {\thesubsubsection}
+  {1em}
+  {}
+
 \setlength{\parindent}{1cm}
 \setlength{\parskip}{0.25em}
 \setlength{\headheight}{17pt}
+\setlength{\emergencystretch}{2em}
 \linespread{1.25}
+\raggedbottom
 \setlist[itemize]{leftmargin=1.2cm}
 \setlist[enumerate]{leftmargin=1.2cm}
 
@@ -62,14 +80,8 @@
 \renewcommand{\headrulewidth}{0.4pt}
 
 \captionsetup{font=small,labelfont=bf,labelsep=space}
-
-\newcommand{\placeholderfigure}[2]{%
-  \begin{figure}[H]
-    \centering
-    \fbox{\parbox[c][5cm][c]{0.82\textwidth}{\centering #1}}
-    \caption{#2}
-  \end{figure}
-}
+\input{report-macros.tex}
+\input{report-diagrams.tex}
 
 \begin{document}
 
@@ -103,6 +115,8 @@
 \input{chapters/06-ket-luan-huong-phat-trien.tex}
 
 \clearpage
+\phantomsection
+\addcontentsline{toc}{chapter}{TÀI LIỆU THAM KHẢO}
 \bibliographystyle{ieeetr}
 \bibliography{references}
 

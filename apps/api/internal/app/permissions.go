@@ -2,9 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
+	"net/http"
 
 	"github.com/jackc/pgx/v5"
 )
+
+var errProjectManagerAccessRequired = errors.New("project manager access required")
 
 func (s *Server) canViewProject(ctx context.Context, user User, projectID string) (bool, error) {
 	if user.Role == RoleAdmin {
@@ -107,6 +111,25 @@ func canManageProjectTx(ctx context.Context, tx pgx.Tx, user User, projectID str
 		return true, nil
 	}
 	return role == RoleTeacher && supervisorID == user.ID, nil
+}
+
+func requireProjectManagerTx(ctx context.Context, tx pgx.Tx, user User, projectID string) error {
+	allowed, err := canManageProjectTx(ctx, tx, user, projectID)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return errProjectManagerAccessRequired
+	}
+	return nil
+}
+
+func writeProjectManagerAccessError(w http.ResponseWriter, err error, forbiddenMessage string) {
+	if errors.Is(err, errProjectManagerAccessRequired) {
+		writeError(w, http.StatusForbidden, forbiddenMessage)
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "could not verify project manager access")
 }
 
 func (s *Server) projectExists(ctx context.Context, projectID string) (bool, error) {

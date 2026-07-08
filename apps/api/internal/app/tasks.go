@@ -90,8 +90,12 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		writeProjectLifecycleError(w, err)
 		return
 	}
+	if errors.Is(err, errProjectManagerAccessRequired) {
+		writeError(w, http.StatusForbidden, "only the supervising teacher or an admin can create official tasks")
+		return
+	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeStatusError(w, err, http.StatusInternalServerError, "could not create task")
 		return
 	}
 	task, err := s.getTaskDetail(r.Context(), projectID, taskID)
@@ -163,6 +167,10 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
 	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "changing assignments", projectAcceptsPlanChanges) {
+		return
+	}
+	if err := requireProjectManagerTx(r.Context(), tx, user, projectID); err != nil {
+		writeProjectManagerAccessError(w, err, "only the supervising teacher or an admin can update official tasks")
 		return
 	}
 
@@ -281,7 +289,7 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.insertTaskAssignees(r.Context(), tx, projectID, taskID, input.AssigneeIDs); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeStatusError(w, err, http.StatusInternalServerError, "could not update assignees")
 			return
 		}
 	}
@@ -577,7 +585,7 @@ func (s *Server) handleReviewProgressUpdate(w http.ResponseWriter, r *http.Reque
 func (s *Server) createTask(ctx context.Context, user User, projectID string, input createTaskRequest) (string, error) {
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
-		return "", errors.New("task title is required")
+		return "", badRequestError("task title is required")
 	}
 	status := strings.TrimSpace(input.Status)
 	if status == "" {
@@ -588,22 +596,22 @@ func (s *Server) createTask(ctx context.Context, user User, projectID string, in
 		priority = "medium"
 	}
 	if !validTaskStatus(status) {
-		return "", errors.New("invalid task status")
+		return "", badRequestError("invalid task status")
 	}
 	if status == "done" {
-		return "", errors.New("new assignments cannot start completed")
+		return "", badRequestError("new assignments cannot start completed")
 	}
 	if !validPriority(priority) {
-		return "", errors.New("invalid task priority")
+		return "", badRequestError("invalid task priority")
 	}
 	deadline, err := parseOptionalDate(input.Deadline)
 	if err != nil {
-		return "", errors.New("deadline must be a date in YYYY-MM-DD format")
+		return "", badRequestError("deadline must be a date in YYYY-MM-DD format")
 	}
 
 	milestoneID := strings.TrimSpace(input.MilestoneID)
 	if milestoneID == "" {
-		return "", errors.New("assignment milestone is required")
+		return "", badRequestError("assignment milestone is required")
 	}
 
 	tx, err := s.db.Begin(ctx)
@@ -614,8 +622,11 @@ func (s *Server) createTask(ctx context.Context, user User, projectID string, in
 	if err := s.lockProjectLifecycleTx(ctx, tx, projectID, "creating assignments", projectAcceptsNewAssignments); err != nil {
 		return "", err
 	}
+	if err := requireProjectManagerTx(ctx, tx, user, projectID); err != nil {
+		return "", err
+	}
 	if err := ensureMilestoneInProjectTx(ctx, tx, projectID, milestoneID); err != nil {
-		return "", errors.New("invalid milestone id")
+		return "", badRequestError("invalid milestone id")
 	}
 
 	var taskID string
@@ -822,26 +833,28 @@ func (s *Server) insertTaskAssignees(ctx context.Context, tx pgx.Tx, projectID s
 		if studentID == "" {
 			continue
 		}
+		if !validUUIDParam(studentID) {
+			return badRequestError("assignees must be active project members")
+		}
 		if _, ok := seen[studentID]; ok {
 			continue
 		}
 		seen[studentID] = struct{}{}
-		var exists bool
+		var activeStudentID string
 		if err := tx.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1
-				FROM project_members pm
-				JOIN users u ON u.id = pm.student_id
-				WHERE pm.project_id = $1
-				  AND pm.student_id = $2
-				  AND u.role = 'student'
-				  AND u.status = 'active'
-			)
-		`, projectID, studentID).Scan(&exists); err != nil {
-			return err
-		}
-		if !exists {
-			return errors.New("assignees must be active project members")
+			SELECT pm.student_id::text
+			FROM project_members pm
+			JOIN users u ON u.id = pm.student_id
+			WHERE pm.project_id = $1
+			  AND pm.student_id = $2
+			  AND u.role = 'student'
+			  AND u.status = 'active'
+			FOR UPDATE OF pm, u
+		`, projectID, studentID).Scan(&activeStudentID); err != nil {
+			if !isNoRows(err) {
+				return err
+			}
+			return badRequestError("assignees must be active project members")
 		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO task_assignees (project_id, task_id, student_id)

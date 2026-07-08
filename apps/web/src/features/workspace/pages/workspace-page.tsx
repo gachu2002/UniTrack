@@ -2,15 +2,17 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Archive, Pencil, Plus, RotateCcw, Search } from 'lucide-react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { useId, useRef, useState } from 'react'
+import { useDeferredValue, useId, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+import { PageHeader } from '@/components/layout/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ErrorState } from '@/components/shared/error-state'
 import { LoadingState } from '@/components/shared/loading-state'
+import { PaginationControls } from '@/components/shared/pagination-controls'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -19,8 +21,8 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { getAdminUsers } from '@/features/admin/api'
-import { createClass, getClasses, updateClass } from '@/features/classes/api'
-import { getProjects } from '@/features/projects/api'
+import { createClass, getClassesPage, updateClass } from '@/features/classes/api'
+import { getProjectsPage } from '@/features/projects/api'
 import { projectNeedsAttention } from '@/features/projects/attention'
 import { CreateProjectDialog } from '@/features/projects/components/create-project-dialog'
 import { ProjectCardGrid } from '@/features/projects/components/project-card'
@@ -42,7 +44,8 @@ const classSchema = z.object({
 
 type ClassValues = z.infer<typeof classSchema>
 
-const FOLDER_SHELF_INITIAL_COUNT = 24
+const FOLDER_PAGE_SIZE = 8
+const PROJECT_PAGE_SIZE = 8
 
 export function WorkspacePage() {
   const navigate = useNavigate()
@@ -50,31 +53,63 @@ export function WorkspacePage() {
   const user = useAuthStore((state) => state.user)
   const [classOpen, setClassOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const deferredSearch = useDeferredValue(search)
+  const folderSearchQuery = deferredSearch.trim()
+  const [activeFolderPage, setActiveFolderPage] = useState(1)
+  const [archivedFolderPage, setArchivedFolderPage] = useState(1)
   const [projectSearch, setProjectSearch] = useState('')
+  const deferredProjectSearch = useDeferredValue(projectSearch)
+  const projectSearchQuery = deferredProjectSearch.trim()
+  const [projectPage, setProjectPage] = useState(1)
   const canCreate = canCreateProjects(user)
-  const projectsQuery = useQuery({
-    queryKey: [...queryKeys.projects, canCreate ? 'standalone' : 'all'],
-    queryFn: () => getProjects({ limit: 200, unassigned: canCreate ? true : undefined }),
+  const activeClassesQuery = useQuery({
+    queryKey: [...queryKeys.classes, 'active', { page: activeFolderPage, search: folderSearchQuery }],
+    queryFn: () => getClassesPage({ limit: FOLDER_PAGE_SIZE, page: activeFolderPage, status: 'active', search: folderSearchQuery || undefined }),
+    placeholderData: (previousData) => previousData,
+    enabled: canCreate,
   })
-  const classesQuery = useQuery({ queryKey: queryKeys.classes, queryFn: getClasses, enabled: user?.role === 'teacher' || user?.role === 'admin' })
+  const archivedClassesQuery = useQuery({
+    queryKey: [...queryKeys.classes, 'archived', { page: archivedFolderPage, search: folderSearchQuery }],
+    queryFn: () => getClassesPage({ limit: FOLDER_PAGE_SIZE, page: archivedFolderPage, status: 'archived', search: folderSearchQuery || undefined }),
+    placeholderData: (previousData) => previousData,
+    enabled: canCreate,
+  })
+  const projectsQuery = useQuery({
+    queryKey: [...queryKeys.projects, canCreate ? 'standalone' : 'all', { page: projectPage, search: projectSearchQuery }],
+    queryFn: () => getProjectsPage({ limit: PROJECT_PAGE_SIZE, page: projectPage, unassigned: canCreate ? true : undefined, search: projectSearchQuery || undefined }),
+    placeholderData: (previousData) => previousData,
+  })
+  const foldersLoading = canCreate && (activeClassesQuery.isLoading || archivedClassesQuery.isLoading)
+  const foldersError = canCreate && (activeClassesQuery.isError || archivedClassesQuery.isError)
 
-  if (projectsQuery.isLoading || classesQuery.isLoading) {
+  if (projectsQuery.isLoading || foldersLoading) {
     return <LoadingState label="Loading workspace" />
   }
   if (projectsQuery.isError) {
     return <ErrorState message="Workspace could not be loaded." onRetry={() => void projectsQuery.refetch()} />
   }
-  if (classesQuery.isError) {
-    return <ErrorState message="Folders could not be loaded." onRetry={() => void classesQuery.refetch()} />
+  if (foldersError) {
+    return <ErrorState message="Folders could not be loaded." onRetry={() => { void activeClassesQuery.refetch(); void archivedClassesQuery.refetch() }} />
   }
 
-  const projects = projectsQuery.data || []
-  const classes = canCreate ? classesQuery.data || [] : []
-  const visibleStandaloneProjects = filterProjects(sortByAttention(projects), projectSearch)
-  const visibleClasses = filterClasses(classes, search)
-  const activeClasses = sortClasses(visibleClasses.filter((item) => item.status === 'active'))
-  const archivedClasses = sortClasses(visibleClasses.filter((item) => item.status === 'archived'))
-  const hasFolderSearch = search.trim().length > 0
+  const projectsPage = projectsQuery.data
+  const projects = projectsPage?.items || []
+  const totalProjects = projectsPage?.total || 0
+  const activeClassesPage = activeClassesQuery.data
+  const archivedClassesPage = archivedClassesQuery.data
+  const activeClasses = activeClassesPage?.items || []
+  const archivedClasses = archivedClassesPage?.items || []
+  const activeFolderTotal = activeClassesPage?.total || 0
+  const archivedFolderTotal = archivedClassesPage?.total || 0
+  const totalFolders = activeFolderTotal + archivedFolderTotal
+  const visibleStandaloneProjects = sortByAttention(projects)
+  const hasFolderSearch = folderSearchQuery.length > 0
+  const currentActiveFolderPage = Math.min(activeFolderPage, Math.max(1, Math.ceil(activeFolderTotal / FOLDER_PAGE_SIZE)))
+  const currentArchivedFolderPage = Math.min(archivedFolderPage, Math.max(1, Math.ceil(archivedFolderTotal / FOLDER_PAGE_SIZE)))
+  const foldersRefreshing = canCreate && ((activeClassesQuery.isFetching && Boolean(activeClassesQuery.data)) || (archivedClassesQuery.isFetching && Boolean(archivedClassesQuery.data)))
+  const totalProjectPages = Math.max(1, Math.ceil(totalProjects / PROJECT_PAGE_SIZE))
+  const currentProjectPage = Math.min(projectPage, totalProjectPages)
+  const projectsRefreshing = projectsQuery.isFetching && Boolean(projectsQuery.data)
 
   return (
     <div className="space-y-8">
@@ -89,19 +124,12 @@ export function WorkspacePage() {
         />
       </Dialog>
 
-      <section className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="font-heading text-4xl font-semibold tracking-tight text-ink md:text-5xl">Workspace</h1>
-        </div>
-        {canCreate ? (
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button type="button" variant="outline" onClick={() => setClassOpen(true)}>
-              <Plus className="size-4" /> New folder
-            </Button>
-            <CreateProjectDialog onCreated={(project) => navigate(`/workspace/projects/${project.id}`)} />
-          </div>
-        ) : null}
-      </section>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Workspace"
+        description={canCreate ? 'Organize supervised projects into folders, then open the active project workspaces.' : 'Open your supervised projects, assignments, submissions, and resources.'}
+        action={canCreate ? <><Button type="button" variant="outline" onClick={() => setClassOpen(true)}><Plus className="size-4" /> New folder</Button><CreateProjectDialog onCreated={(project) => navigate(`/workspace/projects/${project.id}`)} /></> : null}
+      />
 
       {canCreate ? (
         <section className="space-y-5 rounded-[1.65rem] border border-border bg-card/70 p-5 shadow-sm">
@@ -114,16 +142,17 @@ export function WorkspacePage() {
               <label className="relative block w-full md:w-80">
                 <span className="sr-only">Search folders</span>
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input className="rounded-full bg-white pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search folders" />
+                <Input className="rounded-full bg-white pl-9" value={search} onChange={(event) => { setSearch(event.target.value); setActiveFolderPage(1); setArchivedFolderPage(1) }} placeholder="Search folders" />
               </label>
             </div>
           </div>
 
-          {classes.length === 0 ? <EmptyState title="No folders yet" message="Create a folder when projects need grouping." /> : null}
-          {classes.length > 0 ? (
-            <div className="space-y-6">
-              <FolderShelf title="Active folders" count={activeClasses.length} description="Current project folders for daily supervision." items={activeClasses} emptyTitle={hasFolderSearch ? 'No active matches' : 'No active folders'} emptyMessage={hasFolderSearch ? 'Try another search term or review archived folders below.' : 'Reactivate an archived folder or create a new one.'} />
-              {(archivedClasses.length > 0 || hasFolderSearch) ? <FolderShelf title="Archived folders" count={archivedClasses.length} description="Older folders kept out of the daily workspace." items={archivedClasses} emptyTitle={hasFolderSearch ? 'No archived matches' : 'No archived folders'} emptyMessage={hasFolderSearch ? 'Try another search term or clear the search.' : 'Archived folders will appear here after you archive one.'} muted /> : null}
+          {totalFolders === 0 ? <EmptyState title={hasFolderSearch ? 'No matching folders' : 'No folders yet'} message={hasFolderSearch ? 'Try another folder name, owner, color, or status.' : 'Create a folder when projects need grouping.'} /> : null}
+          {totalFolders > 0 ? (
+            <div className="relative space-y-6">
+              {foldersRefreshing ? <span className="absolute right-0 top-0 z-10 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-muted-foreground shadow-sm ring-1 ring-border">Updating...</span> : null}
+              <FolderShelf title="Active folders" count={activeFolderTotal} description="Current project folders for daily supervision." items={activeClasses} page={currentActiveFolderPage} isLoading={activeClassesQuery.isFetching} onPageChange={setActiveFolderPage} emptyTitle={hasFolderSearch ? 'No active matches' : 'No active folders'} emptyMessage={hasFolderSearch ? 'Try another search term or review archived folders below.' : 'Reactivate an archived folder or create a new one.'} />
+              {(archivedFolderTotal > 0 || hasFolderSearch) ? <FolderShelf title="Archived folders" count={archivedFolderTotal} description="Older folders kept out of the daily workspace." items={archivedClasses} page={currentArchivedFolderPage} isLoading={archivedClassesQuery.isFetching} onPageChange={setArchivedFolderPage} emptyTitle={hasFolderSearch ? 'No archived matches' : 'No archived folders'} emptyMessage={hasFolderSearch ? 'Try another search term or clear the search.' : 'Archived folders will appear here after you archive one.'} muted /> : null}
             </div>
           ) : null}
         </section>
@@ -138,20 +167,20 @@ export function WorkspacePage() {
           <label className="relative block w-full md:w-80">
             <span className="sr-only">Search projects</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="rounded-full bg-white pl-9" value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Search projects" />
+            <Input className="rounded-full bg-white pl-9" value={projectSearch} onChange={(event) => { setProjectSearch(event.target.value); setProjectPage(1) }} placeholder="Search projects" />
           </label>
         </div>
-        {projects.length >= 200 ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Showing the first 200 {canCreate ? 'standalone ' : ''}projects. Narrow future large workspaces with backend search or pagination.</p> : null}
-        <ProjectCardGrid projects={visibleStandaloneProjects} showContext emptyTitle={projectSearch.trim() ? 'No matching projects' : canCreate ? 'No standalone projects' : 'No projects yet'} emptyMessage={projectSearch.trim() ? 'Try another project name, topic, supervisor, or folder.' : canCreate ? 'Every project is already inside a folder, or no projects exist yet.' : 'Projects appear after a teacher adds your account.'} />
+        <div className="relative">
+          {projectsRefreshing ? <span className="absolute right-0 top-0 z-10 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-muted-foreground shadow-sm ring-1 ring-border">Updating...</span> : null}
+          <ProjectCardGrid projects={visibleStandaloneProjects} showContext allowShowAll={false} reserveSlots={PROJECT_PAGE_SIZE} emptyTitle={projectSearch.trim() ? 'No matching projects' : canCreate ? 'No standalone projects' : 'No projects yet'} emptyMessage={projectSearch.trim() ? 'Try another project name, topic, supervisor, or folder.' : canCreate ? 'Every project is already inside a folder, or no projects exist yet.' : 'Projects appear after a teacher adds your account.'} />
+        </div>
+        <PaginationControls page={currentProjectPage} pageSize={PROJECT_PAGE_SIZE} totalItems={totalProjects} itemLabel={`${canCreate ? 'standalone ' : ''}projects`} isLoading={projectsQuery.isFetching} onPageChange={setProjectPage} />
       </section>
     </div>
   )
 }
 
-function FolderShelf({ title, count, description, items, emptyTitle, emptyMessage, muted = false }: { title: string; count: number; description: string; items: ClassFolder[]; emptyTitle: string; emptyMessage: string; muted?: boolean }) {
-  const [showAll, setShowAll] = useState(false)
-  const visibleItems = showAll ? items : items.slice(0, FOLDER_SHELF_INITIAL_COUNT)
-
+function FolderShelf({ title, count, description, items, page, isLoading, onPageChange, emptyTitle, emptyMessage, muted = false }: { title: string; count: number; description: string; items: ClassFolder[]; page: number; isLoading: boolean; onPageChange: (page: number) => void; emptyTitle: string; emptyMessage: string; muted?: boolean }) {
   return (
     <section className={cn('space-y-4', muted ? 'pt-2' : '')}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -164,13 +193,8 @@ function FolderShelf({ title, count, description, items, emptyTitle, emptyMessag
         </div>
         <div className={cn('hidden h-px flex-1 sm:block', muted ? 'bg-slate-200' : 'bg-primary/15')} />
       </div>
-      {items.length === 0 ? <EmptyState title={emptyTitle} message={emptyMessage} /> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{visibleItems.map((item) => <ClassFolderCard key={item.id} item={item} />)}</div>}
-      {items.length > FOLDER_SHELF_INITIAL_COUNT ? (
-        <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-border bg-white/70 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>Showing {visibleItems.length} of {items.length} folders.</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowAll((value) => !value)}>{showAll ? 'Show fewer' : 'Show all'}</Button>
-        </div>
-      ) : null}
+      {items.length === 0 ? <EmptyState title={emptyTitle} message={emptyMessage} /> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{items.map((item) => <ClassFolderCard key={item.id} item={item} />)}</div>}
+      <PaginationControls page={page} pageSize={FOLDER_PAGE_SIZE} totalItems={count} itemLabel="folders" isLoading={isLoading} onPageChange={onPageChange} />
     </section>
   )
 }
@@ -347,22 +371,6 @@ function Field({ id, label, error, children }: { id?: string; label: string; err
   return <BaseField><FieldLabel htmlFor={id}>{label}</FieldLabel>{children}<FieldError message={error} /></BaseField>
 }
 
-function filterClasses(classes: ClassFolder[], search: string) {
-  const query = search.trim().toLowerCase()
-  if (!query) {
-    return classes
-  }
-  return classes.filter((item) => [item.title, item.description, item.ownerTeacherName, item.color].filter(Boolean).some((value) => String(value).toLowerCase().includes(query)))
-}
-
-function filterProjects(projects: Project[], search: string) {
-  const query = search.trim().toLowerCase()
-  if (!query) {
-    return projects
-  }
-  return projects.filter((project) => [project.name, project.topic, project.description, project.classTitle, project.supervisorName, project.status, project.officialProgressState].filter(Boolean).some((value) => String(value).toLowerCase().includes(query)))
-}
-
 function cleanClassValues(values: ClassValues) {
   return {
     title: values.title.trim(),
@@ -386,24 +394,12 @@ function invalidateClassWorkspaceQueries(queryClient: ReturnType<typeof useQuery
   queryClient.invalidateQueries({ queryKey: queryKeys.dashboard })
 }
 
-function sortClasses(classes: ClassFolder[]) {
-  return [...classes].sort(compareClasses)
-}
-
-function compareClasses(a: ClassFolder, b: ClassFolder) {
-  return attentionScoreForClass(b) - attentionScoreForClass(a) || a.title.localeCompare(b.title)
-}
-
 function sortByAttention(projects: Project[]) {
   return [...projects].sort((a, b) => attentionScore([b]) - attentionScore([a]) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 }
 
 function attentionScore(projects: Project[]) {
   return projects.reduce((score, project) => score + project.pendingReviewCount * 10 + project.overdueTaskCount * 5 + (projectNeedsAttention(project) ? 1 : 0), 0)
-}
-
-function attentionScoreForClass(item: ClassFolder) {
-  return item.pendingReviewCount * 10 + item.overdueTaskCount * 5
 }
 
 function ColorPicker({ value, onChange }: { value: ClassFolderColor; onChange: (value: ClassFolderColor) => void }) {

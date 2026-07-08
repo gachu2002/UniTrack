@@ -1,0 +1,107 @@
+' Shared formal style for report diagrams.
+' The SOICT reference examples use simple black/gray UML lines, white nodes,
+' and clear layered grouping; keep report diagrams close to that visual style.
+skinparam backgroundColor white
+skinparam monochrome true
+skinparam shadowing false
+skinparam dpi 170
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 15
+skinparam defaultFontColor #111111
+skinparam classAttributeIconSize 0
+skinparam ArrowColor #111111
+skinparam ArrowThickness 1
+skinparam LineColor #111111
+skinparam maxMessageSize 80
+skinparam RoundCorner 0
+skinparam Padding 3
+skinparam Nodesep 34
+skinparam Ranksep 40
+skinparam componentStyle rectangle
+skinparam linetype polyline
+skinparam ParticipantPadding 170
+skinparam BoxPadding 8
+
+skinparam package {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+  FontStyle bold
+}
+
+skinparam rectangle {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+}
+
+skinparam component {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+}
+
+skinparam class {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+  AttributeFontColor #111111
+  StereotypeFontColor #111111
+}
+
+skinparam database {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+}
+
+skinparam usecase {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+}
+
+skinparam actor {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+}
+
+skinparam note {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+}
+
+skinparam sequence {
+  ArrowColor #111111
+  LifeLineBorderColor #111111
+  LifeLineBackgroundColor #FFFFFF
+  ParticipantBorderColor #111111
+  ParticipantBackgroundColor #FFFFFF
+  ParticipantFontColor #111111
+  ActorBorderColor #111111
+  ActorBackgroundColor #FFFFFF
+  ActorFontColor #111111
+  DatabaseBorderColor #111111
+  DatabaseBackgroundColor #FFFFFF
+  DatabaseFontColor #111111
+}
+
+skinparam state {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+  StartColor #111111
+  EndColor #111111
+}
+
+skinparam activity {
+  BorderColor #111111
+  BackgroundColor #FFFFFF
+  FontColor #111111
+  DiamondBorderColor #111111
+  DiamondBackgroundColor #FFFFFF
+  StartColor #111111
+  EndColor #111111
+}

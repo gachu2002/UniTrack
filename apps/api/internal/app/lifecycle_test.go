@@ -49,7 +49,10 @@ func newTestAppWithConfig(t *testing.T, configure func(*config.Config)) *testApp
 		t.Fatalf("ping test database: %v", err)
 	}
 
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("load test config: %v", err)
+	}
 	cfg.DatabaseURL = databaseURL
 	cfg.CORSAllowedOrigins = []string{testTrustedOrigin}
 	cfg.UploadStorageBackend = "local"
@@ -213,6 +216,39 @@ func TestOriginGuardRejectsUnsafeUntrustedOrigin(t *testing.T) {
 	}
 }
 
+func TestOriginGuardRejectsMissingOriginLogin(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	userID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	body, err := json.Marshal(map[string]string{"email": prefix + "teacher@unitrack.local", "password": "teacher12345"})
+	if err != nil {
+		t.Fatalf("marshal login payload: %v", err)
+	}
+	request, err := http.NewRequest(http.MethodPost, app.server.URL+"/api/v1/auth/login", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("new login request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := app.client.Do(request)
+	if err != nil {
+		t.Fatalf("do login request: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		responseBody, _ := io.ReadAll(response.Body)
+		t.Fatalf("missing-origin login status = %d body = %s", response.StatusCode, string(responseBody))
+	}
+	var sessionCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM sessions WHERE user_id = $1`, userID).Scan(&sessionCount); err != nil {
+		t.Fatalf("count login sessions: %v", err)
+	}
+	if sessionCount != 0 {
+		t.Fatalf("missing-origin login sessions = %d, want 0", sessionCount)
+	}
+}
+
 func TestOriginGuardDoesNotTrustWildcardOrigins(t *testing.T) {
 	api := NewServer(config.Config{CORSAllowedOrigins: []string{"*"}, SessionCookieName: "unitrack_session"}, nil, nil)
 	request := httptest.NewRequest(http.MethodPost, "https://api.example.test/api/v1/auth/login", nil)
@@ -326,12 +362,26 @@ func TestAdminCanManageAccounts(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("list accounts status = %d body = %s", status, string(body))
 	}
-	var users []UserDTO
+	var users paginatedResponse[UserDTO]
 	if err := json.Unmarshal(body, &users); err != nil {
 		t.Fatalf("decode users: %v", err)
 	}
-	if !userListContainsEmail(users, prefix+"created.teacher@unitrack.local") {
+	if users.Page != 1 || users.Limit != 200 || users.Total != 1 {
+		t.Fatalf("created account page metadata = %#v", users)
+	}
+	if !userListContainsEmail(users.Items, prefix+"created.teacher@unitrack.local") {
 		t.Fatalf("created account not found in list: %#v", users)
+	}
+	status, body = requestJSONBody(t, app, http.MethodGet, "/api/v1/admin/users?search="+prefix+"&limit=2&page=2", nil)
+	if status != http.StatusOK {
+		t.Fatalf("paginated accounts status = %d body = %s", status, string(body))
+	}
+	var userPage paginatedResponse[UserDTO]
+	if err := json.Unmarshal(body, &userPage); err != nil {
+		t.Fatalf("decode paginated users: %v", err)
+	}
+	if userPage.Page != 2 || userPage.Limit != 2 || userPage.Total != 4 || len(userPage.Items) != 2 {
+		t.Fatalf("paginated users = %#v", userPage)
 	}
 
 	status, body = requestJSONBody(t, app, http.MethodPatch, "/api/v1/admin/users/"+studentID, map[string]string{"status": "inactive"})
@@ -986,7 +1036,18 @@ func TestOnHoldProjectBlocksNewWorkButAllowsManagerMaintenance(t *testing.T) {
 	taskID := createTestTaskInMilestone(t, app.db, projectID, teacherID, milestoneID, "Paused assignment")
 	addProjectMember(t, app.db, projectID, studentID)
 	assignTask(t, app.db, taskID, studentID)
+	updateID := createTestProgressUpdate(t, app.db, projectID, taskID, studentID, "Evidence before hold")
 	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+
+	login(t, app, prefix+"student@unitrack.local", "student12345")
+	uploadStatus, uploadBody := requestMultipartFile(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/progress-updates/"+updateID+"/files", "file", "hold.txt", []byte("hold evidence"))
+	if uploadStatus != http.StatusCreated {
+		t.Fatalf("upload pre-hold evidence status = %d body = %s", uploadStatus, string(uploadBody))
+	}
+	var uploaded UploadedFileDTO
+	if err := json.Unmarshal(uploadBody, &uploaded); err != nil {
+		t.Fatalf("decode pre-hold evidence: %v", err)
+	}
 
 	if _, err := app.db.Exec(context.Background(), `UPDATE projects SET status = 'on_hold' WHERE id = $1`, projectID); err != nil {
 		t.Fatalf("put project on hold: %v", err)
@@ -1008,6 +1069,11 @@ func TestOnHoldProjectBlocksNewWorkButAllowsManagerMaintenance(t *testing.T) {
 
 	login(t, app, prefix+"student@unitrack.local", "student12345")
 	assertStatus(t, requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/tasks/"+taskID+"/progress-updates", map[string]string{"description": "Work while paused"}), http.StatusConflict, "on-hold submit progress")
+	assertStatus(t, requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/resource-links", map[string]string{"title": "Student pause note", "url": "https://example.com/student-pause-note"}), http.StatusForbidden, "on-hold student create resource")
+	assertStatus(t, requestJSON(t, app, http.MethodDelete, "/api/v1/projects/"+projectID+"/files/"+uploaded.ID, nil), http.StatusForbidden, "on-hold student delete evidence")
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	assertStatus(t, requestJSON(t, app, http.MethodDelete, "/api/v1/projects/"+projectID+"/files/"+uploaded.ID, nil), http.StatusOK, "on-hold manager delete evidence")
 }
 
 func TestCompletedProjectAllowsPendingReviewsOnly(t *testing.T) {
@@ -1202,6 +1268,70 @@ func TestAssignmentCreateRechecksMilestoneAfterLifecycleLock(t *testing.T) {
 	}
 	if assignmentCount != 0 {
 		t.Fatalf("assignment count after milestone removal = %d, want 0", assignmentCount)
+	}
+}
+
+func TestAssignmentCreateRechecksAssigneeAfterAccountLock(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	studentID := createTestUser(t, app.db, prefix+"student@unitrack.local", "student12345", RoleStudent, "Student")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Assignment Assignee Race Project")
+	milestoneID := createTestMilestone(t, app.db, projectID, teacherID, "Assignee checkpoint", 1)
+	addProjectMember(t, app.db, projectID, studentID)
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	tx, err := app.db.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin account lock tx: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	var lockedStatus string
+	if err := tx.QueryRow(context.Background(), `SELECT status FROM users WHERE id = $1 FOR UPDATE`, studentID).Scan(&lockedStatus); err != nil {
+		t.Fatalf("lock student account: %v", err)
+	}
+	if _, err := tx.Exec(context.Background(), `UPDATE users SET status = 'inactive' WHERE id = $1`, studentID); err != nil {
+		t.Fatalf("deactivate locked student account: %v", err)
+	}
+
+	resultCh := make(chan asyncHTTPResult, 1)
+	go func() {
+		status, body, err := requestJSONBodyNoFatal(app, http.MethodPost, "/api/v1/projects/"+projectID+"/tasks", map[string]any{"title": "Assignee race assignment", "milestoneId": milestoneID, "assigneeIds": []string{studentID}})
+		resultCh <- asyncHTTPResult{status: status, body: body, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("assignment create failed before account lock release: %v", result.err)
+		}
+		t.Fatalf("assignment create completed before account lock release with status %d body = %s", result.status, string(result.body))
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatalf("commit account deactivation: %v", err)
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("assignment create request failed: %v", result.err)
+		}
+		if result.status != http.StatusBadRequest || !strings.Contains(string(result.body), "assignees must be active project members") {
+			t.Fatalf("assignment create after assignee deactivation status = %d body = %s", result.status, string(result.body))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("assignment create request did not finish after account lock released")
+	}
+
+	var assignmentCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM tasks WHERE project_id = $1 AND title = 'Assignee race assignment'`, projectID).Scan(&assignmentCount); err != nil {
+		t.Fatalf("count assignment after assignee deactivation: %v", err)
+	}
+	if assignmentCount != 0 {
+		t.Fatalf("assignment count after assignee deactivation = %d, want 0", assignmentCount)
 	}
 }
 
@@ -1561,6 +1691,34 @@ func TestProjectMemberRoleLifecycleAndPermissions(t *testing.T) {
 	}
 }
 
+func TestProjectMemberRoleRequiresActiveStudent(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	studentID := createTestUser(t, app.db, prefix+"student@unitrack.local", "student12345", RoleStudent, "Student")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Member Role Active Student Project")
+	addProjectMember(t, app.db, projectID, studentID)
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+
+	if _, err := app.db.Exec(context.Background(), `UPDATE users SET status = 'inactive' WHERE id = $1`, studentID); err != nil {
+		t.Fatalf("make member inactive: %v", err)
+	}
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	status, body := requestJSONBody(t, app, http.MethodPatch, "/api/v1/projects/"+projectID+"/members/"+studentID, map[string]string{"memberRole": "leader"})
+	if status != http.StatusBadRequest || !strings.Contains(string(body), "project member must be an active student") {
+		t.Fatalf("inactive member role update status = %d body = %s", status, string(body))
+	}
+
+	var memberRole string
+	if err := app.db.QueryRow(context.Background(), `SELECT member_role FROM project_members WHERE project_id = $1 AND student_id = $2`, projectID, studentID).Scan(&memberRole); err != nil {
+		t.Fatalf("load inactive member role: %v", err)
+	}
+	if memberRole != "member" {
+		t.Fatalf("inactive member role = %s, want member", memberRole)
+	}
+}
+
 func TestCreateProjectRejectsDirectMembers(t *testing.T) {
 	app := newTestApp(t)
 	prefix := testPrefix()
@@ -1659,13 +1817,13 @@ func TestProjectCreationAllowsOptionalClass(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("unassigned project list status = %d body = %s", status, string(body))
 	}
-	var unassigned []ProjectDTO
+	var unassigned paginatedResponse[ProjectDTO]
 	if err := json.Unmarshal(body, &unassigned); err != nil {
 		t.Fatalf("decode unassigned projects: %v", err)
 	}
 	foundStandalone := false
 	foundClassProject := false
-	for _, item := range unassigned {
+	for _, item := range unassigned.Items {
 		if item.ID == standalone.ID {
 			foundStandalone = true
 		}
@@ -1880,12 +2038,15 @@ func TestUnassignedProjectSearchUsesBackendFilterAndExcludesArchivedCandidates(t
 	if status != http.StatusOK {
 		t.Fatalf("unassigned search status = %d body = %s", status, string(body))
 	}
-	var projects []ProjectDTO
+	var projects paginatedResponse[ProjectDTO]
 	if err := json.Unmarshal(body, &projects); err != nil {
 		t.Fatalf("decode unassigned search projects: %v", err)
 	}
+	if projects.Page != 1 || projects.Limit != 10 || projects.Total != 1 {
+		t.Fatalf("unassigned search metadata = %#v", projects)
+	}
 	seenTarget := false
-	for _, project := range projects {
+	for _, project := range projects.Items {
 		if project.ID == targetID {
 			seenTarget = true
 		}
@@ -1895,6 +2056,80 @@ func TestUnassignedProjectSearchUsesBackendFilterAndExcludesArchivedCandidates(t
 	}
 	if !seenTarget {
 		t.Fatalf("unassigned search did not include target project beyond broad cap: %#v", projects)
+	}
+	status, body = requestJSONBody(t, app, http.MethodGet, "/api/v1/projects?unassigned=true&excludeArchived=true&limit=25&page=9", nil)
+	if status != http.StatusOK {
+		t.Fatalf("unassigned pagination status = %d body = %s", status, string(body))
+	}
+	var pagedProjects paginatedResponse[ProjectDTO]
+	if err := json.Unmarshal(body, &pagedProjects); err != nil {
+		t.Fatalf("decode paginated unassigned projects: %v", err)
+	}
+	if pagedProjects.Page != 9 || pagedProjects.Limit != 25 || pagedProjects.Total != 206 || len(pagedProjects.Items) != 6 {
+		t.Fatalf("unassigned pagination = %#v", pagedProjects)
+	}
+}
+
+func TestCourseSectionListUsesBackendPaginationAndSearch(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	otherTeacherID := createTestUser(t, app.db, prefix+"other.teacher@unitrack.local", "teacher12345", RoleTeacher, "Other Teacher")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	for index := 0; index < 11; index++ {
+		createTestCourseSection(t, app.db, teacherID, prefix+"Ordinary Folder "+strconv.Itoa(index))
+	}
+	targetID := createTestCourseSection(t, app.db, teacherID, prefix+"ZZZ Needle Folder")
+	archivedID := createTestCourseSection(t, app.db, teacherID, prefix+"Needle Archived Folder")
+	otherTeacherIDFolder := createTestCourseSection(t, app.db, otherTeacherID, prefix+"Needle Other Teacher Folder")
+	if _, err := app.db.Exec(context.Background(), `UPDATE course_sections SET status = 'archived' WHERE id = $1`, archivedID); err != nil {
+		t.Fatalf("archive folder: %v", err)
+	}
+	if _, err := app.db.Exec(context.Background(), `UPDATE course_sections SET description = 'needle description' WHERE id = $1`, targetID); err != nil {
+		t.Fatalf("update folder description: %v", err)
+	}
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	status, body := requestJSONBody(t, app, http.MethodGet, "/api/v1/classes?status=active&limit=5&page=3", nil)
+	if status != http.StatusOK {
+		t.Fatalf("folder pagination status = %d body = %s", status, string(body))
+	}
+	var folders paginatedResponse[CourseSectionDTO]
+	if err := json.Unmarshal(body, &folders); err != nil {
+		t.Fatalf("decode folder page: %v", err)
+	}
+	if folders.Page != 3 || folders.Limit != 5 || folders.Total != 12 || len(folders.Items) != 2 {
+		t.Fatalf("folder pagination = %#v", folders)
+	}
+	for _, folder := range folders.Items {
+		if folder.Status != "active" || folder.OwnerTeacherID != teacherID {
+			t.Fatalf("folder page included wrong folder: %#v", folder)
+		}
+	}
+
+	status, body = requestJSONBody(t, app, http.MethodGet, "/api/v1/classes?status=active&limit=5&search=needle", nil)
+	if status != http.StatusOK {
+		t.Fatalf("folder search status = %d body = %s", status, string(body))
+	}
+	var searched paginatedResponse[CourseSectionDTO]
+	if err := json.Unmarshal(body, &searched); err != nil {
+		t.Fatalf("decode folder search: %v", err)
+	}
+	if searched.Page != 1 || searched.Limit != 5 || searched.Total != 1 || len(searched.Items) != 1 || searched.Items[0].ID != targetID {
+		t.Fatalf("folder search = %#v target=%s archived=%s other=%s", searched, targetID, archivedID, otherTeacherIDFolder)
+	}
+
+	status, body = requestJSONBody(t, app, http.MethodGet, "/api/v1/classes?status=archived&limit=5&search=needle", nil)
+	if status != http.StatusOK {
+		t.Fatalf("archived folder search status = %d body = %s", status, string(body))
+	}
+	var archived paginatedResponse[CourseSectionDTO]
+	if err := json.Unmarshal(body, &archived); err != nil {
+		t.Fatalf("decode archived folder search: %v", err)
+	}
+	if archived.Total != 1 || len(archived.Items) != 1 || archived.Items[0].ID != archivedID {
+		t.Fatalf("archived folder search = %#v", archived)
 	}
 }
 
@@ -2048,9 +2283,13 @@ func TestOfficialTaskLifecycleValidationAndPermissions(t *testing.T) {
 	if badDeadline.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad deadline task status = %d", badDeadline.StatusCode)
 	}
-	badAssignee := requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/tasks", map[string]any{"title": "Bad assignee", "assigneeIds": []string{nonMemberID}})
+	badAssignee := requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/tasks", map[string]any{"title": "Bad assignee", "milestoneId": milestoneID, "assigneeIds": []string{nonMemberID}})
 	if badAssignee.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad assignee task status = %d", badAssignee.StatusCode)
+	}
+	malformedAssignee := requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/tasks", map[string]any{"title": "Malformed assignee", "milestoneId": milestoneID, "assigneeIds": []string{"not-a-uuid"}})
+	if malformedAssignee.StatusCode != http.StatusBadRequest {
+		t.Fatalf("malformed assignee task status = %d", malformedAssignee.StatusCode)
 	}
 
 	createStatus, createBody := requestJSONBody(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/tasks", map[string]any{
@@ -2265,7 +2504,7 @@ func TestAssignmentCompletionRequiresPendingReviewResolution(t *testing.T) {
 	}
 }
 
-func TestChildTaskProgressIsExcludedFromAssignmentSurfaces(t *testing.T) {
+func TestDatabaseRejectsChildTaskProgress(t *testing.T) {
 	app := newTestApp(t)
 	prefix := testPrefix()
 	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
@@ -2283,77 +2522,25 @@ func TestChildTaskProgressIsExcludedFromAssignmentSurfaces(t *testing.T) {
 	`, projectID, assignmentID, "Legacy child task", teacherID).Scan(&childTaskID); err != nil {
 		t.Fatalf("create child task: %v", err)
 	}
-	childUpdateID := createTestProgressUpdate(t, app.db, projectID, childTaskID, studentID, "Legacy child progress")
-
-	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
-	status, body := requestJSONBody(t, app, http.MethodGet, "/api/v1/projects/"+projectID+"/progress-updates", nil)
-	if status != http.StatusOK {
-		t.Fatalf("project progress status = %d body = %s", status, string(body))
+	assignTask(t, app.db, childTaskID, studentID)
+	_, err := app.db.Exec(context.Background(), `
+		INSERT INTO progress_updates (project_id, task_id, submitted_by, description)
+		VALUES ($1, $2, $3, $4)
+	`, projectID, childTaskID, studentID, "Legacy child progress")
+	if err == nil {
+		t.Fatal("child-task progress insert succeeded, want constraint failure")
 	}
-	var updates []ProgressUpdateDTO
-	if err := json.Unmarshal(body, &updates); err != nil {
-		t.Fatalf("decode project progress: %v", err)
+	var childProgressCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM progress_updates WHERE task_id = $1`, childTaskID).Scan(&childProgressCount); err != nil {
+		t.Fatalf("count child progress updates: %v", err)
 	}
-	for _, update := range updates {
-		if update.ID == childUpdateID {
-			t.Fatalf("child-task progress appeared in assignment progress list: %#v", updates)
-		}
-	}
-	status, body = requestJSONBody(t, app, http.MethodGet, "/api/v1/projects/"+projectID, nil)
-	if status != http.StatusOK {
-		t.Fatalf("project status = %d body = %s", status, string(body))
-	}
-	var project ProjectDTO
-	if err := json.Unmarshal(body, &project); err != nil {
-		t.Fatalf("decode project: %v", err)
-	}
-	if project.PendingReviewCount != 0 {
-		t.Fatalf("project pending reviews = %d, want 0", project.PendingReviewCount)
+	if childProgressCount != 0 {
+		t.Fatalf("child progress count = %d, want 0", childProgressCount)
 	}
 
-	status, body = requestJSONBody(t, app, http.MethodGet, "/api/v1/dashboard", nil)
-	if status != http.StatusOK {
-		t.Fatalf("dashboard status = %d body = %s", status, string(body))
-	}
-	var dashboard DashboardDTO
-	if err := json.Unmarshal(body, &dashboard); err != nil {
-		t.Fatalf("decode dashboard: %v", err)
-	}
-	if dashboard.Stats.PendingReviews != 0 {
-		t.Fatalf("dashboard pending reviews = %d, want 0", dashboard.Stats.PendingReviews)
-	}
-	for _, update := range dashboard.ProgressUpdates {
-		if update.ID == childUpdateID {
-			t.Fatalf("child-task progress appeared in dashboard: %#v", dashboard.ProgressUpdates)
-		}
-	}
-
-	reviewChild := requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/progress-updates/"+childUpdateID+"/reviews", map[string]string{
-		"reviewStatus":          "approved",
-		"officialProgressState": "in_progress",
-	})
-	if reviewChild.StatusCode != http.StatusNotFound {
-		t.Fatalf("child-task progress review status = %d", reviewChild.StatusCode)
-	}
-	childEvidenceStatus, _ := requestMultipartFile(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/progress-updates/"+childUpdateID+"/files", "file", "legacy.txt", []byte("legacy child evidence"))
-	if childEvidenceStatus != http.StatusNotFound {
-		t.Fatalf("child-task progress evidence status = %d", childEvidenceStatus)
-	}
-	childResource := requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/resource-links", map[string]string{
-		"relatedType": "progress_update",
-		"relatedId":   childUpdateID,
-		"title":       "Legacy child resource",
-		"url":         "https://example.com/legacy-child-resource",
-	})
-	if childResource.StatusCode != http.StatusBadRequest {
-		t.Fatalf("child-task progress resource status = %d", childResource.StatusCode)
-	}
-	var reviewCount int
-	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM progress_reviews WHERE progress_update_id = $1`, childUpdateID).Scan(&reviewCount); err != nil {
-		t.Fatalf("count child progress reviews: %v", err)
-	}
-	if reviewCount != 0 {
-		t.Fatalf("child progress review count = %d, want 0", reviewCount)
+	assignmentUpdateID := createTestProgressUpdate(t, app.db, projectID, assignmentID, studentID, "Official assignment progress")
+	if assignmentUpdateID == "" {
+		t.Fatal("official assignment progress id is empty")
 	}
 }
 
@@ -2616,6 +2803,117 @@ func TestProgressEvidenceFileLifecycleAndPermissions(t *testing.T) {
 	}
 	if _, err := os.Stat(storagePath); !os.IsNotExist(err) {
 		t.Fatalf("stored file still exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestSubmissionResourceLinksRequireSubmitterOrManager(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	urlToken := strings.ReplaceAll(prefix, ".", "-")
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	studentID := createTestUser(t, app.db, prefix+"student@unitrack.local", "student12345", RoleStudent, "Student")
+	otherStudentID := createTestUser(t, app.db, prefix+"other.student@unitrack.local", "student12345", RoleStudent, "Other Student")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Submission Resource Project")
+	addProjectMember(t, app.db, projectID, studentID)
+	addProjectMember(t, app.db, projectID, otherStudentID)
+	taskID := createTestTask(t, app.db, projectID, teacherID, "Submission resource assignment")
+	assignTask(t, app.db, taskID, studentID)
+	updateID := createTestProgressUpdate(t, app.db, projectID, taskID, studentID, "Ready for submission resources")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+
+	login(t, app, prefix+"other.student@unitrack.local", "student12345")
+	forbiddenStatus, forbiddenBody := requestJSONBody(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/resource-links", map[string]string{
+		"relatedType": "progress_update",
+		"relatedId":   updateID,
+		"title":       "Wrong student notes",
+		"url":         "https://example.com/" + urlToken + "wrong-submission-resource",
+	})
+	if forbiddenStatus != http.StatusForbidden {
+		t.Fatalf("wrong student submission resource status = %d body = %s", forbiddenStatus, string(forbiddenBody))
+	}
+	var forbiddenResourceCount int
+	if err := app.db.QueryRow(context.Background(), `
+		SELECT COUNT(*)
+		FROM resource_links
+		WHERE project_id = $1 AND related_entity_type = 'progress_update' AND related_entity_id = $2 AND added_by = $3
+	`, projectID, updateID, otherStudentID).Scan(&forbiddenResourceCount); err != nil {
+		t.Fatalf("count forbidden submission resources: %v", err)
+	}
+	if forbiddenResourceCount != 0 {
+		t.Fatalf("forbidden submission resources = %d, want 0", forbiddenResourceCount)
+	}
+
+	projectResourceStatus, projectResourceBody := requestJSONBody(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/resource-links", map[string]string{
+		"relatedType": "project",
+		"relatedId":   projectID,
+		"title":       "General project notes",
+		"url":         "https://example.com/" + urlToken + "project-resource",
+	})
+	if projectResourceStatus != http.StatusCreated {
+		t.Fatalf("project resource status = %d body = %s", projectResourceStatus, string(projectResourceBody))
+	}
+	var projectResource ResourceLinkDTO
+	if err := json.Unmarshal(projectResourceBody, &projectResource); err != nil {
+		t.Fatalf("decode project resource: %v", err)
+	}
+	retargetStatus, retargetBody := requestJSONBody(t, app, http.MethodPatch, "/api/v1/projects/"+projectID+"/resource-links/"+projectResource.ID, map[string]string{
+		"relatedType": "progress_update",
+		"relatedId":   updateID,
+	})
+	if retargetStatus != http.StatusForbidden {
+		t.Fatalf("wrong student retarget submission resource status = %d body = %s", retargetStatus, string(retargetBody))
+	}
+	var retargetedType string
+	if err := app.db.QueryRow(context.Background(), `SELECT related_entity_type FROM resource_links WHERE id = $1`, projectResource.ID).Scan(&retargetedType); err != nil {
+		t.Fatalf("load retargeted resource: %v", err)
+	}
+	if retargetedType != "project" {
+		t.Fatalf("retargeted resource type = %q, want project", retargetedType)
+	}
+	var legacyResourceID string
+	if err := app.db.QueryRow(context.Background(), `
+		INSERT INTO resource_links (project_id, related_entity_type, related_entity_id, title, url, added_by)
+		VALUES ($1, 'progress_update', $2, $3, $4, $5)
+		RETURNING id::text
+	`, projectID, updateID, "Legacy wrong-student notes", "https://example.com/"+urlToken+"legacy-wrong-submission-resource", otherStudentID).Scan(&legacyResourceID); err != nil {
+		t.Fatalf("insert legacy wrong-student submission resource: %v", err)
+	}
+	legacyDelete := requestJSON(t, app, http.MethodDelete, "/api/v1/projects/"+projectID+"/resource-links/"+legacyResourceID, nil)
+	if legacyDelete.StatusCode != http.StatusForbidden {
+		t.Fatalf("wrong student legacy submission resource delete status = %d", legacyDelete.StatusCode)
+	}
+	var legacyResourceCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM resource_links WHERE id = $1`, legacyResourceID).Scan(&legacyResourceCount); err != nil {
+		t.Fatalf("count legacy submission resource: %v", err)
+	}
+	if legacyResourceCount != 1 {
+		t.Fatalf("legacy submission resource count = %d, want 1", legacyResourceCount)
+	}
+
+	login(t, app, prefix+"student@unitrack.local", "student12345")
+	studentStatus, studentBody := requestJSONBody(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/resource-links", map[string]string{
+		"relatedType": "progress_update",
+		"relatedId":   updateID,
+		"title":       "Own submission notes",
+		"url":         "https://example.com/" + urlToken + "own-submission-resource",
+	})
+	if studentStatus != http.StatusCreated {
+		t.Fatalf("submitter resource status = %d body = %s", studentStatus, string(studentBody))
+	}
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	teacherStatus, teacherBody := requestJSONBody(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/resource-links", map[string]string{
+		"relatedType": "progress_update",
+		"relatedId":   updateID,
+		"title":       "Supervisor submission notes",
+		"url":         "https://example.com/" + urlToken + "supervisor-submission-resource",
+	})
+	if teacherStatus != http.StatusCreated {
+		t.Fatalf("supervisor resource status = %d body = %s", teacherStatus, string(teacherBody))
+	}
+	teacherDelete := requestJSON(t, app, http.MethodDelete, "/api/v1/projects/"+projectID+"/resource-links/"+legacyResourceID, nil)
+	if teacherDelete.StatusCode != http.StatusOK {
+		t.Fatalf("supervisor legacy submission resource delete status = %d", teacherDelete.StatusCode)
 	}
 }
 
@@ -3455,12 +3753,12 @@ func assertProjectList(t *testing.T, app *testApp, mustContain []string, mustNot
 		t.Fatalf("project list status = %d body = %s", status, string(body))
 	}
 
-	var projects []ProjectDTO
+	var projects paginatedResponse[ProjectDTO]
 	if err := json.Unmarshal(body, &projects); err != nil {
 		t.Fatalf("decode project list: %v", err)
 	}
 	seen := map[string]bool{}
-	for _, project := range projects {
+	for _, project := range projects.Items {
 		seen[project.ID] = true
 	}
 	for _, projectID := range mustContain {

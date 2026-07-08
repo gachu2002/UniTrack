@@ -1,0 +1,87 @@
+@startuml
+!include includes/report-style.iuml
+hide circle
+left to right direction
+skinparam linetype ortho
+skinparam Nodesep 44
+skinparam Ranksep 44
+
+entity "projects" as Projects {
+  * id : uuid <<PK>>
+  --
+  supervisor_id : uuid <<FK>>
+  status
+  official_progress_state
+}
+
+entity "project_members" as Members {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  student_id : uuid <<FK>>
+  UQ(project_id, student_id)
+}
+
+entity "project_milestones" as Milestones {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  title
+  sort_order, target_date
+}
+
+entity "tasks" as Tasks {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  milestone_id : uuid <<FK>>
+  deadline, priority
+  official_progress_state
+}
+
+entity "task_assignees" as Assignees {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  task_id : uuid <<FK>>
+  student_id : uuid <<FK>>
+  UQ(task_id, student_id)
+}
+
+entity "progress_updates" as Progress {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  task_id : uuid <<FK>>
+  submitted_by : uuid <<FK>>
+  review_status
+}
+
+entity "progress_reviews" as Reviews {
+  * id : uuid <<PK>>
+  --
+  progress_update_id : uuid <<FK>> <<UQ>>
+  reviewed_by : uuid <<FK>>
+  review_status
+  review_comment
+}
+
+Projects ||--o{ Members : current team
+Projects ||--o{ Milestones : work plan
+Milestones ||--o{ Tasks : required scope
+Projects ||--o{ Tasks : same-project FK
+Tasks ||--o{ Assignees : assigned to
+Members ||--o{ Assignees : composite FK
+Tasks ||--o{ Progress : submissions
+Projects ||--o{ Progress : same-project FK
+Progress ||--o| Reviews : final review
+
+note bottom of Assignees
+  Composite FKs keep assignees inside the project and inside the current team.
+end note
+
+note bottom of Progress
+  Partial unique index allows one pending submission per assignment.
+  Trigger requires submitted_by to be an active assigned student.
+end note
+@enduml

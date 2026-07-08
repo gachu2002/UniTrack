@@ -3,6 +3,7 @@ import { ArrowLeft, CalendarClock, CheckCircle2, ClipboardList, Clock, ExternalL
 import { useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
+import { PageHeader, PageHeaderPill } from '@/components/layout/page-header'
 import { ErrorState } from '@/components/shared/error-state'
 import { ForbiddenState } from '@/components/shared/forbidden-state'
 import { LoadingState } from '@/components/shared/loading-state'
@@ -20,7 +21,7 @@ import { getTask } from '@/features/tasks/api'
 import { ProgressTimeline } from '@/features/tasks/components/progress-timeline'
 import { EditTaskForm, ReviewProgressForm, SubmitProgressForm } from '@/features/tasks/components/task-forms'
 import { formatDate, formatDateTime, titleize } from '@/lib/format'
-import { canReviewProgress, projectAcceptsPlanChanges, projectAcceptsReviews, projectAcceptsStudentSubmissions, projectAcceptsSupportChanges } from '@/lib/permissions'
+import { canManageProject, canReviewProgress, projectAcceptsPlanChanges, projectAcceptsReviews, projectAcceptsStudentSubmissions, projectAcceptsSupportChanges } from '@/lib/permissions'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -61,12 +62,14 @@ export function TaskDetailPage() {
   const detail = taskQuery.data
   const project = projectQuery.data
   const canReviewUser = canReviewProgress(user)
+  const canManageProjectSupport = canManageProject(user, project)
+  const evidenceDataReady = filesQuery.isSuccess
   const canReview = canReviewUser && projectAcceptsReviews(project)
   const canEditAssignment = canReviewUser && projectAcceptsPlanChanges(project)
-  const canManageResources = projectAcceptsSupportChanges(project) && resourcesQuery.isSuccess
-  const canManageEvidence = canReviewUser && projectAcceptsSupportChanges(project)
-  const canDeleteOwnEvidence = projectAcceptsSupportChanges(project)
-  const canUploadEvidence = projectAcceptsStudentSubmissions(project)
+  const canManageResources = projectAcceptsSupportChanges(project) && resourcesQuery.isSuccess && (project?.status === 'active' || canManageProjectSupport)
+  const canManageEvidence = evidenceDataReady && canManageProjectSupport && projectAcceptsSupportChanges(project)
+  const canDeleteOwnEvidence = evidenceDataReady && project?.status === 'active'
+  const canUploadEvidence = evidenceDataReady && projectAcceptsStudentSubmissions(project)
   const isAssignedStudent = user?.role === 'student' && detail.task.assignees.some((assignee) => assignee.id === user.id)
   const assignmentState = getAssignmentState(detail.task)
   const canSubmitProgress = isAssignedStudent && projectAcceptsStudentSubmissions(project) && assignmentState.key !== 'complete' && assignmentState.key !== 'waiting_review'
@@ -87,6 +90,11 @@ export function TaskDetailPage() {
     void resourcesQuery.refetch()
     void filesQuery.refetch()
   }
+  const projectDataNotice = projectQuery.isLoading
+    ? 'Project lifecycle data is still loading.'
+    : projectQuery.isError
+      ? 'Project lifecycle data could not be loaded, so submission and review actions are paused.'
+      : undefined
   const editDisabledReason = canEditAssignment && (!membersQuery.isSuccess || !milestonesQuery.isSuccess)
     ? membersQuery.isError || milestonesQuery.isError
       ? 'Assignment members or checkpoints could not be loaded.'
@@ -121,6 +129,8 @@ export function TaskDetailPage() {
         onEdit={() => setEditOpen(true)}
         onSubmitProgress={() => setProgressOpen(true)}
       />
+
+      {projectDataNotice ? <SupportDataNotice message={projectDataNotice} isError={projectQuery.isError} onRetry={() => void projectQuery.refetch()} retryLabel="Retry project data" /> : null}
 
       {canReview && pendingReviewUpdate ? (
         <TeacherReviewDesk
@@ -224,12 +234,12 @@ function EditAssignmentDataState({ isError, onRetry }: { isError: boolean; onRet
   )
 }
 
-function SupportDataNotice({ message, isError, onRetry }: { message: string; isError: boolean; onRetry: () => void }) {
+function SupportDataNotice({ message, isError, onRetry, retryLabel = 'Retry support data' }: { message: string; isError: boolean; onRetry: () => void; retryLabel?: string }) {
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm leading-6 text-amber-950">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="font-medium">{message}</p>
-        {isError ? <Button type="button" variant="outline" size="sm" onClick={onRetry}>Retry evidence data</Button> : null}
+        {isError ? <Button type="button" variant="outline" size="sm" onClick={onRetry}>{retryLabel}</Button> : null}
       </div>
     </div>
   )
@@ -241,7 +251,7 @@ function AssignmentContextStrip({ task, project, resources, canManageResources, 
       <div className="grid gap-3 md:grid-cols-4">
         {project ? <ContextFact label="Project" value={project.name} /> : null}
         <ContextFact label="Due" value={deadlineText(task)} />
-        <ContextFact label="Checkpoint" value={task.milestoneTitle || 'Missing milestone'} />
+        <ContextFact label="Checkpoint" value={task.milestoneTitle || 'Missing checkpoint'} />
         <ContextFact label="Assigned" value={assigneeText(task)} />
       </div>
       {(resources.length > 0 || canManageResources) ? <div className="mt-3 border-t border-border pt-3"><ResourceLinkShelf title="Assignment resources" resources={resources} canCreate={canManageResources} onManage={canManageResources ? onManageResources : undefined} compact /></div> : null}
@@ -411,32 +421,21 @@ function resourceDialogKey(target: ResourceLinkTarget | null) {
 function AssignmentHeader({ task, project, projectId, canReview, canEditAssignment, editDisabledReason, canSubmitProgress, onEdit, onSubmitProgress }: { task: Task; project?: Project; projectId: string; canReview: boolean; canEditAssignment: boolean; editDisabledReason?: string; canSubmitProgress: boolean; onEdit: () => void; onSubmitProgress: () => void }) {
   const assignmentState = getAssignmentState(task)
   return (
-    <section className="border-b border-border pb-5">
-      <Button asChild variant="ghost" className="-ml-2 h-9 px-2 text-muted-foreground hover:bg-accent hover:text-primary">
-        <Link to={`/workspace/projects/${projectId}`}><ArrowLeft className="size-4" /> Back to project</Link>
-      </Button>
-
-      <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Assignment{project ? ` · ${project.name}` : ''}</p>
-          <h1 className="max-w-5xl break-words font-heading text-3xl font-semibold tracking-tight text-ink md:text-4xl">{task.title}</h1>
-          {task.pendingReviewCount > 0 ? <div className="flex flex-wrap gap-2"><StatusBadge value="pending_review" tone="amber" /></div> : null}
-          <AssignmentMetaLine task={task} state={assignmentState} />
-        </div>
-
-        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
-          {canSubmitProgress ? <Button type="button" size="sm" onClick={onSubmitProgress}><Send className="size-4" /> Submit work</Button> : null}
-          {canReview && task.pendingReviewCount > 0 ? <Button asChild size="sm"><a href="#assignment-workflow"><CheckCircle2 className="size-4" /> Review submission</a></Button> : null}
-          {canEditAssignment ? <Button type="button" variant="edit" size="sm" disabled={Boolean(editDisabledReason)} title={editDisabledReason} onClick={onEdit}><Pencil className="size-4" /> Edit assignment</Button> : null}
-        </div>
-      </div>
-
+    <div className="space-y-3">
+      <PageHeader
+        back={<Button asChild variant="ghost" className="-ml-2 h-9 px-2 text-muted-foreground hover:bg-accent hover:text-primary"><Link to={`/workspace/projects/${projectId}`}><ArrowLeft className="size-4" /> Back to project</Link></Button>}
+        eyebrow={project ? <>Assignment / {project.name}</> : 'Assignment'}
+        title={task.title}
+        badges={task.pendingReviewCount > 0 ? <StatusBadge value="pending_review" tone="amber" /> : null}
+        meta={<AssignmentHeaderMeta task={task} state={assignmentState} />}
+        action={<>{canSubmitProgress ? <Button type="button" size="sm" onClick={onSubmitProgress}><Send className="size-4" /> Submit work</Button> : null}{canReview && task.pendingReviewCount > 0 ? <Button asChild size="sm"><a href="#assignment-workflow"><CheckCircle2 className="size-4" /> Review submission</a></Button> : null}{canEditAssignment ? <Button type="button" variant="edit" size="sm" disabled={Boolean(editDisabledReason)} title={editDisabledReason} onClick={onEdit}><Pencil className="size-4" /> Edit assignment</Button> : null}</>}
+      />
       {project ? <TaskProjectLifecycleNotice project={project} /> : null}
-    </section>
+    </div>
   )
 }
 
-function AssignmentMetaLine({ task, state }: { task: Task; state: AssignmentState }) {
+function AssignmentHeaderMeta({ task, state }: { task: Task; state: AssignmentState }) {
   const dotClass = {
     blue: 'bg-primary',
     teal: 'bg-secondary',
@@ -445,11 +444,11 @@ function AssignmentMetaLine({ task, state }: { task: Task; state: AssignmentStat
     slate: 'bg-slate-400',
   }[state.tone]
   return (
-    <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-      <span className="inline-flex items-center gap-2 font-semibold text-ink"><span className={`size-2 rounded-full ${dotClass}`} />{state.label}</span>
-      <span>Priority <span className="font-semibold text-ink">{titleize(task.priority)}</span></span>
-      <span>{task.progressUpdateCount} submission{task.progressUpdateCount === 1 ? '' : 's'}</span>
-    </p>
+    <>
+      <PageHeaderPill><span className={`size-2 rounded-full ${dotClass}`} /> <span className="text-ink">{state.label}</span></PageHeaderPill>
+      <PageHeaderPill>Priority <span className="text-ink">{titleize(task.priority)}</span></PageHeaderPill>
+      <PageHeaderPill>{task.progressUpdateCount} submission{task.progressUpdateCount === 1 ? '' : 's'}</PageHeaderPill>
+    </>
   )
 }
 
@@ -485,7 +484,7 @@ function AssignmentAside({ task, project, resources, canManageResources, onManag
         <dl className="mt-4 divide-y divide-border">
           {project ? <FactRow icon={<ClipboardList className="size-4" />} label="Project" value={project.name} /> : null}
           <FactRow icon={<CalendarClock className="size-4" />} label="Due date" value={deadlineText(task)} />
-          <FactRow icon={<ClipboardList className="size-4" />} label="Checkpoint" value={task.milestoneTitle || 'Missing milestone'} />
+          <FactRow icon={<ClipboardList className="size-4" />} label="Checkpoint" value={task.milestoneTitle || 'Missing checkpoint'} />
           <FactRow icon={<Users className="size-4" />} label="Assigned to" value={assigneeText(task)} />
         </dl>
       </section>

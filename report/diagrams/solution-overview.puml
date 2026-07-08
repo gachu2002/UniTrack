@@ -1,0 +1,48 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam componentStyle rectangle
+top to bottom direction
+
+actor "Quản trị viên" as Admin
+actor "Giảng viên" as Teacher
+actor "Sinh viên" as Student
+
+rectangle "Biên hệ thống UniTrack" as UniTrack {
+  package "Luồng nghiệp vụ chính" as Product {
+    component "Workspace\nDự án + nhóm" as Workspace
+    component "Kế hoạch\nMốc + nhiệm vụ" as Plan
+    component "Bài nộp\nTiến độ + minh chứng" as Submit
+    component "Duyệt bài\nPhản hồi cuối" as Review
+  }
+
+  package "Lớp bảo vệ dữ liệu" as Safety {
+    component "Session\nHttpOnly cookie" as Session
+    component "Quyền\nrole + project relation" as Authz
+    component "Giao dịch\nrow lock + recheck" as Tx
+    database "CSDL\nFK + trigger" as Schema
+  }
+
+  package "Tài nguyên hỗ trợ" as Support {
+    component "Resource link" as Links
+    component "Evidence file" as Files
+    component "Read-only\nsau duyệt" as Immutable
+  }
+}
+
+Admin --> Authz : quản trị
+Teacher --> Workspace : giám sát
+Student --> Submit : báo cáo
+Workspace --> Plan
+Plan --> Submit
+Submit --> Review
+Submit --> Links
+Submit --> Files
+Review --> Immutable
+Product --> Session
+Session --> Authz
+Authz --> Tx
+Tx --> Schema
+@enduml

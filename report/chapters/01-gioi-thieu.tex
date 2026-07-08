@@ -1,33 +1,97 @@
 \chapter{GIỚI THIỆU ĐỀ TÀI}
 
+Chương này trình bày bối cảnh hình thành đề tài, mục tiêu cần đạt được, phạm vi triển khai và định hướng giải pháp của UniTrack. Nội dung chương làm rõ bài toán quản lý tiến độ dự án sinh viên trước khi chuyển sang phân tích yêu cầu ở Chương 2.
+
 \section{Đặt vấn đề}
 
-Trong các học phần hoặc chương trình đào tạo có yêu cầu sinh viên thực hiện dự án, giảng viên thường phải theo dõi nhiều nhóm, nhiều nhiệm vụ và nhiều mốc tiến độ cùng lúc. Nếu quá trình này chỉ được quản lý bằng trao đổi trực tiếp, thư điện tử hoặc bảng tính rời rạc, giảng viên khó có cái nhìn tập trung về trạng thái từng dự án, còn sinh viên dễ thiếu thông tin về công việc cần làm, hạn nộp và phản hồi từ người hướng dẫn.
+Trong các học phần đồ án, nghiên cứu khoa học sinh viên hoặc đồ án tốt nghiệp, sản phẩm cuối cùng chỉ phản ánh một phần kết quả đánh giá. Giảng viên còn phải theo dõi dự án đang hoạt động, nhiệm vụ đã giao, sinh viên phụ trách, bài nộp đang chờ phản hồi, nhóm có nguy cơ chậm tiến độ và minh chứng được dùng khi đánh giá. Khi những thông tin này nằm rải rác trong email, nhóm chat, bảng tính và thư mục lưu file, quá trình giám sát phụ thuộc nhiều vào ghi nhớ thủ công.
 
-UniTrack được xây dựng để giải quyết bài toán quản lý dự án sinh viên theo hướng tập trung. Thay vì coi lớp học hay môn học là trung tâm, hệ thống đặt dự án làm đơn vị chính. Mỗi dự án có thành viên, giảng viên phụ trách, nhiệm vụ chính thức, bài nộp, tài nguyên, minh chứng và lịch sử phản hồi. Cách tổ chức này phù hợp với quy trình giảng viên giao việc, sinh viên thực hiện, sinh viên báo cáo tiến độ và giảng viên đánh giá kết quả.
+Quá trình thực hiện dự án thường có một vòng lặp lặp lại. Giảng viên giao việc trong buổi họp hoặc qua tin nhắn; sinh viên gửi liên kết, ảnh chụp, báo cáo hoặc sản phẩm qua nhiều kênh; phản hồi lại xuất hiện trong một luồng trao đổi khác. Sau một thời gian, cả hai phía phải rà soát lại để xác định phiên bản mới nhất, bài đã được duyệt và bài cần sửa. Hạn chế chủ yếu nằm ở việc nhiệm vụ, bài nộp, minh chứng và quyết định đánh giá chưa được đặt trong cùng một ngữ cảnh dữ liệu.
 
-\section{Mục tiêu và phạm vi đề tài}
+UniTrack được xây dựng từ nhu cầu trên. Hệ thống lựa chọn hướng tiếp cận lấy dự án làm trung tâm: mỗi dự án có giảng viên phụ trách, thành viên sinh viên, mốc kế hoạch, nhiệm vụ chính thức, bài nộp, tài nguyên tham khảo, file minh chứng và lịch sử duyệt bài. Phân hệ chính của sản phẩm được đặt tên là \textit{Workspace}, nhấn mạnh phạm vi sử dụng là không gian làm việc của dự án thay vì mạng xã hội, kho học liệu độc lập hoặc hệ thống chấm điểm số riêng.
 
-Mục tiêu của đề tài là xây dựng một nền tảng Web hỗ trợ giảng viên giám sát tiến độ dự án sinh viên với các chức năng cốt lõi sau:
+\tableintro{tab:student-project-pain-points}{tổng hợp các khó khăn nghiệp vụ khi giảng viên và sinh viên theo dõi dự án bằng nhiều công cụ rời rạc}
+\begin{table}[H]
+\caption{Các khó khăn nghiệp vụ khi giám sát dự án sinh viên bằng công cụ rời rạc}
+\label{tab:student-project-pain-points}
+\centering
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[0.95,l]X[1.45,l]X[1.45,l]},
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Tình huống & Cách làm rời rạc thường gặp & Vấn đề UniTrack cần xử lý \\
+Giao nhiệm vụ & Giảng viên nhắn trong nhóm chat hoặc ghi trong bảng tính & Nhiệm vụ thiếu trạng thái rõ ràng, khó gắn với mốc kế hoạch và người được giao \\
+Nộp tiến độ & Sinh viên gửi link hoặc file qua nhiều kênh & Khó biết bài nộp nào đang chờ duyệt, bài nào đã được trả lại để sửa \\
+Theo dõi minh chứng & Tệp nằm trong Drive, máy cá nhân hoặc tin nhắn & Minh chứng không gắn chặt với bài nộp và có thể bị sửa sau khi duyệt \\
+Quản lý thành viên & Danh sách nhóm được ghi thủ công & Sinh viên không còn active hoặc không thuộc dự án vẫn có thể xuất hiện trong dữ liệu phụ \\
+Tổng hợp tiến độ & Giảng viên rà từng dự án bằng tay & Dễ bỏ sót dự án có bài chờ duyệt, nhiệm vụ quá hạn hoặc nhóm thiếu tiến độ \\
+\end{tblr}
+\end{table}
 
-\begin{itemize}
-  \item Quản lý tài khoản người dùng theo vai trò quản trị viên, giảng viên và sinh viên.
-  \item Quản lý workspace, thư mục lớp và danh sách dự án.
-  \item Tạo, cập nhật và theo dõi dự án cùng thành viên tham gia.
-  \item Tạo nhiệm vụ chính thức, phân công sinh viên, thiết lập hạn nộp và theo dõi trạng thái.
-  \item Cho phép sinh viên nộp báo cáo tiến độ, tài nguyên và tệp minh chứng.
-  \item Cho phép giảng viên xem xét, phản hồi và duyệt bài nộp.
-  \item Cung cấp dashboard tóm tắt công việc cần chú ý theo từng vai trò.
-\end{itemize}
+\section{Mục tiêu đề tài}
 
-Phạm vi đồ án tập trung vào luồng supervision project-first. Các chức năng ngoài phạm vi như mạng xã hội, trò chuyện thời gian thực, thanh toán hoặc hệ thống học liệu độc lập không được triển khai trong phiên bản hiện tại.
+Mục tiêu của đồ án là xây dựng một nền tảng Web hỗ trợ giảng viên giám sát tiến độ dự án sinh viên theo một luồng thống nhất: \textit{Giảng viên -- Dự án -- Nhiệm vụ -- Bài nộp -- Duyệt bài}. Phạm vi hệ thống tập trung vào những thao tác quan trọng nhất để quản lý dự án và phản hồi tiến độ, chưa mở rộng sang toàn bộ hoạt động đào tạo.
+
+Các mục tiêu cụ thể gồm: (i) xây dựng cơ chế đăng nhập bằng tài khoản do quản trị viên tạo, sử dụng cookie-based session thay cho token lưu trong browser; (ii) cho phép quản trị viên tạo tài khoản, đổi vai trò, đổi trạng thái, đặt lại mật khẩu và thu hồi session khi cần thiết; (iii) cung cấp dashboard theo vai trò, ưu tiên bài đang chờ duyệt, nhiệm vụ quá hạn và công việc cần xử lý; (iv) tổ chức \textit{Workspace} gồm thư mục lớp nhẹ và thẻ dự án để giảng viên quản lý nhiều dự án cùng lúc; (v) cho phép giảng viên tạo dự án, quản lý thành viên, đặt trạng thái vòng đời, tạo mốc kế hoạch và nhiệm vụ chính thức; (vi) cho phép sinh viên xem nhiệm vụ được giao, nộp báo cáo tiến độ, thêm resource link và tải file minh chứng cho bài đang chờ duyệt; (vii) cho phép giảng viên duyệt bài nộp bằng các quyết định chấp nhận, yêu cầu sửa hoặc từ chối, đồng thời lưu lịch sử phản hồi; (viii) bảo đảm phân quyền theo vai trò, quan hệ với dự án và trạng thái vòng đời của dự án; (ix) bảo vệ toàn vẹn dữ liệu bằng kiểm tra ở backend trong transaction và ràng buộc ở PostgreSQL; và (x) cung cấp kiểm thử backend cùng Playwright cho những luồng rủi ro cao.
+
+\section{Phạm vi đề tài}
+
+UniTrack hiện tập trung vào quản lý dự án học tập được giảng viên giám sát. Một số tên bảng lịch sử hoặc ý tưởng mở rộng vẫn còn trong migration, nhưng phần sản phẩm đang hoạt động được giữ gọn để tránh biến hệ thống thành nhiều module độc lập không cần thiết.
+
+\tableintro{tab:implementation-scope}{tóm tắt phạm vi triển khai thực tế của UniTrack và phân biệt phần đã hoàn thành với phần còn để phát triển tiếp}
+\begin{table}[H]
+\caption{Phạm vi triển khai thực tế của UniTrack}
+\label{tab:implementation-scope}
+\centering
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[1.0,l]X[2.1,l]X[0.7,c]},
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Nhóm chức năng & Phạm vi trong phiên bản hiện tại & Trạng thái \\
+Xác thực/session & Đăng nhập/đăng xuất/current user, session cookie, kiểm tra origin, giới hạn đăng nhập và thu hồi session & \okbadge \\
+Quản lý tài khoản & Tạo tài khoản, tìm kiếm, đổi vai trò/trạng thái, đặt mật khẩu và hướng dẫn chuyển trạng thái khi tài khoản còn công việc mở & \okbadge \\
+Workspace/thư mục & Thư mục lớp nhẹ, danh sách dự án, chi tiết thư mục, thêm dự án có sẵn và khớp chủ thư mục/giảng viên phụ trách & \okbadge \\
+Dự án/nhóm & Tạo/sửa/xem dự án, trạng thái vòng đời, tổng hợp tiến độ, nhóm, thêm sinh viên active và vai trò leader/member & \okbadge \\
+\stackcell{Nhiệm vụ\\bài nộp} & Mốc kế hoạch, nhiệm vụ, người được giao, bài nộp, trang duyệt bài và trạng thái nhiệm vụ suy ra & \okbadge \\
+Tài nguyên/minh chứng & Resource link, tải lên/tải xuống/xóa file minh chứng, R2 private trong production và khóa dữ liệu sau duyệt & \okbadge \\
+Nhật ký hoạt động & Ghi log cho quản lý tài khoản và thao tác thành viên dự án; chưa có giao diện audit log & \partialbadge \\
+Phân tích quản trị & Chưa có màn hình quản trị toàn bộ dự án hoặc phân tích nâng cao & \futurebadge \\
+\end{tblr}
+\end{table}
+
+Các chức năng không thuộc phạm vi chính gồm: đăng ký công khai, invite link mở, chat thời gian thực, mạng xã hội, hệ thống khóa học độc lập, chấm điểm số chi tiết, rubric phức tạp, thanh toán, thông báo qua email và phân tích dữ liệu nâng cao. Việc loại bỏ những chức năng này giúp hệ thống tập trung vào luồng giám sát dự án và giữ mã nguồn theo từng lát tính năng rõ ràng.
 
 \section{Định hướng giải pháp}
 
-Hệ thống được phát triển dưới dạng ứng dụng Web gồm frontend, backend và cơ sở dữ liệu quan hệ. Frontend cung cấp giao diện cho người dùng thao tác trên trình duyệt. Backend cung cấp API REST, xử lý nghiệp vụ, kiểm tra phân quyền và lưu trữ dữ liệu. Cơ sở dữ liệu PostgreSQL lưu thông tin tài khoản, dự án, thành viên, nhiệm vụ, bài nộp, tài nguyên và tệp minh chứng.
+Hệ thống gồm bốn thành phần chính. Giao diện React hiển thị màn hình, quản lý dữ liệu tạm trên trình duyệt và gọi API. Backend Go cung cấp REST API dưới tiền tố \route{/api/v1}, kiểm tra session, quyền truy cập, dữ liệu đầu vào và trạng thái vòng đời. PostgreSQL lưu dữ liệu nghiệp vụ cùng các ràng buộc toàn vẹn. Lớp storage dùng thư mục cục bộ khi phát triển và Cloudflare R2 private bucket khi triển khai production.
 
-Giải pháp ưu tiên tính rõ ràng, dễ bảo trì và an toàn dữ liệu. Các thao tác quan trọng như thay đổi tài khoản, cập nhật trạng thái dự án, thêm thành viên, nộp bài và duyệt bài đều cần được kiểm tra quyền truy cập và trạng thái hiện tại của dữ liệu.
+\figurelead{fig:solution-overview.png}{khái quát cách giao diện, API, cơ sở dữ liệu và kho minh chứng phối hợp để tạo thành luồng xử lý thống nhất cho hệ thống}
+\figSolutionOverview
 
-\section{Bố cục đồ án}
+Một write request không mặc nhiên hợp lệ chỉ vì giao diện đang hiển thị nút thao tác. Giao diện có trách nhiệm ẩn hoặc vô hiệu hóa thao tác không hợp lệ; backend vẫn là lớp quyết định cuối cùng. Các xử lý quan trọng khóa dòng dự án trong transaction để kiểm tra lại quyền quản lý, trạng thái vòng đời và trạng thái đối tượng mới nhất trước khi ghi dữ liệu. Với những ràng buộc có thể bị phá bởi thao tác đồng thời hoặc ghi trực tiếp vào cơ sở dữ liệu, PostgreSQL tiếp tục bảo vệ bằng khóa ngoại, chỉ mục duy nhất và trigger.
 
-Báo cáo gồm sáu chương. Chương 1 giới thiệu bài toán, mục tiêu và phạm vi đề tài. Chương 2 trình bày khảo sát và phân tích yêu cầu. Chương 3 mô tả công nghệ sử dụng. Chương 4 trình bày thiết kế, triển khai và đánh giá hệ thống. Chương 5 tổng hợp các giải pháp và đóng góp nổi bật. Chương 6 kết luận và đưa ra hướng phát triển tiếp theo.
+\begin{artifactnote}{Nguyên tắc thiết kế xuyên suốt}
+UniTrack kiểm tra đồng thời ba yếu tố: \textit{người dùng là ai}, \textit{người dùng liên quan thế nào với dự án}, và \textit{dự án đang ở trạng thái nào}. Với dữ liệu phụ như nhiệm vụ, bài nộp, resource link hoặc file minh chứng, hệ thống còn xác nhận đối tượng đó thật sự thuộc cùng dự án. Đây là điểm khác biệt quan trọng giữa một ứng dụng CRUD đơn giản và một hệ thống quản lý tiến độ có nhiều trạng thái nghiệp vụ.
+\end{artifactnote}
+
+\section{Bố cục báo cáo}
+
+Bố cục báo cáo gồm sáu chương. Chương 1 đặt vấn đề từ thực tế giám sát dự án sinh viên, xác định mục tiêu, phạm vi triển khai và nguyên tắc giải pháp của UniTrack. Phần này giúp người đọc nắm rõ lý do hệ thống chọn hướng project-first trước khi đi vào đặc tả chi tiết.
+
+Chương 2 phân tích bài toán nghiệp vụ qua hiện trạng sử dụng công cụ rời rạc, nhóm tác nhân, use case trọng tâm, quy trình nghiệp vụ và các yêu cầu chức năng/phi chức năng. Các nội dung trong chương này là cơ sở để đối chiếu thiết kế và kết quả triển khai ở những chương sau.
+
+Chương 3 giới thiệu các nền tảng lý thuyết và công nghệ được dùng trong đồ án, gồm kiến trúc ứng dụng Web, REST API, session cookie, transaction, ràng buộc dữ liệu và bộ công nghệ React, Go, PostgreSQL. Trọng tâm của chương là giải thích vì sao những công nghệ đó phù hợp với bài toán giám sát dự án có phân quyền và trạng thái nghiệp vụ.
+
+Chương 4 mô tả thiết kế và triển khai hệ thống: kiến trúc tổng quan, request boundary, route/API, gói mã nguồn, mô hình dữ liệu, giao diện, công cụ, kết quả chức năng, kiểm thử và triển khai tham khảo. Chương này cũng cung cấp các bảng, sơ đồ và ảnh giao diện để nối yêu cầu nghiệp vụ với mã nguồn thực tế.
+
+Chương 5 đi sâu vào các giải pháp có giá trị kỹ thuật nổi bật, như session an toàn hơn token lưu trong browser, kiểm soát truy cập theo dự án, khóa vòng đời trong transaction, ràng buộc toàn vẹn dữ liệu ở PostgreSQL và bảo toàn minh chứng sau duyệt. Các phần này làm rõ phần đóng góp riêng của đồ án so với một ứng dụng CRUD đơn giản.
+
+Chương 6 tổng hợp kết quả đạt được, so sánh UniTrack với cách quản lý bằng công cụ rời rạc, nêu các hạn chế còn tồn tại và đề xuất hướng phát triển tiếp theo. Nội dung cuối báo cáo giúp xác định phần nào đã sẵn sàng sử dụng và phần nào cần tiếp tục hoàn thiện trong các phiên bản sau.
+
+Từ phạm vi đã xác định, báo cáo chuyển sang phân tích tác nhân, use case, quy trình nghiệp vụ và yêu cầu hệ thống ở Chương 2.

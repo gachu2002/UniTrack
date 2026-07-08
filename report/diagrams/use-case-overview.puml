@@ -1,0 +1,59 @@
+@startdot
+digraph G {
+  graph [rankdir=LR, bgcolor="white", splines=line, nodesep=0.78, ranksep=1.28, pad=0.24, margin=0.05];
+  node [fontname="DejaVu Sans", fontsize=17, color="#111111", fontcolor="#111111", margin="0.18,0.10", penwidth=1.2];
+  edge [color="#111111", arrowsize=0.78, penwidth=1.2];
+
+  Admin [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Quản trị viên</TD></TR>
+    </TABLE>
+  >];
+  Teacher [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Giảng viên</TD></TR>
+    </TABLE>
+  >];
+  Student [shape=none, margin=0, label=<
+    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><FONT POINT-SIZE="28">○</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">┼</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="24">╱ ╲</FONT></TD></TR>
+      <TR><TD>Sinh viên</TD></TR>
+    </TABLE>
+  >];
+
+  { rank=same; Admin; Teacher; }
+
+  subgraph cluster_system {
+    label="Biên hệ thống UniTrack";
+    color="#111111";
+    fontname="DejaVu Sans";
+    fontsize=17;
+    style="rounded";
+    margin=28;
+    Session [shape=ellipse, label="Đăng nhập\nvà quản lý session"];
+    Accounts [shape=ellipse, label="Quản trị\ntài khoản"];
+    Dashboard [shape=ellipse, label="Theo dõi dashboard\ntheo vai trò"];
+    Workspace [shape=ellipse, label="Quản lý Workspace\nvà dự án"];
+    Plan [shape=ellipse, label="Quản lý kế hoạch\nvà nhiệm vụ"];
+    SubmitReview [shape=ellipse, label="Nộp bài\nvà duyệt bài"];
+  }
+
+  Admin -> Session;
+  Admin -> Accounts;
+  Admin -> Dashboard;
+  Admin -> Workspace;
+  Teacher -> Workspace;
+  Teacher -> Plan;
+  Teacher -> SubmitReview;
+  Dashboard -> Student [dir=back];
+  SubmitReview -> Student [dir=back];
+}
+@enddot

@@ -43,7 +43,7 @@ make db-validate
 
 Playwright usage:
 
-| Workflow | Command | Purpose |
+| Mode | Command | Purpose |
 | --- | --- | --- |
 | Regression tests | `pnpm --filter @unitrack/web test:e2e` | Repeatable browser tests and HTML reports. |
 | Headed tests | `pnpm --filter @unitrack/web test:e2e:headed` | Run the same tests in a visible browser. |
@@ -79,4 +79,4 @@ Default local admin account when using `make api-run-local`:
 
 ## References
 
-Use `docs/project.md` for current repository status and `docs/features/` for feature onboarding references. This checkout currently does not include a `references/` directory.
+Use `docs/project.md` for current repository status, `docs/engineering-guide.md` for task-based change and verification guidance, and `docs/features/` for feature onboarding references. This checkout currently does not include a `references/` directory.
