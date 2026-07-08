@@ -56,6 +56,20 @@ func (s *Server) handleListResourceLinks(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusForbidden, "you do not have access to this project")
 		return
 	}
+	if wantsPaginatedResponse(r.URL.Query()) {
+		pagination, err := parsePaginationParams(r.URL.Query(), 100, 500)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid resource link pagination")
+			return
+		}
+		resources, total, err := s.listResourceLinksPage(r.Context(), projectID, pagination.Limit, pagination.Offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load resource links")
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse[ResourceLinkDTO]{Items: resources, Page: pagination.Page, Limit: pagination.Limit, Total: total})
+		return
+	}
 
 	resources, err := s.listResourceLinks(r.Context(), projectID)
 	if err != nil {
@@ -366,6 +380,28 @@ func (s *Server) listResourceLinks(ctx context.Context, projectID string) ([]Res
 		resources = append(resources, resource)
 	}
 	return resources, rows.Err()
+}
+
+func (s *Server) listResourceLinksPage(ctx context.Context, projectID string, limit int, offset int) ([]ResourceLinkDTO, int64, error) {
+	var total int64
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::bigint FROM resource_links WHERE project_id = $1`, projectID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.Query(ctx, resourceLinkSelectSQL("WHERE rl.project_id = $1", "ORDER BY rl.created_at DESC LIMIT $2 OFFSET $3"), projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	resources := []ResourceLinkDTO{}
+	for rows.Next() {
+		resource, err := scanResourceLink(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		resources = append(resources, resource)
+	}
+	return resources, total, rows.Err()
 }
 
 func (s *Server) getResourceLinkByID(ctx context.Context, resourceID string) (ResourceLinkDTO, error) {

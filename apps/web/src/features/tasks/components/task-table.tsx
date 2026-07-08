@@ -1,12 +1,16 @@
 import { ArrowUpRight, CalendarClock } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { EmptyState } from '@/components/shared/empty-state'
 import { StatusBadge } from '@/components/shared/status-badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { SortableTableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getAssignmentState } from '@/features/tasks/assignment-state'
 import { formatDate } from '@/lib/format'
+import { dateSortValue, sortItems, toggleSort, type SortState } from '@/lib/sort'
 import type { Task } from '@/types/api'
+
+type TaskSortKey = 'assignment' | 'project' | 'checkpoint' | 'due' | 'assignees' | 'state' | 'priority' | 'attention'
 
 interface TaskTableProps {
   tasks?: Task[] | null
@@ -19,6 +23,18 @@ interface TaskTableProps {
 
 export function TaskTable({ tasks, emptyTitle, emptyMessage, showProject = false, showAssignees = true, showAttention = false }: TaskTableProps) {
   const items = tasks ?? []
+  const [sort, setSort] = useState<SortState<TaskSortKey> | null>(null)
+  const sortedItems = sortItems(items, sort, {
+    assignment: (task) => task.title,
+    project: (task) => task.projectName,
+    checkpoint: (task) => task.milestoneTitle || '',
+    due: (task) => dateSortValue(task.deadline),
+    assignees: (task) => assigneeText(task),
+    state: (task) => getAssignmentState(task).label,
+    priority: (task) => priorityRank(task.priority),
+    attention: (task) => attentionRank(task),
+  })
+  const onSort = (key: TaskSortKey) => setSort((current) => toggleSort(current, key))
 
   if (items.length === 0) {
     return <EmptyState title={emptyTitle} message={emptyMessage} />
@@ -29,19 +45,19 @@ export function TaskTable({ tasks, emptyTitle, emptyMessage, showProject = false
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Assignment</TableHead>
-            {showProject ? <TableHead className="hidden md:table-cell">Project</TableHead> : null}
-            <TableHead className="hidden xl:table-cell">Checkpoint</TableHead>
-            <TableHead>Due</TableHead>
-            {showAssignees ? <TableHead className="hidden lg:table-cell">Assignees</TableHead> : null}
-            <TableHead>State</TableHead>
-            <TableHead>Priority</TableHead>
-            {showAttention ? <TableHead>Attention</TableHead> : null}
+            <SortableTableHead sortKey="assignment" sort={sort} onSort={onSort}>Assignment</SortableTableHead>
+            {showProject ? <SortableTableHead sortKey="project" sort={sort} onSort={onSort} className="hidden md:table-cell">Project</SortableTableHead> : null}
+            <SortableTableHead sortKey="checkpoint" sort={sort} onSort={onSort} className="hidden xl:table-cell">Checkpoint</SortableTableHead>
+            <SortableTableHead sortKey="due" sort={sort} onSort={onSort}>Due</SortableTableHead>
+            {showAssignees ? <SortableTableHead sortKey="assignees" sort={sort} onSort={onSort} className="hidden lg:table-cell">Assignees</SortableTableHead> : null}
+            <SortableTableHead sortKey="state" sort={sort} onSort={onSort}>State</SortableTableHead>
+            <SortableTableHead sortKey="priority" sort={sort} onSort={onSort}>Priority</SortableTableHead>
+            {showAttention ? <SortableTableHead sortKey="attention" sort={sort} onSort={onSort}>Attention</SortableTableHead> : null}
             <TableHead className="w-20 text-right">Open</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((task) => {
+          {sortedItems.map((task) => {
             const assignmentState = getAssignmentState(task)
             return (
             <TableRow key={task.id} className={assignmentState.key === 'overdue' ? 'bg-red-50/70 hover:bg-red-50' : undefined}>
@@ -84,4 +100,18 @@ export function TaskTable({ tasks, emptyTitle, emptyMessage, showProject = false
 
 function assigneeText(task: Task) {
   return task.assignees.length > 0 ? task.assignees.map((assignee) => assignee.fullName).join(', ') : 'No assignee'
+}
+
+function priorityRank(priority: Task['priority']) {
+  return { high: 0, medium: 1, low: 2 }[priority]
+}
+
+function attentionRank(task: Task) {
+  if (task.pendingReviewCount > 0) {
+    return 0
+  }
+  if (task.isOverdue) {
+    return 1
+  }
+  return 2
 }

@@ -17,7 +17,7 @@ test('protected app exposes a keyboard skip link', async ({ page }) => {
 
   await signIn(page)
   await page.goto('/dashboard')
-  await expect(page.getByRole('heading', { name: 'Review queue' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review work' })).toBeVisible()
   await page.evaluate(() => {
     document.body.setAttribute('tabindex', '-1')
     document.body.focus()

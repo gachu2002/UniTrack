@@ -192,8 +192,9 @@ type CourseSectionDTO struct {
 }
 
 type CourseSectionDetailDTO struct {
-	ClassFolder CourseSectionDTO `json:"classFolder"`
-	Projects    []ProjectDTO     `json:"projects"`
+	ClassFolder  CourseSectionDTO               `json:"classFolder"`
+	Projects     []ProjectDTO                   `json:"projects"`
+	ProjectsPage *paginatedResponse[ProjectDTO] `json:"projectsPage,omitempty"`
 }
 
 type DashboardDTO struct {

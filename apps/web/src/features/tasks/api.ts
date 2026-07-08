@@ -18,6 +18,13 @@ export interface UpdateTaskInput extends Partial<CreateTaskInput> {
   officialProgressState?: Task['officialProgressState']
 }
 
+export interface AdjustTaskStatusInput {
+  projectId: string
+  taskId: string
+  officialProgressState: Extract<Task['officialProgressState'], 'in_progress' | 'needs_changes' | 'completed'>
+  reason?: string
+}
+
 export interface SubmitProgressInput {
   projectId: string
   taskId: string
@@ -46,6 +53,14 @@ export async function getTask(projectId: string, taskId: string) {
 
 export async function updateTask({ projectId, taskId, ...input }: UpdateTaskInput) {
   const { data } = await apiClient.patch<TaskDetail>(`/projects/${projectId}/tasks/${taskId}`, input)
+  return data
+}
+
+export async function adjustTaskStatus({ projectId, taskId, officialProgressState, reason }: AdjustTaskStatusInput) {
+  const { data } = await apiClient.post<TaskDetail>(`/projects/${projectId}/tasks/${taskId}/status-adjustments`, {
+    officialProgressState,
+    reason,
+  })
   return data
 }
 

@@ -41,6 +41,20 @@ func (s *Server) handleListMilestones(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "you do not have access to this project")
 		return
 	}
+	if wantsPaginatedResponse(r.URL.Query()) {
+		pagination, err := parsePaginationParams(r.URL.Query(), 100, 500)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid milestone list pagination")
+			return
+		}
+		milestones, total, err := s.listProjectMilestonesPage(r.Context(), projectID, pagination.Limit, pagination.Offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load milestones")
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse[MilestoneDTO]{Items: milestones, Page: pagination.Page, Limit: pagination.Limit, Total: total})
+		return
+	}
 
 	milestones, err := s.listProjectMilestones(r.Context(), projectID)
 	if err != nil {
@@ -441,6 +455,28 @@ func (s *Server) listProjectMilestones(ctx context.Context, projectID string) ([
 		milestones = append(milestones, milestone)
 	}
 	return milestones, rows.Err()
+}
+
+func (s *Server) listProjectMilestonesPage(ctx context.Context, projectID string, limit int, offset int) ([]MilestoneDTO, int64, error) {
+	var total int64
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::bigint FROM project_milestones WHERE project_id = $1`, projectID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.Query(ctx, milestoneSelectSQL(`WHERE m.project_id = $1`, `ORDER BY m.sort_order ASC, m.target_date ASC NULLS LAST, m.created_at ASC LIMIT $2 OFFSET $3`), projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	milestones := []MilestoneDTO{}
+	for rows.Next() {
+		milestone, err := scanMilestone(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		milestones = append(milestones, milestone)
+	}
+	return milestones, total, rows.Err()
 }
 
 func (s *Server) getProjectMilestone(ctx context.Context, projectID string, milestoneID string) (MilestoneDTO, error) {

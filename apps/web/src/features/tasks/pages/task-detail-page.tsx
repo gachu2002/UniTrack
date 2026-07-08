@@ -3,7 +3,7 @@ import { ArrowLeft, CalendarClock, CheckCircle2, ClipboardList, Clock, ExternalL
 import { useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
-import { PageHeader, PageHeaderPill } from '@/components/layout/page-header'
+import { PageHeader } from '@/components/layout/page-header'
 import { ErrorState } from '@/components/shared/error-state'
 import { ForbiddenState } from '@/components/shared/forbidden-state'
 import { LoadingState } from '@/components/shared/loading-state'
@@ -19,8 +19,9 @@ import { filesForTarget } from '@/features/files/utils'
 import { getAssignmentState, type AssignmentState } from '@/features/tasks/assignment-state'
 import { getTask } from '@/features/tasks/api'
 import { ProgressTimeline } from '@/features/tasks/components/progress-timeline'
-import { EditTaskForm, ReviewProgressForm, SubmitProgressForm } from '@/features/tasks/components/task-forms'
+import { AdjustTaskStatusForm, EditTaskForm, ReviewProgressForm, SubmitProgressForm } from '@/features/tasks/components/task-forms'
 import { formatDate, formatDateTime, titleize } from '@/lib/format'
+import { isForbiddenError } from '@/lib/axios'
 import { canManageProject, canReviewProgress, projectAcceptsPlanChanges, projectAcceptsReviews, projectAcceptsStudentSubmissions, projectAcceptsSupportChanges } from '@/lib/permissions'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
@@ -32,6 +33,7 @@ export function TaskDetailPage() {
   const resolvedProjectId = projectId || ''
   const resolvedTaskId = taskId || ''
   const [editOpen, setEditOpen] = useState(false)
+  const [statusOpen, setStatusOpen] = useState(false)
   const [progressOpen, setProgressOpen] = useState(false)
   const [resourceTarget, setResourceTarget] = useState<ResourceLinkTarget | null>(null)
   const user = useAuthStore((state) => state.user)
@@ -53,7 +55,10 @@ export function TaskDetailPage() {
     return <LoadingState label="Loading assignment" />
   }
   if (taskQuery.isError) {
-    return <ForbiddenState message="This assignment is restricted, missing, or temporarily unavailable." onRetry={() => void taskQuery.refetch()} />
+    if (isForbiddenError(taskQuery.error)) {
+      return <ForbiddenState message="This assignment is restricted or missing." onRetry={() => void taskQuery.refetch()} />
+    }
+    return <ErrorState message="The assignment could not be loaded." onRetry={() => void taskQuery.refetch()} />
   }
   if (!taskQuery.data) {
     return <ErrorState message="The assignment returned no data." onRetry={() => void taskQuery.refetch()} />
@@ -66,6 +71,7 @@ export function TaskDetailPage() {
   const evidenceDataReady = filesQuery.isSuccess
   const canReview = canReviewUser && projectAcceptsReviews(project)
   const canEditAssignment = canReviewUser && projectAcceptsPlanChanges(project)
+  const canAdjustStatus = canManageProjectSupport && projectAcceptsPlanChanges(project)
   const canManageResources = projectAcceptsSupportChanges(project) && resourcesQuery.isSuccess && (project?.status === 'active' || canManageProjectSupport)
   const canManageEvidence = evidenceDataReady && canManageProjectSupport && projectAcceptsSupportChanges(project)
   const canDeleteOwnEvidence = evidenceDataReady && project?.status === 'active'
@@ -103,6 +109,12 @@ export function TaskDetailPage() {
   const taskResources = resourcesForTarget(resources, 'task', detail.task.id)
   const pendingReviewUpdate = detail.progressUpdates.find((update) => update.reviewStatus === 'pending_review')
   const historyUpdates = pendingReviewUpdate ? detail.progressUpdates.filter((update) => update.id !== pendingReviewUpdate.id) : detail.progressUpdates
+  const statusAdjustmentDisabledReason = pendingReviewUpdate ? 'Review the pending submission before adjusting status.' : undefined
+  const resourceTargetUpdate = resourceTarget?.type === 'progress_update' ? detail.progressUpdates.find((update) => update.id === resourceTarget.id) : undefined
+  const resourceTargetWritable = !resourceTarget || resourceTarget.type !== 'progress_update' || resourceTargetUpdate?.reviewStatus === 'pending_review'
+  const resourceTargetReadOnlyMessage = resourceTarget?.type === 'progress_update' && resourceTargetUpdate && resourceTargetUpdate.reviewStatus !== 'pending_review'
+    ? 'This submission has already been reviewed, so its resource links are read-only.'
+    : undefined
 
   return (
     <div className="space-y-7">
@@ -113,10 +125,13 @@ export function TaskDetailPage() {
           <EditAssignmentDataState isError={membersQuery.isError || milestonesQuery.isError} onRetry={() => { void membersQuery.refetch(); void milestonesQuery.refetch() }} />
         )}
       </Dialog>
+      <Dialog open={statusOpen} onOpenChange={setStatusOpen} title="Adjust assignment status" description="Use this when work was checked outside UniTrack. Submission, review, and evidence history stays unchanged.">
+        <AdjustTaskStatusForm projectId={resolvedProjectId} task={detail.task} disabledReason={statusAdjustmentDisabledReason} onAdjusted={() => setStatusOpen(false)} />
+      </Dialog>
       <Dialog open={progressOpen} onOpenChange={setProgressOpen} title="Submit work" description="Share completed work or blockers. Evidence files can be attached after the submission appears below.">
         <SubmitProgressForm projectId={resolvedProjectId} taskId={resolvedTaskId} onSubmitted={() => setProgressOpen(false)} />
       </Dialog>
-      <ResourceLinkDialog key={resourceDialogKey(resourceTarget)} projectId={resolvedProjectId} target={resourceTarget} resources={resources} canCreate={canManageResources} canManageAll={canReviewUser && canManageResources} onClose={() => setResourceTarget(null)} />
+      <ResourceLinkDialog key={resourceDialogKey(resourceTarget)} projectId={resolvedProjectId} target={resourceTarget} resources={resources} canCreate={canManageResources && resourceTargetWritable} canManageAll={canReviewUser && canManageResources && resourceTargetWritable} readOnlyMessage={resourceTargetReadOnlyMessage} onClose={() => setResourceTarget(null)} />
 
       <AssignmentHeader
         task={detail.task}
@@ -124,9 +139,12 @@ export function TaskDetailPage() {
         projectId={resolvedProjectId}
         canReview={canReview}
         canEditAssignment={canEditAssignment}
+        canAdjustStatus={canAdjustStatus}
         editDisabledReason={editDisabledReason}
+        statusAdjustmentDisabledReason={statusAdjustmentDisabledReason}
         canSubmitProgress={canSubmitProgress}
         onEdit={() => setEditOpen(true)}
+        onAdjustStatus={() => setStatusOpen(true)}
         onSubmitProgress={() => setProgressOpen(true)}
       />
 
@@ -155,13 +173,12 @@ export function TaskDetailPage() {
           onManageResources={() => setResourceTarget({ type: 'task', id: detail.task.id, label: detail.task.title, eyebrow: 'Assignment resources' })}
         />
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_21rem] xl:items-start">
-          <main className="min-w-0 space-y-6">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+          <div className="min-w-0 space-y-6">
             <AssignmentWorkflowPanel projectId={resolvedProjectId} task={detail.task} project={project} updates={detail.progressUpdates} state={assignmentState} canReview={canReview} isAssignedStudent={isAssignedStudent} canSubmitProgress={canSubmitProgress} onSubmitProgress={() => setProgressOpen(true)} />
-            <AssignmentBrief task={detail.task} state={assignmentState} />
             {supportDataNotice ? <SupportDataNotice message={supportDataNotice} isError={supportDataIsError} onRetry={retrySupportData} /> : null}
-            <ProgressTimeline projectId={resolvedProjectId} updates={detail.progressUpdates} canReview={canReview} canUploadEvidence={canUploadEvidence} canManageEvidence={canManageEvidence} canDeleteOwnEvidence={canDeleteOwnEvidence} currentUserId={user?.id} uploadedFiles={files} resourceLinks={resources} canManageResources={canManageResources} onManageResources={(update) => setResourceTarget({ type: 'progress_update', id: update.id, label: update.title || 'Submission resources', eyebrow: 'Submission resources' })} showReviewForms={false} title="History" description="Submission and review history for this assignment." />
-          </main>
+            <ProgressTimeline projectId={resolvedProjectId} updates={detail.progressUpdates} canReview={canReview} canUploadEvidence={canUploadEvidence} canManageEvidence={canManageEvidence} canDeleteOwnEvidence={canDeleteOwnEvidence} currentUserId={user?.id} uploadedFiles={files} resourceLinks={resources} canManageResources={canManageResources} onManageResources={(update) => setResourceTarget({ type: 'progress_update', id: update.id, label: update.title || 'Submission resources', eyebrow: 'Submission resources' })} showReviewForms={false} title="History" description="Submission and review history for this assignment." compact />
+          </div>
 
           <AssignmentAside
             task={detail.task}
@@ -183,17 +200,18 @@ function TeacherReviewDesk({ projectId, task, project, update, historyUpdates, u
   const showEvidence = canUploadToUpdate || updateFiles.length > 0
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
-      <main className="min-w-0 space-y-5">
-        <section className="rounded-2xl border border-border bg-white/90 p-5 shadow-sm">
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+      <div className="min-w-0 space-y-5">
+        <section className="rounded-xl border border-border bg-white/90 p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Submission to review</p>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Current submission</p>
               <h2 className="mt-1 break-words font-heading text-2xl font-semibold tracking-tight text-ink">{update.title || 'Submission'}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Submitted by {update.submittedByName} · {formatDateTime(update.createdAt)}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{task.title} · Submitted by {update.submittedByName} · {formatDateTime(update.createdAt)}</p>
             </div>
             <StatusBadge value={update.reviewStatus} />
           </div>
+          <ReviewContextLine task={task} project={project} />
           <p className="mt-4 max-w-4xl break-words text-sm leading-7 text-muted-foreground">{update.description}</p>
           {update.blockers ? <p className="mt-3 inline-flex items-start gap-2 break-words rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900"><MessageSquareWarning className="mt-0.5 size-4 shrink-0" /> {update.blockers}</p> : null}
           {(updateResources.length > 0 || canManageResources) ? (
@@ -202,22 +220,22 @@ function TeacherReviewDesk({ projectId, task, project, update, historyUpdates, u
               {canManageResources ? <ResourceLinkButton count={updateResources.length} onClick={() => onManageSubmissionResources(update)} ariaLabel={`Manage resources for submission ${update.title || update.id}`} /> : null}
             </div>
           ) : null}
-          {showEvidence ? <EvidenceFilePanel projectId={projectId} targetType="progress_update" targetId={update.id} files={updateFiles} canUpload={canUploadToUpdate} canManage={canManageEvidence} canDeleteOwn={canDeleteOwnEvidence} currentUserId={currentUserId} description="Attach or inspect files that support this submission." /> : null}
+          {showEvidence ? <EvidenceFilePanel projectId={projectId} targetType="progress_update" targetId={update.id} files={updateFiles} canUpload={canUploadToUpdate} canManage={canManageEvidence} canDeleteOwn={canDeleteOwnEvidence} currentUserId={currentUserId} description="Attach or inspect files that support this submission." compact /> : null}
         </section>
         {supportDataNotice ? <SupportDataNotice message={supportDataNotice} isError={supportDataIsError} onRetry={onRetrySupportData} /> : null}
 
-        <AssignmentContextStrip task={task} project={project} resources={taskResources} canManageResources={canManageResources} onManageResources={onManageResources} />
-        <AssignmentBrief task={task} state={getAssignmentState(task)} />
-        <ProgressTimeline projectId={projectId} updates={historyUpdates} canReview={false} canUploadEvidence={canUploadEvidence} canManageEvidence={canManageEvidence} canDeleteOwnEvidence={canDeleteOwnEvidence} currentUserId={currentUserId} uploadedFiles={uploadedFiles} resourceLinks={resourceLinks} canManageResources={canManageResources} onManageResources={onManageSubmissionResources} showReviewForms={false} title="History" description="Earlier submissions and review decisions." emptyTitle="No earlier history" emptyMessage="This is the only submission for this assignment." />
-      </main>
+        <ProgressTimeline projectId={projectId} updates={historyUpdates} canReview={false} canUploadEvidence={canUploadEvidence} canManageEvidence={canManageEvidence} canDeleteOwnEvidence={canDeleteOwnEvidence} currentUserId={currentUserId} uploadedFiles={uploadedFiles} resourceLinks={resourceLinks} canManageResources={canManageResources} onManageResources={onManageSubmissionResources} showReviewForms={false} title="Earlier history" description="Previous submissions and decisions." emptyTitle="No earlier history" emptyMessage="This is the only submission for this assignment." compact />
+      </div>
 
-      <aside id="assignment-workflow" className="scroll-mt-24 rounded-2xl border border-primary/20 bg-white p-4 shadow-sm xl:sticky xl:top-6 xl:max-h-[calc(100svh-3rem)] xl:overflow-y-auto">
+      <aside id="assignment-workflow" className="scroll-mt-24 rounded-xl border border-primary/20 bg-white p-4 shadow-sm xl:sticky xl:top-6 xl:max-h-[calc(100svh-3rem)] xl:overflow-y-auto">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Decision</p>
         <h2 className="mt-1 font-heading text-xl font-semibold tracking-tight text-ink">Review outcome</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">Choose the next state and add guidance when the student needs another pass.</p>
-        <div className="mt-4 border-t border-border pt-4">
+        <div className="mt-4">
           <ReviewProgressForm projectId={projectId} update={update} compact disabledReason={reviewDisabledReason} />
         </div>
+        {task.description ? <div className="mt-4"><AssignmentInstructionsDisclosure task={task} /></div> : null}
+        {(taskResources.length > 0 || canManageResources) ? <div className="mt-4"><AssignmentResourcesPanel resources={taskResources} canManageResources={canManageResources} onManageResources={onManageResources} /></div> : null}
       </aside>
     </div>
   )
@@ -245,26 +263,22 @@ function SupportDataNotice({ message, isError, onRetry, retryLabel = 'Retry supp
   )
 }
 
-function AssignmentContextStrip({ task, project, resources, canManageResources, onManageResources }: { task: Task; project?: Project; resources: ResourceLink[]; canManageResources: boolean; onManageResources: () => void }) {
+function ReviewContextLine({ task, project }: { task: Task; project?: Project }) {
   return (
-    <section className="rounded-2xl border border-border bg-paper/70 px-4 py-3">
-      <div className="grid gap-3 md:grid-cols-4">
-        {project ? <ContextFact label="Project" value={project.name} /> : null}
-        <ContextFact label="Due" value={deadlineText(task)} />
-        <ContextFact label="Checkpoint" value={task.milestoneTitle || 'Missing checkpoint'} />
-        <ContextFact label="Assigned" value={assigneeText(task)} />
-      </div>
-      {(resources.length > 0 || canManageResources) ? <div className="mt-3 border-t border-border pt-3"><ResourceLinkShelf title="Assignment resources" resources={resources} canCreate={canManageResources} onManage={canManageResources ? onManageResources : undefined} compact /></div> : null}
-    </section>
+    <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-muted-foreground">
+      {project ? <span>Project: <span className="text-ink">{project.name}</span></span> : null}
+      <span>Due: <span className="text-ink">{deadlineText(task)}</span></span>
+      <span>Checkpoint: <span className="text-ink">{task.milestoneTitle || 'Missing checkpoint'}</span></span>
+      <span>Assigned: <span className="text-ink">{assigneeText(task)}</span></span>
+    </p>
   )
 }
 
-function ContextFact({ label, value }: { label: string; value: string }) {
+function AssignmentResourcesPanel({ resources, canManageResources, onManageResources }: { resources: ResourceLink[]; canManageResources: boolean; onManageResources: () => void }) {
   return (
-    <div className="min-w-0">
-      <p className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-ink" title={value}>{value}</p>
-    </div>
+    <section className="rounded-xl border border-border bg-card/90 px-4 py-3 shadow-sm">
+      <ResourceLinkShelf title="Assignment resources" resources={resources} canCreate={canManageResources} onManage={canManageResources ? onManageResources : undefined} compact />
+    </section>
   )
 }
 
@@ -327,7 +341,7 @@ function AssignmentWorkflowPanel({ projectId, task, project, updates, state, can
 
   if (isAssignedStudent && canSubmitProgress) {
     return (
-      <AssignmentWorkflowShell eyebrow="Student workflow" title={task.isOverdue ? 'Submit overdue work' : 'Submit work when ready'} description={task.isOverdue ? 'The deadline has passed. Submit evidence or explain blockers so the supervisor can respond.' : 'Use the brief below, then submit progress for teacher review.'} tone={task.isOverdue ? 'red' : 'blue'} badge={<StatusBadge value={state.key} tone={state.tone} />}>
+      <AssignmentWorkflowShell eyebrow="Student workflow" title={task.isOverdue ? 'Submit overdue work' : 'Submit work when ready'} description={task.isOverdue ? 'The deadline has passed. Submit evidence or explain blockers so the supervisor can respond.' : 'Submit progress when your assigned work is ready for teacher review.'} tone={task.isOverdue ? 'red' : 'blue'} badge={<StatusBadge value={state.key} tone={state.tone} />}>
         <Button type="button" onClick={onSubmitProgress}><Send className="size-4" /> Submit work</Button>
       </AssignmentWorkflowShell>
     )
@@ -342,7 +356,7 @@ function AssignmentWorkflowPanel({ projectId, task, project, updates, state, can
   }
 
   return (
-    <AssignmentWorkflowShell eyebrow={canReview ? 'Teacher workflow' : 'Assignment state'} title={canReview ? 'No submission is waiting' : 'Read-only assignment'} description={canReview ? 'Use the brief and submission timeline below for context, or edit the assignment from the header.' : 'This assignment is readable, but the current project state or assignment state does not allow a new submission.'} tone="slate" badge={<StatusBadge value={state.key} tone={state.tone} />}>
+    <AssignmentWorkflowShell eyebrow={canReview ? 'Teacher workflow' : 'Assignment state'} title={canReview ? 'No submission is waiting' : 'Read-only assignment'} description={canReview ? 'Use the submission timeline below for context, or edit the assignment from the header.' : 'This assignment is readable, but the current project state or assignment state does not allow a new submission.'} tone="slate" badge={<StatusBadge value={state.key} tone={state.tone} />}>
       {latestUpdate ? <WorkflowSubmissionCard update={latestUpdate} /> : <p className="rounded-xl border border-dashed border-border bg-paper/70 px-4 py-3 text-sm text-muted-foreground">No student submission has been recorded yet.</p>}
     </AssignmentWorkflowShell>
   )
@@ -350,7 +364,7 @@ function AssignmentWorkflowPanel({ projectId, task, project, updates, state, can
 
 function AssignmentWorkflowShell({ eyebrow, title, description, tone, badge, children }: { eyebrow: string; title: string; description: string; tone: AssignmentState['tone']; badge: ReactNode; children: ReactNode }) {
   return (
-    <section id="assignment-workflow" className={cn('scroll-mt-24 rounded-[1.5rem] border p-5 shadow-sm', workflowToneClasses(tone))}>
+    <section id="assignment-workflow" className={cn('scroll-mt-24 rounded-xl border p-4 shadow-sm sm:p-5', workflowToneClasses(tone))}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-3xl">
           <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-75">{eyebrow}</p>
@@ -366,7 +380,7 @@ function AssignmentWorkflowShell({ eyebrow, title, description, tone, badge, chi
 
 function WorkflowSubmissionCard({ update }: { update: ProgressUpdate }) {
   return (
-    <article className="rounded-2xl border border-border bg-white/85 px-4 py-3 text-sm text-ink shadow-sm">
+    <article className="rounded-xl border border-border bg-white/85 px-4 py-3 text-sm text-ink shadow-sm">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="break-words font-heading text-base font-semibold tracking-tight">{update.title || 'Submission'}</p>
@@ -383,7 +397,7 @@ function WorkflowSubmissionCard({ update }: { update: ProgressUpdate }) {
 function WorkflowReviewNote({ update }: { update: ProgressUpdate }) {
   const review = update.latestReview
   return (
-    <article className="rounded-2xl border border-amber-200 bg-white/85 px-4 py-3 text-sm text-amber-950 shadow-sm">
+    <article className="rounded-xl border border-amber-200 bg-white/85 px-4 py-3 text-sm text-amber-950 shadow-sm">
       <p className="font-semibold">Latest teacher guidance</p>
       {review?.reviewComment ? <p className="mt-2 break-words leading-6">{review.reviewComment}</p> : <p className="mt-2 leading-6 text-muted-foreground">Open the submission timeline below for the full review context.</p>}
       {review ? <p className="mt-2 text-xs text-amber-800">Reviewed by {review.reviewedByName} · {formatDateTime(review.reviewedAt)}</p> : null}
@@ -418,8 +432,7 @@ function resourceDialogKey(target: ResourceLinkTarget | null) {
   return target ? `${target.type}:${target.id}` : 'resource-dialog-closed'
 }
 
-function AssignmentHeader({ task, project, projectId, canReview, canEditAssignment, editDisabledReason, canSubmitProgress, onEdit, onSubmitProgress }: { task: Task; project?: Project; projectId: string; canReview: boolean; canEditAssignment: boolean; editDisabledReason?: string; canSubmitProgress: boolean; onEdit: () => void; onSubmitProgress: () => void }) {
-  const assignmentState = getAssignmentState(task)
+function AssignmentHeader({ task, project, projectId, canReview, canEditAssignment, canAdjustStatus, editDisabledReason, statusAdjustmentDisabledReason, canSubmitProgress, onEdit, onAdjustStatus, onSubmitProgress }: { task: Task; project?: Project; projectId: string; canReview: boolean; canEditAssignment: boolean; canAdjustStatus: boolean; editDisabledReason?: string; statusAdjustmentDisabledReason?: string; canSubmitProgress: boolean; onEdit: () => void; onAdjustStatus: () => void; onSubmitProgress: () => void }) {
   return (
     <div className="space-y-3">
       <PageHeader
@@ -427,61 +440,39 @@ function AssignmentHeader({ task, project, projectId, canReview, canEditAssignme
         eyebrow={project ? <>Assignment / {project.name}</> : 'Assignment'}
         title={task.title}
         badges={task.pendingReviewCount > 0 ? <StatusBadge value="pending_review" tone="amber" /> : null}
-        meta={<AssignmentHeaderMeta task={task} state={assignmentState} />}
-        action={<>{canSubmitProgress ? <Button type="button" size="sm" onClick={onSubmitProgress}><Send className="size-4" /> Submit work</Button> : null}{canReview && task.pendingReviewCount > 0 ? <Button asChild size="sm"><a href="#assignment-workflow"><CheckCircle2 className="size-4" /> Review submission</a></Button> : null}{canEditAssignment ? <Button type="button" variant="edit" size="sm" disabled={Boolean(editDisabledReason)} title={editDisabledReason} onClick={onEdit}><Pencil className="size-4" /> Edit assignment</Button> : null}</>}
+        action={<>{canSubmitProgress ? <Button type="button" size="sm" onClick={onSubmitProgress}><Send className="size-4" /> Submit work</Button> : null}{canReview && task.pendingReviewCount > 0 ? <Button asChild size="sm"><a href="#assignment-workflow"><CheckCircle2 className="size-4" /> Review submission</a></Button> : null}{canAdjustStatus ? <Button type="button" variant="outline" size="sm" disabled={Boolean(statusAdjustmentDisabledReason)} title={statusAdjustmentDisabledReason} onClick={onAdjustStatus}><ClipboardList className="size-4" /> Adjust status</Button> : null}{canEditAssignment ? <Button type="button" variant="edit" size="sm" disabled={Boolean(editDisabledReason)} title={editDisabledReason} onClick={onEdit}><Pencil className="size-4" /> Edit assignment</Button> : null}</>}
       />
       {project ? <TaskProjectLifecycleNotice project={project} /> : null}
     </div>
   )
 }
 
-function AssignmentHeaderMeta({ task, state }: { task: Task; state: AssignmentState }) {
-  const dotClass = {
-    blue: 'bg-primary',
-    teal: 'bg-secondary',
-    amber: 'bg-amber-500',
-    red: 'bg-destructive',
-    slate: 'bg-slate-400',
-  }[state.tone]
+function AssignmentInstructionsDisclosure({ task }: { task: Task }) {
   return (
-    <>
-      <PageHeaderPill><span className={`size-2 rounded-full ${dotClass}`} /> <span className="text-ink">{state.label}</span></PageHeaderPill>
-      <PageHeaderPill>Priority <span className="text-ink">{titleize(task.priority)}</span></PageHeaderPill>
-      <PageHeaderPill>{task.progressUpdateCount} submission{task.progressUpdateCount === 1 ? '' : 's'}</PageHeaderPill>
-    </>
-  )
-}
-
-function AssignmentBrief({ task, state }: { task: Task; state: AssignmentState }) {
-  return (
-    <section className="overflow-hidden rounded-[1.5rem] border border-border bg-card shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Assignment dossier</p>
-          <h2 className="mt-1 font-heading text-xl font-semibold tracking-tight text-ink">Brief</h2>
-        </div>
-        <StatusBadge value={state.key} tone={state.tone} />
-      </div>
-      <div className="px-5 py-5">
-        <section>
-          <h3 className="text-sm font-semibold text-ink">Instructions</h3>
-          {task.description ? <p className="mt-2 max-w-4xl break-words text-sm leading-7 text-muted-foreground">{task.description}</p> : <p className="mt-2 text-sm italic text-muted-foreground">No assignment instructions have been added yet.</p>}
-        </section>
-        <section className="mt-5 rounded-xl border border-border bg-paper/70 px-3 py-3">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Current state</p>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">{state.description}</p>
-        </section>
-      </div>
-    </section>
+    <details className="group rounded-xl border border-border bg-card/90 px-4 py-3 shadow-sm">
+      <summary className="cursor-pointer list-none font-heading text-base font-semibold tracking-tight text-ink marker:hidden">
+        <span className="inline-flex items-center gap-2">
+          Instructions
+          <span className="text-xs font-medium text-muted-foreground transition group-open:hidden">Show</span>
+          <span className="hidden text-xs font-medium text-muted-foreground transition group-open:inline">Hide</span>
+        </span>
+      </summary>
+      <p className="mt-3 max-w-4xl break-words border-t border-border pt-3 text-sm leading-7 text-muted-foreground">{task.description}</p>
+    </details>
   )
 }
 
 function AssignmentAside({ task, project, resources, canManageResources, onManageResources }: { task: Task; project?: Project; resources: ResourceLink[]; canManageResources: boolean; onManageResources: () => void }) {
+  const assignmentState = getAssignmentState(task)
+
   return (
     <aside className="space-y-4 xl:sticky xl:top-6">
-      <section className="rounded-[1.5rem] border border-border bg-card p-4 shadow-sm sm:p-5">
+      <section className="rounded-xl border border-border bg-card/90 p-4 shadow-sm">
         <h2 className="font-heading text-xl font-semibold tracking-tight text-ink">Details</h2>
         <dl className="mt-4 divide-y divide-border">
+          <FactRow icon={<StatusDotIcon tone={assignmentState.tone} />} label="Status" value={assignmentState.label} />
+          <FactRow icon={<ClipboardList className="size-4" />} label="Priority" value={titleize(task.priority)} />
+          <FactRow icon={<ClipboardList className="size-4" />} label="Submissions" value={`${task.progressUpdateCount} submission${task.progressUpdateCount === 1 ? '' : 's'}`} />
           {project ? <FactRow icon={<ClipboardList className="size-4" />} label="Project" value={project.name} /> : null}
           <FactRow icon={<CalendarClock className="size-4" />} label="Due date" value={deadlineText(task)} />
           <FactRow icon={<ClipboardList className="size-4" />} label="Checkpoint" value={task.milestoneTitle || 'Missing checkpoint'} />
@@ -489,13 +480,23 @@ function AssignmentAside({ task, project, resources, canManageResources, onManag
         </dl>
       </section>
 
-      {(resources.length > 0 || canManageResources) ? (
-        <section className="rounded-[1.5rem] border border-border bg-card p-4 shadow-sm sm:p-5">
-          <ResourceLinkShelf title="Resources" resources={resources} canCreate={canManageResources} onManage={canManageResources ? onManageResources : undefined} compact />
-        </section>
-      ) : null}
+      {task.description ? <AssignmentInstructionsDisclosure task={task} /> : null}
+
+      {(resources.length > 0 || canManageResources) ? <AssignmentResourcesPanel resources={resources} canManageResources={canManageResources} onManageResources={onManageResources} /> : null}
     </aside>
   )
+}
+
+function StatusDotIcon({ tone }: { tone: AssignmentState['tone'] }) {
+  const dotClass = {
+    blue: 'bg-primary',
+    teal: 'bg-secondary',
+    amber: 'bg-amber-500',
+    red: 'bg-destructive',
+    slate: 'bg-slate-400',
+  }[tone]
+
+  return <span className={`size-2 rounded-full ${dotClass}`} />
 }
 
 function FactRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {

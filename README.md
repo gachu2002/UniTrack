@@ -25,7 +25,7 @@ UniTrack is a university project supervision platform. The repository now contai
 
 - Admin all-project management, admin dashboard, and activity-log UI.
 - Forgot password, email verification, notifications, analytics, and advanced filtering.
-- Production file-storage hardening such as persistence, retention, MIME policy, malware scanning, backup, and download policy.
+- Production evidence-storage hardening such as retention, MIME policy, malware scanning, backup, quotas, repair jobs, and cost monitoring.
 
 ## Commands
 
@@ -37,7 +37,8 @@ pnpm --filter @unitrack/web lint
 pnpm --filter @unitrack/web test:e2e:install
 pnpm --filter @unitrack/web test:e2e
 make api-build
-make api-test
+TEST_DATABASE_URL='<postgres-url>' make api-test
+make api-test-unit
 make db-validate
 ```
 

@@ -32,7 +32,12 @@ export interface SetAdminUserPasswordInput {
 }
 
 export async function getAdminUsersPage(params: GetAdminUsersParams) {
-  const { data } = await apiClient.get<PaginatedResponse<User>>('/admin/users', { params })
+  const data = await fetchAdminUsersPage(params)
+  const requestedPage = params.page || data.page
+  const totalPages = paginatedTotalPages(data)
+  if (requestedPage > totalPages && data.page !== totalPages) {
+    return fetchAdminUsersPage({ ...params, page: totalPages })
+  }
   return data
 }
 
@@ -53,4 +58,13 @@ export async function updateAdminUser({ userId, ...input }: UpdateAdminUserInput
 
 export async function setAdminUserPassword({ userId, password }: SetAdminUserPasswordInput) {
   await apiClient.post(`/admin/users/${userId}/password`, { password })
+}
+
+async function fetchAdminUsersPage(params: GetAdminUsersParams) {
+  const { data } = await apiClient.get<PaginatedResponse<User>>('/admin/users', { params })
+  return data
+}
+
+function paginatedTotalPages(data: PaginatedResponse<unknown>) {
+  return Math.max(1, Math.ceil(data.total / Math.max(1, data.limit)))
 }

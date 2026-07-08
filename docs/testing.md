@@ -11,7 +11,7 @@ Scope: keep command forms, verification choice, Playwright knobs, suite map, and
 | Web lint/build | `pnpm --filter @unitrack/web lint`, `pnpm --filter @unitrack/web build` |
 | Web e2e | `pnpm --filter @unitrack/web test:e2e`, `pnpm test:e2e:web`, or `make web-test-e2e` |
 | Web e2e setup/debug | `pnpm --filter @unitrack/web test:e2e:install`, `test:e2e:install-deps`, `test:e2e:headed`, `test:e2e:ui`, `test:e2e:report` |
-| API build/test | `make api-build`, `TEST_DATABASE_URL='<postgres-url>' make api-test` |
+| API build/test | `make api-build`, `TEST_DATABASE_URL='<postgres-url>' make api-test`, `make api-test-unit` for non-DB tests |
 | DB validate | `make db-validate` |
 | Demo seed | `cd apps/api && DATABASE_URL='<postgres-url>' go run ./cmd/seed` |
 
@@ -19,7 +19,7 @@ Scope: keep command forms, verification choice, Playwright knobs, suite map, and
 
 | Risk Touched | Prefer |
 | --- | --- |
-| Go handler, auth, permissions, lifecycle, storage, config | `make api-build` plus focused `go test`; use `make api-test` when DB coverage is needed. |
+| Go handler, auth, permissions, lifecycle, storage, config | `make api-build` plus focused `go test`; use `TEST_DATABASE_URL='<postgres-url>' make api-test` when DB coverage is needed, or `make api-test-unit` for non-DB tests. |
 | Database migration or trigger | `make db-validate` plus focused DB lifecycle tests. |
 | Frontend TypeScript/UI behavior | `pnpm --filter @unitrack/web lint` and `pnpm --filter @unitrack/web build`. |
 | User-visible role flow | Targeted Playwright spec or a new focused spec when the gap matters. |
@@ -47,6 +47,7 @@ Keep frontend origin, API `CORS_ALLOWED_ORIGINS`, and `VITE_API_URL` aligned for
 | `admin-accounts.spec.ts` | Admin create/search teacher and teacher sign-in. |
 | `access-control.spec.ts` | Forbidden routes/actions, inactive login, closed evidence read-only. |
 | `accessibility.spec.ts` | Skip link, dialog/focus, folder color keyboard behavior. |
+| `assignment-happy-path.spec.ts` | UI-driven teacher project, team, assignment, student submission, and teacher review happy path. |
 | `dashboard.spec.ts` | Role queues and admin counts. |
 | `database-integrity.spec.ts` | Folder/project owner-supervisor candidate filtering. |
 | `state-flow.spec.ts` | Folder description clearing and stale candidate hiding. |
@@ -56,12 +57,13 @@ Keep frontend origin, API `CORS_ALLOWED_ORIGINS`, and `VITE_API_URL` aligned for
 
 - Prefer API-created unique fixtures and accessible selectors.
 - Missing API is a failure unless deliberately skipped for local UI-only work.
+- `make api-test` requires `TEST_DATABASE_URL` so DB-backed lifecycle tests do not skip silently; use `make api-test-unit` when a database is intentionally unavailable.
 - Keep DB and lifecycle invariants in Go tests.
 - Add browser tests for user-visible workflows and stale affordances.
 - For docs-only work, use read-back plus source/reference search.
 
 ## Gaps
 
-- Project/assignment forms, team flows, resource/evidence happy paths, redirects, archived affordances, empty/error states.
+- Additional team-flow permutations, resource/evidence happy paths, redirects, archived affordances, and empty/error states.
 - Frontend unit/component runner.
 - Axe-style accessibility scan.

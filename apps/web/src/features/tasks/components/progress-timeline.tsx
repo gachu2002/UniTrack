@@ -27,21 +27,22 @@ interface ProgressTimelineProps {
   description?: string
   emptyTitle?: string
   emptyMessage?: string
+  compact?: boolean
 }
 
-export function ProgressTimeline({ projectId, updates, canReview, canUploadEvidence, canManageEvidence, canDeleteOwnEvidence, currentUserId, uploadedFiles = [], resourceLinks = [], canManageResources = false, onManageResources, showReviewForms = true, title = 'Submissions', description = 'Student work submitted for teacher review.', emptyTitle = 'No submissions yet', emptyMessage = 'Student work will appear here after it is submitted for review.' }: ProgressTimelineProps) {
+export function ProgressTimeline({ projectId, updates, canReview, canUploadEvidence, canManageEvidence, canDeleteOwnEvidence, currentUserId, uploadedFiles = [], resourceLinks = [], canManageResources = false, onManageResources, showReviewForms = true, title = 'Submissions', description = 'Student work submitted for teacher review.', emptyTitle = 'No submissions yet', emptyMessage = 'Student work will appear here after it is submitted for review.', compact = false }: ProgressTimelineProps) {
   return (
-    <section id="progress-timeline" className="overflow-hidden rounded-[1.4rem] border border-border bg-card shadow-sm">
-      <div className="border-b border-border px-5 py-4">
+    <section id="progress-timeline" className={compact ? 'overflow-hidden rounded-xl border border-border bg-card/90 shadow-sm' : 'overflow-hidden rounded-[1.4rem] border border-border bg-card shadow-sm'}>
+      <div className={compact ? 'border-b border-border px-4 py-3' : 'border-b border-border px-5 py-4'}>
         <h2 className="font-heading text-xl font-semibold tracking-tight text-ink">{title}</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
       {updates.length > 0 ? (
         <div className="divide-y divide-border">
-          {updates.map((update) => <ProgressUpdateRow key={update.id} projectId={projectId} update={update} canReview={canReview} canUploadEvidence={canUploadEvidence} canManageEvidence={canManageEvidence} canDeleteOwnEvidence={canDeleteOwnEvidence} currentUserId={currentUserId} files={filesForTarget(uploadedFiles, 'progress_update', update.id)} resources={resourcesForTarget(resourceLinks, 'progress_update', update.id)} canManageResources={canManageResources} onManageResources={onManageResources} showReviewForm={showReviewForms} />)}
+          {updates.map((update) => <ProgressUpdateRow key={update.id} projectId={projectId} update={update} canReview={canReview} canUploadEvidence={canUploadEvidence} canManageEvidence={canManageEvidence} canDeleteOwnEvidence={canDeleteOwnEvidence} currentUserId={currentUserId} files={filesForTarget(uploadedFiles, 'progress_update', update.id)} resources={resourcesForTarget(resourceLinks, 'progress_update', update.id)} canManageResources={canManageResources} onManageResources={onManageResources} showReviewForm={showReviewForms} compact={compact} />)}
         </div>
       ) : (
-        <div className="px-5 py-8">
+        <div className={compact ? 'px-4 py-6' : 'px-5 py-8'}>
           <EmptyState title={emptyTitle} message={emptyMessage} />
         </div>
       )}
@@ -49,17 +50,17 @@ export function ProgressTimeline({ projectId, updates, canReview, canUploadEvide
   )
 }
 
-function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, canManageEvidence, canDeleteOwnEvidence, currentUserId, files, resources, canManageResources, onManageResources, showReviewForm }: { projectId: string; update: ProgressUpdate; canReview: boolean; canUploadEvidence: boolean; canManageEvidence: boolean; canDeleteOwnEvidence: boolean; currentUserId?: string; files: UploadedFile[]; resources: ResourceLink[]; canManageResources: boolean; onManageResources?: (update: ProgressUpdate) => void; showReviewForm: boolean }) {
+function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, canManageEvidence, canDeleteOwnEvidence, currentUserId, files, resources, canManageResources, onManageResources, showReviewForm, compact }: { projectId: string; update: ProgressUpdate; canReview: boolean; canUploadEvidence: boolean; canManageEvidence: boolean; canDeleteOwnEvidence: boolean; currentUserId?: string; files: UploadedFile[]; resources: ResourceLink[]; canManageResources: boolean; onManageResources?: (update: ProgressUpdate) => void; showReviewForm: boolean; compact: boolean }) {
   const canChangeSupport = update.reviewStatus === 'pending_review'
   const canUploadToUpdate = canChangeSupport && canUploadEvidence && (canManageEvidence || update.submittedBy === currentUserId)
   const showEvidence = canUploadToUpdate || files.length > 0
   const canManageSubmissionResources = canChangeSupport && canManageResources && (canManageEvidence || update.submittedBy === currentUserId) && Boolean(onManageResources)
   const reviewTone = update.latestReview ? latestReviewTone(update.latestReview.reviewStatus) : null
   return (
-    <article id={`progress-${update.id}`} className="scroll-mt-24 px-5 py-5">
+    <article id={`progress-${update.id}`} className={compact ? 'scroll-mt-24 px-4 py-4' : 'scroll-mt-24 px-5 py-5'}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h3 className="break-words font-heading text-lg font-semibold text-ink">{update.title || 'Submission'}</h3>
+          <h3 className={compact ? 'break-words font-heading text-base font-semibold text-ink' : 'break-words font-heading text-lg font-semibold text-ink'}>{update.title || 'Submission'}</h3>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><Clock className="size-3.5" /> {formatDateTime(update.createdAt)}</span>
             <span>By {update.submittedByName}</span>
@@ -67,7 +68,7 @@ function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, ca
         </div>
         <StatusBadge value={update.reviewStatus} />
       </div>
-      <p className="mt-3 max-w-4xl break-words text-sm leading-7 text-muted-foreground">{update.description}</p>
+      <p className={compact ? 'mt-2 max-w-4xl break-words text-sm leading-6 text-muted-foreground' : 'mt-3 max-w-4xl break-words text-sm leading-7 text-muted-foreground'}>{update.description}</p>
       {update.blockers ? <p className="mt-3 inline-flex items-start gap-2 break-words border-l-2 border-amber-300 pl-3 text-sm leading-6 text-amber-800"><MessageSquareWarning className="mt-0.5 size-4 shrink-0" /> {update.blockers}</p> : null}
       {(resources.length > 0 || canManageSubmissionResources) ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -76,7 +77,7 @@ function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, ca
         </div>
       ) : null}
       {update.latestReview && reviewTone ? (
-        <div className={`mt-4 border-l-2 pl-3 text-sm ${reviewTone.containerClass}`}>
+        <div className={`${compact ? 'mt-3' : 'mt-4'} border-l-2 pl-3 text-sm ${reviewTone.containerClass}`}>
           <p className="flex items-center gap-2 font-semibold">
             {reviewTone.kind === 'approved' ? <CheckCircle2 className="size-4" /> : <MessageSquareWarning className="size-4" />}
             {reviewTone.label} by {update.latestReview.reviewedByName}
@@ -87,8 +88,8 @@ function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, ca
       ) : null}
       {showReviewForm && canReview && update.reviewStatus === 'pending_review' ? <ReviewProgressForm projectId={projectId} update={update} /> : null}
       {showEvidence ? (
-        <div className="mt-4 border-t border-border pt-3">
-          <EvidenceFilePanel projectId={projectId} targetType="progress_update" targetId={update.id} files={files} canUpload={canUploadToUpdate} canManage={canChangeSupport && canManageEvidence} canDeleteOwn={canChangeSupport && canDeleteOwnEvidence} currentUserId={currentUserId} description="Attach files that support this progress submission." />
+          <div className="mt-3 border-t border-border pt-3">
+          <EvidenceFilePanel projectId={projectId} targetType="progress_update" targetId={update.id} files={files} canUpload={canUploadToUpdate} canManage={canChangeSupport && canManageEvidence} canDeleteOwn={canChangeSupport && canDeleteOwnEvidence} currentUserId={currentUserId} description="Attach files that support this progress submission." compact={compact} />
         </div>
       ) : null}
     </article>

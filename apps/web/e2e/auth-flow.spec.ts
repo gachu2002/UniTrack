@@ -18,7 +18,7 @@ test('local admin can sign in and reach the dashboard', async ({ page, request }
   await page.getByRole('button', { name: /^sign in$/i }).click()
 
   await expect(page).toHaveURL(/\/dashboard$/)
-  await expect(page.getByRole('heading', { name: 'Review queue' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review work' })).toBeVisible()
   await expect(page.getByText(adminEmail)).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: /Workspace/ })).toBeVisible()
 })

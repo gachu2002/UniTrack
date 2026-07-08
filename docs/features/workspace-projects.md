@@ -12,7 +12,7 @@ Teachers need a project-first place to organize supervised work, group projects 
 | --- | --- |
 | `/workspace` | Folder shelves, standalone projects, create folder/project affordances. |
 | `/workspace/classes/:classId` | Folder detail, add existing project search, project movement. |
-| `/workspace/projects/:projectId` | Compact project header, Next Up action strip, checkpoint-card Work Plan, resources, team popover. |
+| `/workspace/projects/:projectId` | Compact project header, checkpoint-card Work Plan, and summary rail for snapshot, team, and project resources. |
 
 UI says folder and assignment. API/DB compatibility names still include `classes`, `course_sections`, and `tasks`.
 
@@ -20,18 +20,24 @@ UI may say checkpoint for planning items. API/DB/source compatibility names stil
 
 Legacy `/projects*` and `/classes*` paths redirect into `Workspace` routes and are router compatibility only.
 
-Project cards use the card surface or linked project title as the navigation affordance; folder project cards do not show a separate `Open` button so their action area stays focused on folder movement controls.
+Project cards use fixed heights per variant and use the card surface or linked project title as the navigation affordance; folder project cards do not show a separate `Open` button so their action area stays focused on folder movement controls.
 
-Project detail pages use the shared compact page header, a slim `Next Up` action strip, and then the full Work Plan. The Work Plan remains the source of truth for the checkpoint sequence, assignment links, resources, and manager-only plan editing actions.
+Project detail pages use the shared compact page header, a clean unboxed Work Plan, and a desktop summary rail. The Work Plan remains the source of truth for the checkpoint sequence, assignment links, assignment filters, resources, and manager-only checkpoint actions; its count, search, and filters stay in compact inline controls that rely on spacing instead of divider-heavy toolbar cards. Managers add checkpoints from the Work Plan header, then use each checkpoint action popover for edit, reorder, resources, and delete; checkpoint edits open a dialog instead of replacing the card. Assignment rows keep long student lists compact while preserving the full list in the title text. The summary rail is progress-first: Snapshot highlights assignment/checkpoint completion and planned progress, while Team focuses on student count, supervisor, leader, and a single manage/view action without repeating counts across multiple tiles.
+
+Project headers and project cards avoid stacking raw lifecycle/progress/review badges. Project-card badges stay together on a single footer line with compact chips: one count chip, an optional non-active lifecycle chip, and one short state chip such as `2 review`, `1 overdue`, `revision`, or `steady`. `Active` is omitted as the normal lifecycle state.
 
 ## Rules
 
 - Projects are the primary product object; keep the flow `Teacher -> Project -> Assignment -> Submission -> Review`.
-- Workspace project lists are server-paginated with exact totals; project search is applied by the API across accessible projects before pagination.
-- Workspace active and archived folder shelves use server pagination/search with exact totals at eight folders per page; standalone project grids use server pagination/search at eight projects per page. Avoid show-more/show-all controls on these shelves and standalone project grids; keep the standalone project grid height stable during page/search refreshes.
-- Folder-detail project lists use frontend pagination at eight projects per page. Their project cards use the compact project-card variant: fixed-height cards with title, short context, status, assignment count, and attention marker only.
+- Workspace project lists are server-paginated with exact totals; project search is applied by the API across accessible projects before pagination, and out-of-range requested pages refetch the last valid page when totals shrink.
+- Project data tables support client-side sorting on loaded rows for project name, context, counts, status, attention, and progress columns.
+- Workspace active and archived folder shelves use server pagination/search with exact totals at eight folders per page; standalone project grids use server pagination/search at eight projects per page. Avoid show-more/show-all controls on these shelves and standalone project grids; keep the standalone project grid height stable during page/search refreshes, and refetch the last valid page when totals shrink.
+- Folder-detail project candidate search asks the project API for unassigned projects owned by the folder owner, so owner/supervisor eligibility is applied before the API limit.
+- Folder-detail project lists request folder projects through paginated class-detail responses, merge all pages for the current UI, then use frontend pagination at eight projects per page. Their project cards use the compact project-card variant: fixed-height cards with title, short context, assignment count, lifecycle exceptions, and one work signal only.
+- Project detail relation loaders request paginated backend pages for team members, checkpoints, and assignments, then merge pages before applying local filters or compact UI controls. Backend no-query relation routes stay compatible with legacy array callers.
 - Folders are teacher/admin organization surfaces; students see projects, not folder management.
 - Teachers manage owned folders and supervised projects; admins can manage existing folders/projects.
+- Creating projects/folders and updating folders must re-lock and revalidate the current actor plus the target supervisor/owner inside the mutation transaction.
 - Assigning or moving projects into or out of folders must validate active folder use and owner/supervisor alignment inside the write transaction.
 - One folder per project is enforced in the DB.
 - Project status controls writes: `active`, `on_hold`, `completed`, and `archived` have different write gates documented in `docs/architecture.md`.
@@ -73,8 +79,8 @@ Project detail pages use the shared compact page header, a slim `Next Up` action
 
 ## Verify
 
-- Focused lifecycle tests for project status, milestone reorder, membership, folder movement, and DB triggers.
-- `apps/web/e2e/database-integrity.spec.ts` and `state-flow.spec.ts` for candidate filtering/stale search.
+- Focused lifecycle tests for project status, milestone reorder, membership, folder movement, nested collection pagination, and DB triggers.
+- `apps/web/e2e/database-integrity.spec.ts`, `state-flow.spec.ts`, and `assignment-happy-path.spec.ts` for candidate filtering, stale search, and the core project/team/assignment flow.
 - Web lint/build and targeted browser tests for project-detail/form/team/folder UI changes.
 
 ## Gaps
@@ -82,5 +88,5 @@ Project detail pages use the shared compact page header, a slim `Next Up` action
 - No folder delete endpoint; archive/reactivate is the current model.
 - Existing folder owner transfer is not exposed.
 - Admin create-on-behalf, supervisor selection, and supervisor transfer remain partial UI/admin management gaps.
-- Browser coverage for shelves, movement, owner selection, project create/edit, Work Plan interactions, archived affordances, and team role transitions remains partial.
+- Browser coverage for shelves, movement, owner selection, project edit, Work Plan edge interactions, archived affordances, and team role transitions remains partial.
 - Richer milestone templates/reorder behavior should wait until core flows stay stable.

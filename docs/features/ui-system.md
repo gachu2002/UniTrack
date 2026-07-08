@@ -17,10 +17,15 @@ UniTrack needs a compact academic workspace UI that stays readable across teache
 
 ## Rules
 
-- Preserve the academic ledger/ocean visual direction and compact project-first hierarchy.
-- Use the shared `PageHeader` for primary page tops: small gradient accent, optional back link, title, badges, metadata pills, and compact right-side actions. Avoid large boxed hero headers unless a feature has an explicit reason.
-- Keep the protected skip link, semantic dialogs, one named close control, labels for compact actions, and readable loading/empty/error/forbidden states.
+- Preserve the academic ledger/ocean visual direction and compact project-first hierarchy, but keep authenticated page backdrops flat and calm instead of layered radial/line backgrounds.
+- Use the shared `PageHeader` for primary page tops: optional back link, title, badges, metadata pills, and compact right-side actions without decorative accent bars. Avoid large boxed hero headers unless a feature has an explicit reason.
+- Use dividers only for real boundaries: page header separation, dense row lists, table/popover sections, or expanded disclosure bodies. Prefer whitespace for toolbar controls, short metadata, and small metric groups.
+- Data table columns with sortable data use shared sortable headers with `aria-sort`; action-only columns such as Open or Actions remain static.
+- Keep one protected `main#main-content` landmark for the app shell, plus the skip link, semantic dialogs, one named close control, labels for compact actions, and readable loading/empty/error/forbidden states.
+- Shared dialogs render through a portal and use a top-layer stack: only the top dialog handles Escape, Tab trapping, and backdrop closure, while body scroll unlocks only after the last dialog closes.
+- Page-level error states should be announced to assistive technology and distinguish retryable failures from forbidden states.
 - Prefer native form controls for radio/decision groups unless custom ARIA keyboard behavior is fully implemented.
+- Custom folder color radios use roving focus with arrow/Home/End keys, and the folder project attach combobox uses active-descendant keyboard behavior.
 - Keep decorative motion respectful of `prefers-reduced-motion`.
 - Keep desktop and mobile layouts usable; avoid dense card sprawl on project and assignment pages.
 
@@ -39,7 +44,7 @@ UniTrack needs a compact academic workspace UI that stays readable across teache
 
 - Does the change preserve the academic ledger/ocean direction instead of generic SaaS clutter?
 - Are labels connected to controls and compact actions explicitly named?
-- Are dialogs semantic, focus-trapped, escape-closeable, and restored on close?
+- Are dialogs semantic, focus-trapped, escape-closeable, stack-safe, and restored on close?
 - Do decorative animations stop or simplify under `prefers-reduced-motion`?
 - Are mobile and desktop layouts both usable?
 - Are loading, empty, error, forbidden, stale, and archived states readable?

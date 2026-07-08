@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -60,7 +59,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	email := strings.ToLower(strings.TrimSpace(input.Email))
-	if !s.enforceRateLimit(w, "login:network:"+requestIP(r), 60, 10*time.Minute, "too many login attempts; try again later") {
+	if !s.enforceRateLimit(w, "login:network:"+s.clientIP(r), 60, 10*time.Minute, "too many login attempts; try again later") {
 		return
 	}
 	if email != "" && !s.enforceRateLimit(w, "login:email:"+email, 25, 10*time.Minute, "too many login attempts; try again later") {
@@ -273,7 +272,7 @@ func (s *Server) createSessionTx(ctx context.Context, tx pgx.Tx, r *http.Request
 	_, err = tx.Exec(ctx, `
 		INSERT INTO sessions (user_id, token_hash, expires_at, user_agent, ip_address)
 		VALUES ($1, $2, $3, $4, $5)
-	`, userID, hashToken(token), expiresAt, r.UserAgent(), requestIP(r))
+	`, userID, hashToken(token), expiresAt, r.UserAgent(), s.clientIP(r))
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -302,14 +301,6 @@ func sessionSameSiteMode(value string) http.SameSite {
 	default:
 		return http.SameSiteLaxMode
 	}
-}
-
-func requestIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 func generateToken() (string, error) {

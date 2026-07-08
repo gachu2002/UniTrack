@@ -32,6 +32,11 @@ type updateTaskRequest struct {
 	AssigneeIDs           []string `json:"assigneeIds"`
 }
 
+type adjustTaskStatusRequest struct {
+	OfficialProgressState string `json:"officialProgressState"`
+	Reason                string `json:"reason"`
+}
+
 type createProgressUpdateRequest struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
@@ -54,6 +59,20 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 	if !allowed {
 		writeError(w, http.StatusForbidden, "you do not have access to this project")
+		return
+	}
+	if wantsPaginatedResponse(r.URL.Query()) {
+		pagination, err := parsePaginationParams(r.URL.Query(), 100, 500)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid assignment list pagination")
+			return
+		}
+		tasks, total, err := s.listProjectTasksPage(r.Context(), projectID, pagination.Limit, pagination.Offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load tasks")
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse[TaskDTO]{Items: tasks, Page: pagination.Page, Limit: pagination.Limit, Total: total})
 		return
 	}
 
@@ -258,6 +277,10 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "task status conflicts with official progress state")
 		return
 	}
+	if assignmentIsCompleted(currentStatus, currentOfficialProgressState) && !assignmentIsCompleted(status, officialProgressState) {
+		writeError(w, http.StatusConflict, "completed assignments cannot be reopened")
+		return
+	}
 	if status == "done" || officialProgressState == "completed" {
 		var hasPendingReview bool
 		if err := tx.QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM progress_updates WHERE project_id = $1 AND task_id = $2 AND review_status = 'pending_review')`, projectID, taskID).Scan(&hasPendingReview); err != nil {
@@ -295,6 +318,111 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update task")
+		return
+	}
+
+	updated, err := s.getTaskDetail(r.Context(), projectID, taskID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load task")
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) handleAdjustTaskStatus(w http.ResponseWriter, r *http.Request) {
+	user, _ := currentUser(r)
+	projectID := chi.URLParam(r, "projectId")
+	taskID := chi.URLParam(r, "taskId")
+	if !requireValidUUIDParam(w, taskID, "invalid task id") {
+		return
+	}
+	allowed, err := s.canManageProject(r.Context(), user, projectID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusForbidden, "only the supervising teacher or an admin can adjust assignment status")
+		return
+	}
+	if !s.requireProjectLifecycle(w, r.Context(), projectID, "adjusting assignment status", projectAcceptsPlanChanges) {
+		return
+	}
+
+	var input adjustTaskStatusRequest
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	targetOfficialState := strings.TrimSpace(input.OfficialProgressState)
+	if !validManualOfficialProgressState(targetOfficialState) {
+		writeError(w, http.StatusBadRequest, "invalid assignment status")
+		return
+	}
+	targetStatus := taskStatusForManualAdjustment(targetOfficialState)
+	reason := strings.TrimSpace(input.Reason)
+
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not adjust assignment status")
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "adjusting assignment status", projectAcceptsPlanChanges) {
+		return
+	}
+	if err := requireProjectManagerTx(r.Context(), tx, user, projectID); err != nil {
+		writeProjectManagerAccessError(w, err, "only the supervising teacher or an admin can adjust assignment status")
+		return
+	}
+
+	var currentStatus, currentOfficialState string
+	if err := tx.QueryRow(r.Context(), `
+		SELECT status, official_progress_state
+		FROM tasks
+		WHERE id = $1 AND project_id = $2 AND parent_task_id IS NULL
+		FOR UPDATE
+	`, taskID, projectID).Scan(&currentStatus, &currentOfficialState); err != nil {
+		if isNoRows(err) {
+			writeError(w, http.StatusNotFound, "task not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "could not load assignment state")
+		return
+	}
+	if currentStatus == targetStatus && currentOfficialState == targetOfficialState {
+		writeError(w, http.StatusBadRequest, "assignment already has this status")
+		return
+	}
+	if manualStatusAdjustmentRequiresReason(currentStatus, currentOfficialState, targetOfficialState) && reason == "" {
+		writeError(w, http.StatusBadRequest, "status adjustment reason is required")
+		return
+	}
+	var hasPendingReview bool
+	if err := tx.QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM progress_updates WHERE project_id = $1 AND task_id = $2 AND review_status = 'pending_review')`, projectID, taskID).Scan(&hasPendingReview); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not verify pending submissions")
+		return
+	}
+	if hasPendingReview {
+		writeError(w, http.StatusConflict, "review pending submissions before adjusting this assignment status")
+		return
+	}
+
+	if _, err := tx.Exec(r.Context(), `UPDATE tasks SET status = $1, official_progress_state = $2, updated_by = $3 WHERE id = $4 AND project_id = $5 AND parent_task_id IS NULL`, targetStatus, targetOfficialState, user.ID, taskID, projectID); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not adjust assignment status")
+		return
+	}
+	if err := insertProjectActivityLogTx(r.Context(), tx, user.ID, projectID, "assignment.status_adjusted", "task", taskID, map[string]string{
+		"fromStatus":                currentStatus,
+		"fromOfficialProgressState": currentOfficialState,
+		"toStatus":                  targetStatus,
+		"toOfficialProgressState":   targetOfficialState,
+		"reason":                    reason,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not record status adjustment")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not adjust assignment status")
 		return
 	}
 
@@ -436,7 +564,22 @@ func (s *Server) handleListProjectProgressUpdates(w http.ResponseWriter, r *http
 		return
 	}
 
-	updates, err := s.listProjectProgressUpdates(r.Context(), projectID, 100)
+	if wantsPaginatedResponse(r.URL.Query()) {
+		pagination, err := parsePaginationParams(r.URL.Query(), 100, 500)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid progress update pagination")
+			return
+		}
+		updates, total, err := s.listProjectProgressUpdatesPage(r.Context(), projectID, pagination.Limit, pagination.Offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load progress updates")
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse[ProgressUpdateDTO]{Items: updates, Page: pagination.Page, Limit: pagination.Limit, Total: total})
+		return
+	}
+
+	updates, err := s.listProjectProgressUpdates(r.Context(), projectID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load progress updates")
 		return
@@ -673,6 +816,35 @@ func (s *Server) listProjectTasks(ctx context.Context, projectID string) ([]Task
 	return tasks, nil
 }
 
+func (s *Server) listProjectTasksPage(ctx context.Context, projectID string, limit int, offset int) ([]TaskDTO, int64, error) {
+	where := `WHERE t.project_id = $1 AND t.parent_task_id IS NULL`
+	var total int64
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::bigint FROM tasks t `+where, projectID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.Query(ctx, taskSelectSQL(where, `ORDER BY t.deadline ASC NULLS LAST, t.created_at DESC LIMIT $2 OFFSET $3`), projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	tasks := []TaskDTO{}
+	for rows.Next() {
+		task, err := scanTask(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		tasks = append(tasks, task)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if err := s.loadTaskAssigneesForTasks(ctx, tasks); err != nil {
+		return nil, 0, err
+	}
+	return tasks, total, nil
+}
+
 func (s *Server) getTaskDetail(ctx context.Context, projectID string, taskID string) (TaskDetailDTO, error) {
 	task, err := scanTask(s.db.QueryRow(ctx, taskSelectSQL(`WHERE t.project_id = $1 AND t.id = $2 AND t.parent_task_id IS NULL`, ``), projectID, taskID))
 	if err != nil {
@@ -683,7 +855,7 @@ func (s *Server) getTaskDetail(ctx context.Context, projectID string, taskID str
 		return TaskDetailDTO{}, err
 	}
 
-	updates, err := s.listProgressUpdates(ctx, projectID, taskID, 50)
+	updates, err := s.listProgressUpdates(ctx, projectID, taskID)
 	if err != nil {
 		return TaskDetailDTO{}, err
 	}
@@ -911,7 +1083,7 @@ func isTaskAssignedToActiveStudentTx(ctx context.Context, tx pgx.Tx, projectID s
 	return true, nil
 }
 
-func (s *Server) listProgressUpdates(ctx context.Context, projectID string, taskID string, limit int) ([]ProgressUpdateDTO, error) {
+func (s *Server) listProgressUpdates(ctx context.Context, projectID string, taskID string) ([]ProgressUpdateDTO, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT pu.id::text, pu.project_id::text, p.name, pu.task_id::text, t.title, pu.submitted_by::text, u.full_name,
 		       pu.title, pu.description, pu.blockers, pu.review_status, pu.created_at, pu.updated_at
@@ -921,8 +1093,7 @@ func (s *Server) listProgressUpdates(ctx context.Context, projectID string, task
 		JOIN users u ON u.id = pu.submitted_by
 		WHERE pu.project_id = $1 AND pu.task_id = $2 AND t.parent_task_id IS NULL
 		ORDER BY pu.created_at DESC
-		LIMIT $3
-	`, projectID, taskID, limit)
+	`, projectID, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -946,7 +1117,7 @@ func (s *Server) listProgressUpdates(ctx context.Context, projectID string, task
 	return updates, rows.Err()
 }
 
-func (s *Server) listProjectProgressUpdates(ctx context.Context, projectID string, limit int) ([]ProgressUpdateDTO, error) {
+func (s *Server) listProjectProgressUpdates(ctx context.Context, projectID string) ([]ProgressUpdateDTO, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT pu.id::text, pu.project_id::text, p.name, pu.task_id::text, t.title, pu.submitted_by::text, u.full_name,
 		       pu.title, pu.description, pu.blockers, pu.review_status, pu.created_at, pu.updated_at
@@ -956,8 +1127,7 @@ func (s *Server) listProjectProgressUpdates(ctx context.Context, projectID strin
 		JOIN users u ON u.id = pu.submitted_by
 		WHERE pu.project_id = $1 AND t.parent_task_id IS NULL
 		ORDER BY pu.created_at DESC
-		LIMIT $2
-	`, projectID, limit)
+	`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -979,6 +1149,50 @@ func (s *Server) listProjectProgressUpdates(ctx context.Context, projectID strin
 		updates = append(updates, update)
 	}
 	return updates, rows.Err()
+}
+
+func (s *Server) listProjectProgressUpdatesPage(ctx context.Context, projectID string, limit int, offset int) ([]ProgressUpdateDTO, int64, error) {
+	var total int64
+	if err := s.db.QueryRow(ctx, `
+		SELECT COUNT(*)::bigint
+		FROM progress_updates pu
+		JOIN tasks t ON t.id = pu.task_id AND t.project_id = pu.project_id
+		WHERE pu.project_id = $1 AND t.parent_task_id IS NULL
+	`, projectID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT pu.id::text, pu.project_id::text, p.name, pu.task_id::text, t.title, pu.submitted_by::text, u.full_name,
+		       pu.title, pu.description, pu.blockers, pu.review_status, pu.created_at, pu.updated_at
+		FROM progress_updates pu
+		JOIN projects p ON p.id = pu.project_id
+		JOIN tasks t ON t.id = pu.task_id AND t.project_id = pu.project_id
+		JOIN users u ON u.id = pu.submitted_by
+		WHERE pu.project_id = $1 AND t.parent_task_id IS NULL
+		ORDER BY pu.created_at DESC
+		LIMIT $2 OFFSET $3
+	`, projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	updates := []ProgressUpdateDTO{}
+	for rows.Next() {
+		update, err := scanProgressUpdate(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		latest, err := s.latestReview(ctx, update.ID)
+		if err != nil && !isNoRows(err) {
+			return nil, 0, err
+		}
+		if err == nil {
+			update.LatestReview = &latest
+		}
+		updates = append(updates, update)
+	}
+	return updates, total, rows.Err()
 }
 
 func (s *Server) getProgressUpdate(ctx context.Context, projectID string, updateID string) (ProgressUpdateDTO, error) {
@@ -1089,6 +1303,30 @@ func validOfficialProgressState(status string) bool {
 	}
 }
 
+func validManualOfficialProgressState(status string) bool {
+	switch status {
+	case "in_progress", "needs_changes", "completed":
+		return true
+	default:
+		return false
+	}
+}
+
+func taskStatusForManualAdjustment(officialState string) string {
+	switch officialState {
+	case "completed":
+		return "done"
+	case "needs_changes":
+		return "needs_changes"
+	default:
+		return "in_progress"
+	}
+}
+
+func manualStatusAdjustmentRequiresReason(currentStatus string, currentOfficialState string, targetOfficialState string) bool {
+	return assignmentIsCompleted(currentStatus, currentOfficialState) || targetOfficialState == "completed" || targetOfficialState == "needs_changes"
+}
+
 func defaultOfficialStateForReview(reviewStatus string) string {
 	if reviewStatus == "approved" {
 		return "in_progress"
@@ -1114,7 +1352,7 @@ func contradictoryReviewState(reviewStatus string, officialState string) bool {
 		return officialState == "needs_changes" || officialState == "no_progress"
 	}
 	if reviewStatus == "needs_changes" || reviewStatus == "rejected" {
-		return officialState == "completed"
+		return officialState != "needs_changes"
 	}
 	return false
 }
@@ -1128,4 +1366,8 @@ func contradictoryTaskState(status string, officialState string) bool {
 		return officialState != "completed"
 	}
 	return officialState == "completed"
+}
+
+func assignmentIsCompleted(status string, officialState string) bool {
+	return status == "done" || officialState == "completed"
 }

@@ -1,6 +1,11 @@
 import { formatDate } from '@/lib/format'
 import type { Project } from '@/types/api'
 
+export interface ProjectWorkSignal {
+  label: string
+  tone: 'amber' | 'red'
+}
+
 export function projectNeedsAttention(project: Project) {
   if (project.status === 'archived') {
     return false
@@ -24,8 +29,24 @@ export function getProjectAttentionReason(project: Project) {
   return 'Stale progress'
 }
 
+export function getProjectWorkSignal(project: Project, { includeGeneralAttention = false }: { includeGeneralAttention?: boolean } = {}): ProjectWorkSignal | null {
+  if (project.pendingReviewCount > 0) {
+    return { label: `${project.pendingReviewCount} review${project.pendingReviewCount === 1 ? '' : 's'} waiting`, tone: 'amber' }
+  }
+  if (project.overdueTaskCount > 0) {
+    return { label: `${project.overdueTaskCount} overdue`, tone: 'red' }
+  }
+  if (project.needsChangesTaskCount > 0 || project.officialProgressState === 'needs_changes') {
+    return { label: 'Revision needed', tone: 'amber' }
+  }
+  if (includeGeneralAttention && projectNeedsAttention(project)) {
+    return { label: 'Needs attention', tone: 'amber' }
+  }
+  return null
+}
+
 export function getLastApprovedLabel(project: Project) {
-  return project.lastApprovedUpdateAt ? formatDate(project.lastApprovedUpdateAt) : 'none'
+  return project.lastApprovedUpdateAt ? formatDate(project.lastApprovedUpdateAt) : 'None'
 }
 
 function hasMissingProgress(project: Project) {

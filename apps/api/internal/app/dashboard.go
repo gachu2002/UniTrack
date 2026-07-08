@@ -6,6 +6,8 @@ import (
 	"strconv"
 )
 
+const dashboardNoPendingTaskReviewSQL = `NOT EXISTS (SELECT 1 FROM progress_updates pu_waiting WHERE pu_waiting.project_id = t.project_id AND pu_waiting.task_id = t.id AND pu_waiting.review_status = 'pending_review')`
+
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	user, _ := currentUser(r)
 
@@ -111,7 +113,7 @@ func (s *Server) dashboardStats(ctx context.Context, user User) (DashboardStats,
 			SELECT
 				(SELECT COUNT(*) FROM projects),
 				(SELECT COUNT(*) FROM tasks WHERE parent_task_id IS NULL),
-				(SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.status = 'active' AND t.parent_task_id IS NULL AND t.deadline < current_date AND t.status <> 'done' AND t.official_progress_state <> 'completed'),
+				(SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.status = 'active' AND t.parent_task_id IS NULL AND t.deadline < current_date AND t.status <> 'done' AND t.official_progress_state <> 'completed' AND `+dashboardNoPendingTaskReviewSQL+`),
 				(SELECT COUNT(*) FROM progress_updates pu JOIN projects p ON p.id = pu.project_id JOIN tasks t ON t.id = pu.task_id AND t.project_id = pu.project_id WHERE p.status <> 'archived' AND pu.review_status = 'pending_review' AND t.parent_task_id IS NULL),
 				(SELECT COUNT(*) FROM users WHERE role = 'student'),
 				(SELECT COUNT(*) FROM users WHERE role = 'teacher')
@@ -121,7 +123,7 @@ func (s *Server) dashboardStats(ctx context.Context, user User) (DashboardStats,
 			SELECT
 				(SELECT COUNT(*) FROM projects WHERE supervisor_id = $1),
 				(SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.supervisor_id = $1 AND t.parent_task_id IS NULL),
-				(SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.supervisor_id = $1 AND p.status = 'active' AND t.parent_task_id IS NULL AND t.deadline < current_date AND t.status <> 'done' AND t.official_progress_state <> 'completed'),
+				(SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.supervisor_id = $1 AND p.status = 'active' AND t.parent_task_id IS NULL AND t.deadline < current_date AND t.status <> 'done' AND t.official_progress_state <> 'completed' AND `+dashboardNoPendingTaskReviewSQL+`),
 				(SELECT COUNT(*) FROM progress_updates pu JOIN projects p ON p.id = pu.project_id JOIN tasks t ON t.id = pu.task_id AND t.project_id = pu.project_id WHERE p.supervisor_id = $1 AND p.status <> 'archived' AND pu.review_status = 'pending_review' AND t.parent_task_id IS NULL),
 				(SELECT COUNT(DISTINCT pm.student_id) FROM project_members pm JOIN projects p ON p.id = pm.project_id WHERE p.supervisor_id = $1)
 		`, user.ID).Scan(&stats.ProjectCount, &stats.TaskCount, &stats.OverdueTaskCount, &stats.PendingReviews, &stats.StudentCount)
@@ -130,7 +132,7 @@ func (s *Server) dashboardStats(ctx context.Context, user User) (DashboardStats,
 			SELECT
 				(SELECT COUNT(*) FROM project_members WHERE student_id = $1),
 				(SELECT COUNT(*) FROM task_assignees ta JOIN tasks t ON t.id = ta.task_id AND t.project_id = ta.project_id WHERE ta.student_id = $1 AND t.parent_task_id IS NULL),
-				(SELECT COUNT(*) FROM task_assignees ta JOIN tasks t ON t.id = ta.task_id AND t.project_id = ta.project_id JOIN projects p ON p.id = t.project_id WHERE ta.student_id = $1 AND p.status = 'active' AND t.parent_task_id IS NULL AND t.deadline < current_date AND t.status <> 'done' AND t.official_progress_state <> 'completed'),
+				(SELECT COUNT(*) FROM task_assignees ta JOIN tasks t ON t.id = ta.task_id AND t.project_id = ta.project_id JOIN projects p ON p.id = t.project_id WHERE ta.student_id = $1 AND p.status = 'active' AND t.parent_task_id IS NULL AND t.deadline < current_date AND t.status <> 'done' AND t.official_progress_state <> 'completed' AND `+dashboardNoPendingTaskReviewSQL+`),
 				(SELECT COUNT(*) FROM progress_updates pu JOIN tasks t ON t.id = pu.task_id AND t.project_id = pu.project_id JOIN project_members pm ON pm.project_id = pu.project_id AND pm.student_id = $1 WHERE pu.submitted_by = $1 AND pu.review_status = 'pending_review' AND t.parent_task_id IS NULL)
 		`, user.ID).Scan(&stats.ProjectCount, &stats.TaskCount, &stats.OverdueTaskCount, &stats.PendingReviews)
 	}
@@ -144,7 +146,8 @@ func (s *Server) dashboardTasks(ctx context.Context, user User, limit int) ([]Ta
 		AND t.deadline IS NOT NULL
 		AND t.deadline < current_date
 		AND t.status <> 'done'
-		AND t.official_progress_state <> 'completed'`
+		AND t.official_progress_state <> 'completed'
+		AND ` + dashboardNoPendingTaskReviewSQL
 	args := []any{limit}
 	orderBy := `ORDER BY t.deadline ASC, t.updated_at DESC`
 
@@ -155,7 +158,8 @@ func (s *Server) dashboardTasks(ctx context.Context, user User, limit int) ([]Ta
 			AND t.deadline IS NOT NULL
 			AND t.deadline < current_date
 			AND t.status <> 'done'
-			AND t.official_progress_state <> 'completed'`
+			AND t.official_progress_state <> 'completed'
+			AND ` + dashboardNoPendingTaskReviewSQL
 		args = []any{user.ID, limit}
 	case RoleStudent:
 		where = `WHERE t.parent_task_id IS NULL
@@ -163,7 +167,7 @@ func (s *Server) dashboardTasks(ctx context.Context, user User, limit int) ([]Ta
 			AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.project_id = t.project_id AND ta.student_id = $1)
 			AND t.status <> 'done'
 			AND t.official_progress_state <> 'completed'
-			AND NOT EXISTS (SELECT 1 FROM progress_updates pu_waiting WHERE pu_waiting.task_id = t.id AND pu_waiting.review_status = 'pending_review')`
+			AND ` + dashboardNoPendingTaskReviewSQL
 		args = []any{user.ID, limit}
 		orderBy = `ORDER BY
 			CASE WHEN t.official_progress_state = 'needs_changes' THEN 0 ELSE 1 END,

@@ -37,11 +37,11 @@ test('admin can create and find a teacher account through the UI', async ({ page
 
   await expect(dialog).toBeHidden()
   await page.getByPlaceholder('Search name or email').fill(teacherEmail)
-  await expect(page.getByText(teacherEmail)).toBeVisible()
-  await expect(page.getByText(teacherName)).toBeVisible()
+  await expect(page.getByText(teacherEmail).first()).toBeVisible()
+  await expect(page.getByText(teacherName).first()).toBeVisible()
 
   await signIn(page, teacherEmail, userPassword)
-  await expect(page.getByRole('heading', { name: 'Review queue' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review work' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: /Workspace/ })).toBeVisible()
 })
 

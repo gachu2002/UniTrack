@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { UserPlus } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -43,6 +43,7 @@ const NO_CLASS_VALUE = '__no_folder__'
 export function CreateProjectForm({ classId, onCreated, onCancel }: { classId?: string; onCreated?: (project: Project) => void; onCancel?: () => void }) {
   const queryClient = useQueryClient()
   const user = useAuthStore((state) => state.user)
+  const formId = useId()
   const classesQuery = useQuery({ queryKey: queryKeys.classes, queryFn: () => getClasses(), enabled: !classId })
   const form = useForm<ProjectValues>({
     resolver: zodResolver(projectSchema),
@@ -52,6 +53,13 @@ export function CreateProjectForm({ classId, onCreated, onCancel }: { classId?: 
   const status = useWatch({ control: form.control, name: 'status' })
   const startDate = useWatch({ control: form.control, name: 'startDate' })
   const endDate = useWatch({ control: form.control, name: 'endDate' })
+  const folderId = `${formId}-folder`
+  const nameId = `${formId}-name`
+  const topicId = `${formId}-topic`
+  const descriptionId = `${formId}-description`
+  const startDateId = `${formId}-start-date`
+  const endDateId = `${formId}-end-date`
+  const statusId = `${formId}-status`
   const classOptions = filterClassesForSupervisor(classesQuery.data || [], user?.id)
   const mutation = useMutation({
     mutationFn: createProject,
@@ -81,9 +89,9 @@ export function CreateProjectForm({ classId, onCreated, onCancel }: { classId?: 
     })}>
       <div className="space-y-4 pb-5">
         {!classId ? (
-          <Field label="Folder (optional)" error={form.formState.errors.classId?.message}>
+          <Field id={folderId} label="Folder (optional)" error={form.formState.errors.classId?.message}>
             <Select value={selectedClassId || NO_CLASS_VALUE} onValueChange={(value) => form.setValue('classId', value === NO_CLASS_VALUE ? '' : value, { shouldDirty: true, shouldValidate: true })} disabled={classesQuery.isLoading}>
-              <SelectTrigger>
+              <SelectTrigger id={folderId}>
                 <SelectValue placeholder={classesQuery.isLoading ? 'Loading folders...' : 'No folder'} />
               </SelectTrigger>
               <SelectContent>
@@ -97,26 +105,26 @@ export function CreateProjectForm({ classId, onCreated, onCancel }: { classId?: 
           </Field>
         ) : null}
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Project name" error={form.formState.errors.name?.message}>
-            <Input placeholder="Capstone AI review assistant" {...form.register('name')} />
+          <Field id={nameId} label="Project name" error={form.formState.errors.name?.message}>
+            <Input id={nameId} placeholder="Capstone AI review assistant" {...form.register('name')} />
           </Field>
-          <Field label="Topic">
-            <Input placeholder="Research topic or product focus" {...form.register('topic')} />
+          <Field id={topicId} label="Topic">
+            <Input id={topicId} placeholder="Research topic or product focus" {...form.register('topic')} />
           </Field>
         </div>
-        <Field label="Description">
-          <Textarea placeholder="What is this team trying to deliver?" {...form.register('description')} />
+        <Field id={descriptionId} label="Description">
+          <Textarea id={descriptionId} placeholder="What is this team trying to deliver?" {...form.register('description')} />
         </Field>
         <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Start date">
-            <DatePicker value={startDate || ''} onValueChange={(value) => form.setValue('startDate', value, { shouldDirty: true, shouldValidate: true })} />
+          <Field id={startDateId} label="Start date">
+            <DatePicker id={startDateId} value={startDate || ''} onValueChange={(value) => form.setValue('startDate', value, { shouldDirty: true, shouldValidate: true })} />
           </Field>
-          <Field label="End date" error={form.formState.errors.endDate?.message}>
-            <DatePicker value={endDate || ''} onValueChange={(value) => form.setValue('endDate', value, { shouldDirty: true, shouldValidate: true })} />
+          <Field id={endDateId} label="End date" error={form.formState.errors.endDate?.message}>
+            <DatePicker id={endDateId} value={endDate || ''} onValueChange={(value) => form.setValue('endDate', value, { shouldDirty: true, shouldValidate: true })} />
           </Field>
-          <Field label="Status">
+          <Field id={statusId} label="Status">
             <Select value={status} onValueChange={(value) => form.setValue('status', value as ProjectValues['status'], { shouldDirty: true, shouldValidate: true })}>
-              <SelectTrigger>
+              <SelectTrigger id={statusId}>
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -147,6 +155,7 @@ export function CreateProjectForm({ classId, onCreated, onCancel }: { classId?: 
 
 export function EditProjectForm({ project, onUpdated, onCancel }: { project: Project; onUpdated?: (project: Project) => void; onCancel?: () => void }) {
   const queryClient = useQueryClient()
+  const formId = useId()
   const classesQuery = useQuery({ queryKey: queryKeys.classes, queryFn: () => getClasses() })
   const archivedLocked = project.status === 'archived'
   const form = useForm<EditProjectValues>({
@@ -166,6 +175,14 @@ export function EditProjectForm({ project, onUpdated, onCancel }: { project: Pro
   const status = useWatch({ control: form.control, name: 'status' })
   const startDate = useWatch({ control: form.control, name: 'startDate' })
   const endDate = useWatch({ control: form.control, name: 'endDate' })
+  const folderId = `${formId}-folder`
+  const nameId = `${formId}-name`
+  const topicId = `${formId}-topic`
+  const descriptionId = `${formId}-description`
+  const progressSummaryId = `${formId}-progress-summary`
+  const startDateId = `${formId}-start-date`
+  const endDateId = `${formId}-end-date`
+  const statusId = `${formId}-status`
   const classOptions = filterClassesForSupervisor(classesQuery.data || [], project.supervisorId, project.classId)
   const mutation = useMutation({
     mutationFn: updateProject,
@@ -202,9 +219,9 @@ export function EditProjectForm({ project, onUpdated, onCancel }: { project: Pro
     })}>
       <div className="space-y-4 pb-5">
         {archivedLocked ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Archived projects are read-only. Change the status first to reactivate editing.</p> : null}
-        <Field label="Folder (optional)" error={form.formState.errors.classId?.message}>
+        <Field id={folderId} label="Folder (optional)" error={form.formState.errors.classId?.message}>
           <Select value={selectedClassId || NO_CLASS_VALUE} onValueChange={(value) => form.setValue('classId', value === NO_CLASS_VALUE ? '' : value, { shouldDirty: true, shouldValidate: true })} disabled={classesQuery.isLoading || archivedLocked}>
-          <SelectTrigger>
+          <SelectTrigger id={folderId}>
             <SelectValue placeholder={classesQuery.isLoading ? 'Loading folders...' : 'No folder'} />
           </SelectTrigger>
           <SelectContent>
@@ -217,29 +234,29 @@ export function EditProjectForm({ project, onUpdated, onCancel }: { project: Pro
         <p className="mt-1 text-xs text-muted-foreground">Move this project between folders or keep it outside a folder.</p>
         </Field>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Project name" error={form.formState.errors.name?.message}>
-            <Input disabled={archivedLocked} {...form.register('name')} />
+          <Field id={nameId} label="Project name" error={form.formState.errors.name?.message}>
+            <Input id={nameId} disabled={archivedLocked} {...form.register('name')} />
           </Field>
-          <Field label="Topic">
-            <Input disabled={archivedLocked} {...form.register('topic')} />
+          <Field id={topicId} label="Topic">
+            <Input id={topicId} disabled={archivedLocked} {...form.register('topic')} />
           </Field>
         </div>
-        <Field label="Description">
-          <Textarea disabled={archivedLocked} {...form.register('description')} />
+        <Field id={descriptionId} label="Description">
+          <Textarea id={descriptionId} disabled={archivedLocked} {...form.register('description')} />
         </Field>
-        <Field label="Progress summary">
-          <Textarea disabled={archivedLocked} placeholder="Current official supervision summary" {...form.register('progressSummary')} />
+        <Field id={progressSummaryId} label="Progress summary">
+          <Textarea id={progressSummaryId} disabled={archivedLocked} placeholder="Current official supervision summary" {...form.register('progressSummary')} />
         </Field>
         <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Start date">
-            <DatePicker value={startDate || ''} onValueChange={(value) => form.setValue('startDate', value, { shouldDirty: true, shouldValidate: true })} disabled={archivedLocked} />
+          <Field id={startDateId} label="Start date">
+            <DatePicker id={startDateId} value={startDate || ''} onValueChange={(value) => form.setValue('startDate', value, { shouldDirty: true, shouldValidate: true })} disabled={archivedLocked} />
           </Field>
-          <Field label="End date" error={form.formState.errors.endDate?.message}>
-            <DatePicker value={endDate || ''} onValueChange={(value) => form.setValue('endDate', value, { shouldDirty: true, shouldValidate: true })} disabled={archivedLocked} />
+          <Field id={endDateId} label="End date" error={form.formState.errors.endDate?.message}>
+            <DatePicker id={endDateId} value={endDate || ''} onValueChange={(value) => form.setValue('endDate', value, { shouldDirty: true, shouldValidate: true })} disabled={archivedLocked} />
           </Field>
-          <Field label="Status">
+          <Field id={statusId} label="Status">
             <Select value={status} onValueChange={(value) => form.setValue('status', value as EditProjectValues['status'], { shouldDirty: true, shouldValidate: true })}>
-              <SelectTrigger>
+              <SelectTrigger id={statusId}>
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -350,10 +367,10 @@ export function AddProjectMemberForm({ projectId, onAdded }: { projectId: string
   )
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
+function Field({ id, label, error, children }: { id?: string; label: string; error?: string; children: ReactNode }) {
   return (
     <BaseField>
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
       {children}
       <FieldError message={error} />
     </BaseField>

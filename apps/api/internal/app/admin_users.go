@@ -162,6 +162,14 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
+	if err := lockAdminAccountMutationTx(r.Context(), tx); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not create user")
+		return
+	}
+	if err := requireActiveAdminActorTx(r.Context(), tx, actor); err != nil {
+		writeAdminActorAccessError(w, err)
+		return
+	}
 
 	var created UserDTO
 	var avatar sql.NullString
@@ -200,6 +208,9 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := chi.URLParam(r, "userId")
+	if !requireValidUUIDParam(w, userID, "invalid user id") {
+		return
+	}
 
 	var input updateAdminUserRequest
 	if !decodeJSON(w, r, &input) {
@@ -216,6 +227,10 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update user")
 		return
 	}
+	if err := requireActiveAdminActorTx(r.Context(), tx, actor); err != nil {
+		writeAdminActorAccessError(w, err)
+		return
+	}
 
 	target, err := findUserByIDTx(r.Context(), tx, userID)
 	if isNoRows(err) {
@@ -223,7 +238,7 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid user id")
+		writeError(w, http.StatusInternalServerError, "could not load user")
 		return
 	}
 
@@ -339,6 +354,9 @@ func (s *Server) handleAdminSetUserPassword(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	userID := chi.URLParam(r, "userId")
+	if !requireValidUUIDParam(w, userID, "invalid user id") {
+		return
+	}
 	var input setAdminUserPasswordRequest
 	if !decodeJSON(w, r, &input) {
 		return
@@ -355,6 +373,14 @@ func (s *Server) handleAdminSetUserPassword(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
+	if err := lockAdminAccountMutationTx(r.Context(), tx); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not set password")
+		return
+	}
+	if err := requireActiveAdminActorTx(r.Context(), tx, actor); err != nil {
+		writeAdminActorAccessError(w, err)
+		return
+	}
 
 	target, err := findUserByIDTx(r.Context(), tx, userID)
 	if isNoRows(err) {
@@ -362,7 +388,7 @@ func (s *Server) handleAdminSetUserPassword(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid user id")
+		writeError(w, http.StatusInternalServerError, "could not load user")
 		return
 	}
 	if _, err := tx.Exec(r.Context(), `UPDATE users SET password_hash = $1 WHERE id = $2`, passwordHash, userID); err != nil {
@@ -395,6 +421,33 @@ func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) (User, boo
 		return User{}, false
 	}
 	return user, true
+}
+
+var errAdminActorAccessRequired = errors.New("admin access required")
+
+func requireActiveAdminActorTx(ctx context.Context, tx pgx.Tx, actor User) error {
+	var role, status string
+	err := tx.QueryRow(ctx, `
+		SELECT role, status
+		FROM users
+		WHERE id = $1
+		FOR UPDATE
+	`, actor.ID).Scan(&role, &status)
+	if err != nil {
+		return err
+	}
+	if role != RoleAdmin || status != "active" {
+		return errAdminActorAccessRequired
+	}
+	return nil
+}
+
+func writeAdminActorAccessError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errAdminActorAccessRequired) || isNoRows(err) {
+		writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "could not verify admin access")
 }
 
 func (s *Server) ensureAdminMutationSafe(ctx context.Context, tx pgx.Tx, actor User, target User, nextRole string, nextStatus string) error {
@@ -476,7 +529,7 @@ func writeAccountTransitionRequired(w http.ResponseWriter, impact accountTransit
 
 func ensureSupervisorTx(ctx context.Context, tx pgx.Tx, supervisorID string) error {
 	var role, status string
-	if err := tx.QueryRow(ctx, `SELECT role, status FROM users WHERE id = $1`, supervisorID).Scan(&role, &status); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT role, status FROM users WHERE id = $1 FOR UPDATE`, supervisorID).Scan(&role, &status); err != nil {
 		return err
 	}
 	if status != "active" || (role != RoleTeacher && role != RoleAdmin) {

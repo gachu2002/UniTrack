@@ -4,6 +4,7 @@ import { isForbiddenOrConflictError } from '@/lib/axios'
 import { queryKeys } from '@/lib/query-keys'
 
 export function invalidateWorkspaceData(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.authMe })
   queryClient.invalidateQueries({ queryKey: queryKeys.dashboard })
   queryClient.invalidateQueries({ queryKey: queryKeys.projects })
   queryClient.invalidateQueries({ queryKey: queryKeys.classes })

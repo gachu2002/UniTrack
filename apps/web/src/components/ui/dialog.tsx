@@ -14,11 +14,20 @@ interface DialogProps {
   className?: string
 }
 
+const openDialogIds: string[] = []
+let bodyOverflowBeforeDialogs: string | undefined
+
 export function Dialog({ open, onOpenChange, title, description, children, className }: DialogProps) {
   const dialogRef = useRef<HTMLElement | null>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
+  const onOpenChangeRef = useRef(onOpenChange)
   const titleId = useId()
   const descriptionId = useId()
+  const dialogId = useId()
+
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange
+  }, [onOpenChange])
 
   useEffect(() => {
     if (!open) {
@@ -26,8 +35,12 @@ export function Dialog({ open, onOpenChange, title, description, children, class
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!isTopDialog(dialogId)) {
+        return
+      }
       if (event.key === 'Escape') {
-        onOpenChange(false)
+        event.preventDefault()
+        onOpenChangeRef.current(false)
         return
       }
       if (event.key !== 'Tab') {
@@ -65,9 +78,12 @@ export function Dialog({ open, onOpenChange, title, description, children, class
     }
 
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    document.body.style.overflow = 'hidden'
+    registerDialog(dialogId)
     document.addEventListener('keydown', onKeyDown)
     const focusTimer = window.setTimeout(() => {
+      if (!isTopDialog(dialogId)) {
+        return
+      }
       const dialog = dialogRef.current
       if (!dialog) {
         return
@@ -83,14 +99,14 @@ export function Dialog({ open, onOpenChange, title, description, children, class
 
     return () => {
       window.clearTimeout(focusTimer)
-      document.body.style.overflow = ''
+      unregisterDialog(dialogId)
       document.removeEventListener('keydown', onKeyDown)
       const previous = previousFocusRef.current
       if (previous && document.contains(previous)) {
         previous.focus()
       }
     }
-  }, [onOpenChange, open])
+  }, [dialogId, open])
 
   if (!open || typeof document === 'undefined') {
     return null
@@ -98,7 +114,7 @@ export function Dialog({ open, onOpenChange, title, description, children, class
 
   return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center px-3 py-4 sm:px-6 sm:py-8">
-      <div className="absolute inset-0 bg-slate-950/45" aria-hidden="true" onMouseDown={() => onOpenChange(false)} />
+      <div className="absolute inset-0 bg-slate-950/45" aria-hidden="true" onMouseDown={() => { if (isTopDialog(dialogId)) onOpenChange(false) }} />
       <section ref={dialogRef} className={cn('relative z-10 flex max-h-[92svh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-panel', className)} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}>
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border/70 px-5 py-5 sm:px-6 lg:px-8">
           <div>
@@ -114,6 +130,33 @@ export function Dialog({ open, onOpenChange, title, description, children, class
     </div>,
     document.body,
   )
+}
+
+function registerDialog(dialogId: string) {
+  const existingIndex = openDialogIds.indexOf(dialogId)
+  if (existingIndex >= 0) {
+    return
+  }
+  if (openDialogIds.length === 0) {
+    bodyOverflowBeforeDialogs = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+  }
+  openDialogIds.push(dialogId)
+}
+
+function unregisterDialog(dialogId: string) {
+  const index = openDialogIds.indexOf(dialogId)
+  if (index >= 0) {
+    openDialogIds.splice(index, 1)
+  }
+  if (openDialogIds.length === 0) {
+    document.body.style.overflow = bodyOverflowBeforeDialogs || ''
+    bodyOverflowBeforeDialogs = undefined
+  }
+}
+
+function isTopDialog(dialogId: string) {
+  return openDialogIds[openDialogIds.length - 1] === dialogId
 }
 
 function getFocusableElements(container: HTMLElement) {

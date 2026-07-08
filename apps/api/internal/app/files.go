@@ -37,6 +37,20 @@ func (s *Server) handleListUploadedFiles(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusForbidden, "you do not have access to this project")
 		return
 	}
+	if wantsPaginatedResponse(r.URL.Query()) {
+		pagination, err := parsePaginationParams(r.URL.Query(), 100, 500)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid file list pagination")
+			return
+		}
+		files, total, err := s.listUploadedFilesPage(r.Context(), projectID, pagination.Limit, pagination.Offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load files")
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse[UploadedFileDTO]{Items: files, Page: pagination.Page, Limit: pagination.Limit, Total: total})
+		return
+	}
 
 	files, err := s.listUploadedFiles(r.Context(), projectID)
 	if err != nil {
@@ -178,24 +192,30 @@ func (s *Server) storeUploadedFileFromRequest(w http.ResponseWriter, r *http.Req
 	if !s.validateUploadedFileInsert(w, r, projectID, beforeInsert) {
 		return UploadedFileDTO{}, false
 	}
+	cleanupJobID, err := s.enqueueStoredFileCleanup(r.Context(), storageKey, "upload_metadata_rollback")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not prepare file cleanup")
+		return UploadedFileDTO{}, false
+	}
 	if err := s.fileStore.Put(r.Context(), storageKey, bytes.NewReader(data), contentType, written); err != nil {
+		_ = s.processStoredFileCleanupJobSoon(cleanupJobID)
 		writeError(w, http.StatusInternalServerError, "could not store file")
 		return UploadedFileDTO{}, false
 	}
 
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
-		_ = s.deleteStoredFile(storageKey)
+		_ = s.processStoredFileCleanupJobSoon(cleanupJobID)
 		writeError(w, http.StatusInternalServerError, "could not save file metadata")
 		return UploadedFileDTO{}, false
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
 	if !s.requireProjectLifecycleTx(w, r.Context(), tx, projectID, "uploading evidence", projectAcceptsStudentSubmissions) {
-		_ = s.deleteStoredFile(storageKey)
+		_ = s.processStoredFileCleanupJobSoon(cleanupJobID)
 		return UploadedFileDTO{}, false
 	}
 	if beforeInsert != nil && !beforeInsert(r.Context(), tx) {
-		_ = s.deleteStoredFile(storageKey)
+		_ = s.processStoredFileCleanupJobSoon(cleanupJobID)
 		return UploadedFileDTO{}, false
 	}
 
@@ -206,12 +226,17 @@ func (s *Server) storeUploadedFileFromRequest(w http.ResponseWriter, r *http.Req
 		RETURNING id::text
 	`, projectID, relatedType, relatedID, originalName, storedName, storageKey, optionalString(contentType), written, user.ID).Scan(&fileID)
 	if err != nil {
-		_ = s.deleteStoredFile(storageKey)
+		_ = s.processStoredFileCleanupJobSoon(cleanupJobID)
+		writeError(w, http.StatusInternalServerError, "could not save file metadata")
+		return UploadedFileDTO{}, false
+	}
+	if err := completeStoredFileCleanupTx(r.Context(), tx, cleanupJobID); err != nil {
+		_ = s.processStoredFileCleanupJobSoon(cleanupJobID)
 		writeError(w, http.StatusInternalServerError, "could not save file metadata")
 		return UploadedFileDTO{}, false
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		_ = s.deleteStoredFile(storageKey)
+		_ = s.processStoredFileCleanupJobSoon(cleanupJobID)
 		writeError(w, http.StatusInternalServerError, "could not save file metadata")
 		return UploadedFileDTO{}, false
 	}
@@ -339,7 +364,8 @@ func (s *Server) handleDeleteUploadedFile(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "could not load file")
 		return
 	}
-	if record.RelatedType == "progress_update" {
+	switch record.RelatedType {
+	case "progress_update":
 		_, reviewStatus, err := progressUpdateEvidenceTargetTx(r.Context(), tx, projectID, record.RelatedID)
 		if isNoRows(err) {
 			writeError(w, http.StatusNotFound, "file not found")
@@ -353,14 +379,18 @@ func (s *Server) handleDeleteUploadedFile(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusConflict, "reviewed submissions cannot change evidence")
 			return
 		}
+	case "resource_link":
+		reviewStatus, ok := s.resourceLinkProgressUpdateReviewStatusTx(w, r.Context(), tx, projectID, record.RelatedID)
+		if !ok {
+			return
+		}
+		if reviewStatus != "" && reviewStatus != "pending_review" {
+			writeError(w, http.StatusConflict, "reviewed submissions cannot change evidence")
+			return
+		}
 	}
 	if !canManageProject && record.UploadedBy != user.ID {
 		writeError(w, http.StatusForbidden, "you cannot delete this file")
-		return
-	}
-
-	if err := s.deleteStoredFile(record.StoragePath); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not remove stored file")
 		return
 	}
 
@@ -373,9 +403,17 @@ func (s *Server) handleDeleteUploadedFile(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusNotFound, "file not found")
 		return
 	}
+	cleanupJobID, err := enqueueStoredFileCleanupTx(r.Context(), tx, record.StoragePath, "metadata_deleted")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not queue stored file cleanup")
+		return
+	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete file")
 		return
+	}
+	if err := s.processStoredFileCleanupJobSoon(cleanupJobID); err != nil && s.logger != nil {
+		s.logger.Warn("stored file cleanup remains queued", "error", err, "jobID", cleanupJobID)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
@@ -398,8 +436,60 @@ func (s *Server) listUploadedFiles(ctx context.Context, projectID string) ([]Upl
 	return files, rows.Err()
 }
 
+func (s *Server) listUploadedFilesPage(ctx context.Context, projectID string, limit int, offset int) ([]UploadedFileDTO, int64, error) {
+	var total int64
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::bigint FROM uploaded_files WHERE project_id = $1`, projectID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.Query(ctx, uploadedFileSelectSQL("WHERE uf.project_id = $1", "ORDER BY uf.created_at DESC LIMIT $2 OFFSET $3"), projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	files := []UploadedFileDTO{}
+	for rows.Next() {
+		record, err := scanUploadedFile(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		files = append(files, record.UploadedFileDTO)
+	}
+	return files, total, rows.Err()
+}
+
 func (s *Server) getUploadedFileInProject(ctx context.Context, projectID string, fileID string) (uploadedFileRecord, error) {
 	return scanUploadedFile(s.db.QueryRow(ctx, uploadedFileSelectSQL("WHERE uf.project_id = $1 AND uf.id = $2", ""), projectID, fileID))
+}
+
+func (s *Server) resourceLinkProgressUpdateReviewStatusTx(w http.ResponseWriter, ctx context.Context, tx pgx.Tx, projectID string, resourceLinkID string) (string, bool) {
+	var relatedType, relatedID string
+	if err := tx.QueryRow(ctx, `
+		SELECT related_entity_type, related_entity_id::text
+		FROM resource_links
+		WHERE project_id = $1 AND id = $2
+		FOR UPDATE
+	`, projectID, resourceLinkID).Scan(&relatedType, &relatedID); err != nil {
+		if isNoRows(err) {
+			writeError(w, http.StatusNotFound, "file not found")
+			return "", false
+		}
+		writeError(w, http.StatusInternalServerError, "could not verify file target")
+		return "", false
+	}
+	if relatedType != "progress_update" {
+		return "", true
+	}
+	_, reviewStatus, err := progressUpdateEvidenceTargetTx(ctx, tx, projectID, relatedID)
+	if isNoRows(err) {
+		writeError(w, http.StatusNotFound, "file not found")
+		return "", false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not verify file target")
+		return "", false
+	}
+	return reviewStatus, true
 }
 
 func uploadedFileSelectSQL(where string, suffix string) string {
@@ -506,4 +596,139 @@ func (s *Server) deleteStoredFile(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return s.fileStore.Delete(ctx, key)
+}
+
+func (s *Server) enqueueStoredFileCleanup(ctx context.Context, storagePath string, reason string) (string, error) {
+	if s.db == nil {
+		return "", errors.New("database is not configured")
+	}
+	var jobID string
+	err := s.db.QueryRow(ctx, `
+		INSERT INTO uploaded_file_object_cleanup_jobs (storage_path, reason)
+		VALUES ($1, $2)
+		RETURNING id::text
+	`, storagePath, reason).Scan(&jobID)
+	return jobID, err
+}
+
+func enqueueStoredFileCleanupTx(ctx context.Context, tx pgx.Tx, storagePath string, reason string) (string, error) {
+	var jobID string
+	err := tx.QueryRow(ctx, `
+		INSERT INTO uploaded_file_object_cleanup_jobs (storage_path, reason)
+		VALUES ($1, $2)
+		RETURNING id::text
+	`, storagePath, reason).Scan(&jobID)
+	return jobID, err
+}
+
+func completeStoredFileCleanupTx(ctx context.Context, tx pgx.Tx, jobID string) error {
+	if strings.TrimSpace(jobID) == "" {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `
+		UPDATE uploaded_file_object_cleanup_jobs
+		SET completed_at = COALESCE(completed_at, now()), last_error = NULL, updated_at = now()
+		WHERE id = $1
+	`, jobID)
+	return err
+}
+
+func (s *Server) completeStoredFileCleanup(ctx context.Context, jobID string) error {
+	if s.db == nil || strings.TrimSpace(jobID) == "" {
+		return nil
+	}
+	_, err := s.db.Exec(ctx, `
+		UPDATE uploaded_file_object_cleanup_jobs
+		SET completed_at = COALESCE(completed_at, now()), last_error = NULL, updated_at = now()
+		WHERE id = $1
+	`, jobID)
+	return err
+}
+
+func (s *Server) processStoredFileCleanupJobSoon(jobID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return s.processStoredFileCleanupJob(ctx, jobID)
+}
+
+func (s *Server) processStoredFileCleanupJob(ctx context.Context, jobID string) error {
+	if s.db == nil || strings.TrimSpace(jobID) == "" {
+		return nil
+	}
+	var storagePath string
+	err := s.db.QueryRow(ctx, `
+		UPDATE uploaded_file_object_cleanup_jobs
+		SET attempts = attempts + 1, updated_at = now()
+		WHERE id = $1 AND completed_at IS NULL
+		RETURNING storage_path
+	`, jobID).Scan(&storagePath)
+	if isNoRows(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := s.fileStore.Delete(ctx, storagePath); err != nil {
+		_ = s.recordStoredFileCleanupError(context.Background(), jobID, err)
+		return err
+	}
+	return s.completeStoredFileCleanup(ctx, jobID)
+}
+
+func (s *Server) recordStoredFileCleanupError(ctx context.Context, jobID string, cleanupErr error) error {
+	if s.db == nil || strings.TrimSpace(jobID) == "" || cleanupErr == nil {
+		return nil
+	}
+	_, err := s.db.Exec(ctx, `
+		UPDATE uploaded_file_object_cleanup_jobs
+		SET last_error = $2, updated_at = now()
+		WHERE id = $1 AND completed_at IS NULL
+	`, jobID, truncateStoredFileCleanupError(cleanupErr))
+	return err
+}
+
+func truncateStoredFileCleanupError(err error) string {
+	if err == nil {
+		return ""
+	}
+	value := err.Error()
+	if len(value) <= 2000 {
+		return value
+	}
+	return value[:2000]
+}
+
+func (s *Server) ProcessPendingStoredFileCleanups(ctx context.Context, limit int) error {
+	if s.db == nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT id::text
+		FROM uploaded_file_object_cleanup_jobs
+		WHERE completed_at IS NULL
+		ORDER BY created_at, id
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var cleanupErr error
+	for rows.Next() {
+		var jobID string
+		if err := rows.Scan(&jobID); err != nil {
+			return err
+		}
+		if err := s.processStoredFileCleanupJob(ctx, jobID); err != nil {
+			cleanupErr = err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return cleanupErr
 }

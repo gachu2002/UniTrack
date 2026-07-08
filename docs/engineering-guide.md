@@ -42,7 +42,7 @@ Pick the smallest check that proves the risk touched.
 
 | Risk Touched | Prefer |
 | --- | --- |
-| Go handler, auth, permissions, lifecycle, storage, config | `make api-build` plus focused `go test` or `make api-test` when DB coverage is needed |
+| Go handler, auth, permissions, lifecycle, storage, config | `make api-build` plus focused `go test`; use `TEST_DATABASE_URL='<postgres-url>' make api-test` for DB coverage or `make api-test-unit` for non-DB tests |
 | Database migration or trigger | `make db-validate` plus focused DB lifecycle test |
 | Frontend TypeScript/UI behavior | `pnpm --filter @unitrack/web lint` and `pnpm --filter @unitrack/web build` |
 | User-visible role flow | targeted Playwright spec or a new focused spec when the gap is important |

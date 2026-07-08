@@ -1,11 +1,15 @@
 import { ArrowUpRight } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { EmptyState } from '@/components/shared/empty-state'
 import { StatusBadge } from '@/components/shared/status-badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { SortableTableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDateTime } from '@/lib/format'
+import { dateSortValue, sortItems, toggleSort, type SortState } from '@/lib/sort'
 import type { ProgressUpdate } from '@/types/api'
+
+type ProgressUpdateSortKey = 'update' | 'assignment' | 'submittedBy' | 'status' | 'submitted'
 
 interface ProgressUpdateTableProps {
   updates?: ProgressUpdate[] | null
@@ -18,6 +22,15 @@ interface ProgressUpdateTableProps {
 
 export function ProgressUpdateTable({ updates, emptyTitle, emptyMessage, showDescription = false, showSubmittedBy = true, showTaskColumn = true }: ProgressUpdateTableProps) {
   const items = updates ?? []
+  const [sort, setSort] = useState<SortState<ProgressUpdateSortKey> | null>(null)
+  const sortedItems = sortItems(items, sort, {
+    update: (update) => update.title || update.taskTitle,
+    assignment: (update) => update.taskTitle,
+    submittedBy: (update) => update.submittedByName,
+    status: (update) => update.reviewStatus,
+    submitted: (update) => dateSortValue(update.createdAt),
+  })
+  const onSort = (key: ProgressUpdateSortKey) => setSort((current) => toggleSort(current, key))
 
   if (items.length === 0) {
     return <EmptyState title={emptyTitle} message={emptyMessage} />
@@ -28,16 +41,16 @@ export function ProgressUpdateTable({ updates, emptyTitle, emptyMessage, showDes
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Update</TableHead>
-            {showTaskColumn ? <TableHead>Assignment</TableHead> : null}
-            {showSubmittedBy ? <TableHead>Submitted by</TableHead> : null}
-            <TableHead>Status</TableHead>
-            <TableHead className="hidden lg:table-cell">Submitted</TableHead>
+            <SortableTableHead sortKey="update" sort={sort} onSort={onSort}>Update</SortableTableHead>
+            {showTaskColumn ? <SortableTableHead sortKey="assignment" sort={sort} onSort={onSort}>Assignment</SortableTableHead> : null}
+            {showSubmittedBy ? <SortableTableHead sortKey="submittedBy" sort={sort} onSort={onSort}>Submitted by</SortableTableHead> : null}
+            <SortableTableHead sortKey="status" sort={sort} onSort={onSort}>Status</SortableTableHead>
+            <SortableTableHead sortKey="submitted" sort={sort} onSort={onSort} className="hidden lg:table-cell">Submitted</SortableTableHead>
             <TableHead className="w-20 text-right">Open</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((update) => (
+          {sortedItems.map((update) => (
             <TableRow key={update.id}>
               <TableCell>
                 <Link className="font-heading font-semibold text-ink underline-offset-4 hover:underline" to={`/workspace/projects/${update.projectId}/tasks/${update.taskId}#progress-${update.id}`}>

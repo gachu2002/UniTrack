@@ -15,12 +15,13 @@ Scope: keep cross-cutting auth, session, role, permission, and route-guard rules
 ## Auth Rules
 
 - Login uses bcrypt, missing-account timing hardening, active-user checks, bounded in-memory rate limits, and row locking before session creation.
+- Login network limits and session IP audit use the direct remote address by default, or `X-Forwarded-For` only when the direct remote address matches configured `TRUSTED_PROXY_CIDRS`. Forwarded chains are read from right to left so client-supplied spoofed prefixes are ignored behind trusted proxies.
 - Inactive users and revoked/expired sessions are rejected.
 - Logout is public behind the origin guard so stale cookies can be cleared; presented tokens are revoked when possible and cookies expire with matching flags.
 - Unsafe requests that send or write session cookies require trusted origin evidence.
 - Wildcard CORS is not trusted for credentialed sessions.
-- Production startup rejects unsafe cookie/CORS/storage/database config.
-- Frontend `/auth/me` syncs current-user query state to the auth store; the store should clear only on confirmed `401`.
+- Production startup rejects unsafe cookie/CORS/storage/database config, weak bootstrap-admin secrets, and empty-DB startup without either bootstrap credentials or an existing active admin.
+- Frontend `/auth/me` syncs current-user query state to the auth store; the store and protected query cache clear only on confirmed `401`, while non-401 session bootstrap failures show retryable errors instead of forcing login.
 
 ## Permission Rules
 
@@ -34,15 +35,17 @@ Scope: keep cross-cutting auth, session, role, permission, and route-guard rules
 - Project-scoped manager writes require relationship checks plus lifecycle gates.
 - Feature handlers add stricter checks for assignments, submissions, reviews, resources, and evidence.
 - Manager/viewer authority must be rechecked inside transactions for stale-sensitive writes.
+- Workspace organization writes must recheck the acting teacher/admin and target owner/supervisor inside the mutation transaction.
+- Admin account mutations must recheck the acting admin's active role inside the mutation transaction.
 
 ## Source Map
 
 | Source | Owns |
 | --- | --- |
 | `apps/api/internal/app/auth.go` | Login/logout/session middleware, cookies, session revocation. |
-| `apps/api/internal/app/security.go` | Origin guard and login rate limiter. |
+| `apps/api/internal/app/security.go` | Origin guard, login rate limiter, trusted-proxy client IP extraction. |
 | `apps/api/internal/app/permissions.go` | Project viewer/manager helpers and transaction rechecks. |
-| `apps/api/internal/config/config.go` | Cookie/CORS/bootstrap/storage production validation. |
+| `apps/api/internal/config/config.go` | Cookie/CORS/trusted-proxy/bootstrap/storage production validation. |
 | `apps/api/internal/app/bootstrap.go` | Bootstrap admin creation safety. |
 | `apps/web/src/app/router.tsx` | Protected routes, admin guard, folder guard, redirects. |
 | `apps/web/src/features/auth` | Login page, auth API, current-user hook. |
@@ -67,6 +70,6 @@ Scope: keep cross-cutting auth, session, role, permission, and route-guard rules
 
 ## Gaps
 
-- Login rate limiting is in memory.
+- Login rate limiting is in memory and per API instance; configure `TRUSTED_PROXY_CIDRS` before relying on source-IP behavior behind hosted proxies.
 - No forgot-password, email verification, forced password-change, or full CSRF-token flow.
 - Admin override/activity-log UI is incomplete.

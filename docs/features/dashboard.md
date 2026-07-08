@@ -17,7 +17,10 @@ Users need a fast role-specific starting point: teachers/admins need pending rev
 - Admin/teacher dashboards prioritize pending reviews, overdue assignments, and active project follow-ups without a KPI summary strip.
 - Student dashboards show one prioritized open-assignment list, then recent submissions.
 - Dashboard UI keeps queues table-first for scanability: pending reviews, overdue assignments, project follow-ups, open assignments, and recent submissions use compact dashboard-specific tables.
+- Each dashboard table has its own frontend-only search over the already-loaded role queue. Table search filters by assignment, submission, project, person, status, blocker, and review text; it is not a complete historical search.
+- Dashboard table headers sort the already-loaded, searched queue before frontend pagination; this is a scanability control and does not request uncapped historical rows from the API.
 - Dashboard SQL must stay role-scoped and lifecycle-aware; project follow-up limits should filter real candidates before applying caps.
+- Overdue assignment queues and overdue stats exclude assignments that already have a pending submission review; those belong in the pending-review queue first.
 - Dashboard queues use compact previous/next frontend pagination at four items per page only when a loaded queue exceeds one page; this is a scanability control, not a complete historical archive.
 - Frontend copy should stay role-specific and avoid oversized KPI cards or dense full-page tables.
 

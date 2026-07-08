@@ -1,5 +1,8 @@
 import { apiClient } from '@/lib/axios'
+import { fetchAllPaginated, paginatedTotalPages } from '@/lib/pagination'
 import type { PaginatedResponse, ProgressUpdate, Project, ProjectMember, ProjectMilestone, ResourceLink, Task } from '@/types/api'
+
+const PROJECT_RELATION_PAGE_LIMIT = 500
 
 export interface CreateProjectInput {
   name: string
@@ -17,6 +20,7 @@ export interface GetProjectsParams {
   unassigned?: boolean
   search?: string
   excludeArchived?: boolean
+  supervisorId?: string
 }
 
 export interface UpdateProjectInput extends Partial<CreateProjectInput> {
@@ -25,8 +29,8 @@ export interface UpdateProjectInput extends Partial<CreateProjectInput> {
 }
 
 export interface AddProjectMemberInput {
-	projectId: string
-	email: string
+  projectId: string
+  email: string
 }
 
 export interface CreateMilestoneInput {
@@ -53,8 +57,8 @@ export interface ReorderMilestonesInput {
 }
 
 export interface RemoveProjectMemberInput {
-	projectId: string
-	memberId: string
+  projectId: string
+  memberId: string
 }
 
 export interface UpdateProjectMemberInput {
@@ -84,7 +88,12 @@ export interface DeleteResourceLinkInput {
 }
 
 export async function getProjectsPage(params?: GetProjectsParams) {
-  const { data } = await apiClient.get<PaginatedResponse<Project>>('/projects', { params })
+  const data = await fetchProjectsPage(params)
+  const requestedPage = params?.page || data.page
+  const totalPages = paginatedTotalPages(data)
+  if (requestedPage > totalPages && data.page !== totalPages) {
+    return fetchProjectsPage({ ...params, page: totalPages })
+  }
   return data
 }
 
@@ -109,13 +118,11 @@ export async function getProject(projectId: string) {
 }
 
 export async function getProjectMembers(projectId: string) {
-  const { data } = await apiClient.get<ProjectMember[]>(`/projects/${projectId}/members`)
-  return data
+  return fetchAllPaginated((page) => fetchProjectMembersPage(projectId, page))
 }
 
 export async function getProjectMilestones(projectId: string) {
-  const { data } = await apiClient.get<ProjectMilestone[]>(`/projects/${projectId}/milestones`)
-  return data
+  return fetchAllPaginated((page) => fetchProjectMilestonesPage(projectId, page))
 }
 
 export async function createMilestone({ projectId, ...input }: CreateMilestoneInput) {
@@ -138,23 +145,20 @@ export async function reorderMilestones({ projectId, milestoneIds }: ReorderMile
 }
 
 export async function getProjectTasks(projectId: string) {
-  const { data } = await apiClient.get<Task[]>(`/projects/${projectId}/tasks`)
-  return data
+  return fetchAllPaginated((page) => fetchProjectTasksPage(projectId, page))
 }
 
 export async function getProjectProgress(projectId: string) {
-  const { data } = await apiClient.get<ProgressUpdate[]>(`/projects/${projectId}/progress-updates`)
-  return data
+  return fetchAllPaginated((page) => fetchProjectProgressPage(projectId, page))
 }
 
 export async function getProjectResourceLinks(projectId: string) {
-  const { data } = await apiClient.get<ResourceLink[]>(`/projects/${projectId}/resource-links`)
-  return data
+  return fetchAllPaginated((page) => fetchProjectResourceLinksPage(projectId, page))
 }
 
 export async function addProjectMember({ projectId, email }: AddProjectMemberInput) {
-	const { data } = await apiClient.post<ProjectMember>(`/projects/${projectId}/members`, { email })
-	return data
+  const { data } = await apiClient.post<ProjectMember>(`/projects/${projectId}/members`, { email })
+  return data
 }
 
 export async function removeProjectMember({ projectId, memberId }: RemoveProjectMemberInput) {
@@ -178,4 +182,34 @@ export async function updateResourceLink({ projectId, resourceLinkId, ...input }
 
 export async function deleteResourceLink({ projectId, resourceLinkId }: DeleteResourceLinkInput) {
   await apiClient.delete(`/projects/${projectId}/resource-links/${resourceLinkId}`)
+}
+
+async function fetchProjectsPage(params?: GetProjectsParams) {
+  const { data } = await apiClient.get<PaginatedResponse<Project>>('/projects', { params })
+  return data
+}
+
+async function fetchProjectMembersPage(projectId: string, page: number) {
+  const { data } = await apiClient.get<PaginatedResponse<ProjectMember>>(`/projects/${projectId}/members`, { params: { limit: PROJECT_RELATION_PAGE_LIMIT, page } })
+  return data
+}
+
+async function fetchProjectMilestonesPage(projectId: string, page: number) {
+  const { data } = await apiClient.get<PaginatedResponse<ProjectMilestone>>(`/projects/${projectId}/milestones`, { params: { limit: PROJECT_RELATION_PAGE_LIMIT, page } })
+  return data
+}
+
+async function fetchProjectTasksPage(projectId: string, page: number) {
+  const { data } = await apiClient.get<PaginatedResponse<Task>>(`/projects/${projectId}/tasks`, { params: { limit: PROJECT_RELATION_PAGE_LIMIT, page } })
+  return data
+}
+
+async function fetchProjectProgressPage(projectId: string, page: number) {
+  const { data } = await apiClient.get<PaginatedResponse<ProgressUpdate>>(`/projects/${projectId}/progress-updates`, { params: { limit: PROJECT_RELATION_PAGE_LIMIT, page } })
+  return data
+}
+
+async function fetchProjectResourceLinksPage(projectId: string, page: number) {
+  const { data } = await apiClient.get<PaginatedResponse<ResourceLink>>(`/projects/${projectId}/resource-links`, { params: { limit: PROJECT_RELATION_PAGE_LIMIT, page } })
+  return data
 }

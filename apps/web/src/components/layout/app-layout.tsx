@@ -63,8 +63,7 @@ export function AppLayout({ user }: AppLayoutProps) {
       >
         Skip to main content
       </a>
-      <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_14%_6%,rgba(14,165,233,0.18),transparent_26rem),radial-gradient(circle_at_88%_8%,rgba(34,211,238,0.12),transparent_28rem),linear-gradient(180deg,rgba(237,247,252,0.92)_0%,rgba(248,252,255,0.98)_46%,rgba(230,242,248,0.94)_100%)]" />
-      <OceanCurrentLines className="pointer-events-none fixed inset-x-[-12%] top-6 z-0 h-[28rem] w-[124%] text-sky-400/18" />
+      <div className="pointer-events-none fixed inset-0 z-0 bg-background" />
 
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 overflow-hidden bg-[#02172a] p-4 text-white shadow-[18px_0_48px_rgba(2,17,31,0.22)] lg:block">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_8%,rgba(14,165,233,0.2),transparent_14rem),linear-gradient(180deg,#031d34_0%,#02111f_100%)]" />

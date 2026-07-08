@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"net/netip"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type Config struct {
@@ -27,6 +29,7 @@ type Config struct {
 	SessionTTL             time.Duration
 	SessionSecure          bool
 	SessionSameSite        string
+	TrustedProxyCIDRs      []string
 	BootstrapAdminEmail    string
 	BootstrapAdminPassword string
 	UploadStorageBackend   string
@@ -85,6 +88,7 @@ func Load() (Config, error) {
 		SessionTTL:             sessionTTL,
 		SessionSecure:          sessionSecure,
 		SessionSameSite:        sessionSameSite,
+		TrustedProxyCIDRs:      getlist("TRUSTED_PROXY_CIDRS", ""),
 		BootstrapAdminEmail:    strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_BOOTSTRAP_ADMIN_EMAIL"))),
 		BootstrapAdminPassword: os.Getenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD"),
 		UploadStorageBackend:   strings.ToLower(getenv("UPLOAD_STORAGE_BACKEND", "local")),
@@ -141,6 +145,11 @@ func (cfg Config) Validate() error {
 	if strings.EqualFold(strings.TrimSpace(cfg.SessionSameSite), "none") && !cfg.SessionSecure {
 		return errors.New("SESSION_SAME_SITE=none requires SESSION_SECURE=true")
 	}
+	for _, proxy := range cfg.TrustedProxyCIDRs {
+		if _, err := parseIPPrefix(proxy); err != nil {
+			return fmt.Errorf("TRUSTED_PROXY_CIDRS must contain IP addresses or CIDR ranges: %w", err)
+		}
+	}
 	for _, origin := range cfg.CORSAllowedOrigins {
 		trimmedOrigin := strings.TrimSpace(origin)
 		if trimmedOrigin == "*" {
@@ -173,8 +182,61 @@ func (cfg Config) Validate() error {
 		if len(bootstrapPassword) < 8 {
 			return errors.New("AUTH_BOOTSTRAP_ADMIN_PASSWORD must be at least 8 characters")
 		}
+		if production && !isStrongProductionBootstrapPassword(bootstrapPassword) {
+			return errors.New("AUTH_BOOTSTRAP_ADMIN_PASSWORD must be at least 16 characters and include uppercase, lowercase, number, and symbol characters when APP_ENV=production")
+		}
 	}
 	return nil
+}
+
+func parseIPPrefix(value string) (netip.Prefix, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return netip.Prefix{}, errors.New("empty value")
+	}
+	if prefix, err := netip.ParsePrefix(value); err == nil {
+		return prefix.Masked(), nil
+	}
+	addr, err := netip.ParseAddr(value)
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	return netip.PrefixFrom(addr, addr.BitLen()), nil
+}
+
+func isStrongProductionBootstrapPassword(password string) bool {
+	if len(password) < 16 {
+		return false
+	}
+	if isKnownWeakBootstrapPassword(password) {
+		return false
+	}
+	var hasUpper, hasLower, hasDigit, hasSymbol bool
+	for _, char := range password {
+		switch {
+		case unicode.IsUpper(char):
+			hasUpper = true
+		case unicode.IsLower(char):
+			hasLower = true
+		case unicode.IsDigit(char):
+			hasDigit = true
+		case unicode.IsSpace(char):
+			return false
+		default:
+			hasSymbol = true
+		}
+	}
+	return hasUpper && hasLower && hasDigit && hasSymbol
+}
+
+func isKnownWeakBootstrapPassword(password string) bool {
+	value := strings.ToLower(strings.TrimSpace(password))
+	switch value {
+	case "admin12345", "password", "password123", "changeme", "change-me", "unitrack", "unitrack-demo", "demo12345":
+		return true
+	default:
+		return false
+	}
 }
 
 func getenv(key string, fallback string) string {

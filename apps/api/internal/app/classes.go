@@ -97,14 +97,38 @@ func (s *Server) handleCreateCourseSection(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not create folder")
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	actor, err := lockActiveWorkspaceActorTx(r.Context(), tx, user)
+	if err != nil {
+		writeWorkspaceActorAccessError(w, err, "only teachers and admins can create folders")
+		return
+	}
+	if actor.Role != RoleAdmin && ownerTeacherID != actor.ID {
+		writeError(w, http.StatusForbidden, "only admins can assign folder owners")
+		return
+	}
+	if err := ensureSupervisorTx(r.Context(), tx, ownerTeacherID); err != nil {
+		writeError(w, http.StatusBadRequest, "owner must be an active teacher or admin")
+		return
+	}
+
 	var classID string
-	err := s.db.QueryRow(r.Context(), `
+	err = tx.QueryRow(r.Context(), `
 		INSERT INTO course_sections (title, color, description, owner_teacher_id, status, created_by)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id::text
 	`, title, color, optionalString(input.Description), ownerTeacherID, status, user.ID).Scan(&classID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create folder")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not save folder")
 		return
 	}
 
@@ -138,6 +162,25 @@ func (s *Server) handleGetCourseSection(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "could not load folder")
 		return
 	}
+	if wantsPaginatedResponse(r.URL.Query()) {
+		pagination, err := parsePaginationParams(r.URL.Query(), 100, 500)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid folder project pagination")
+			return
+		}
+		projects, total, err := s.listCourseSectionProjectsPage(r.Context(), user, classID, pagination.Limit, pagination.Offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load folder projects")
+			return
+		}
+		writeJSON(w, http.StatusOK, CourseSectionDetailDTO{
+			ClassFolder:  item,
+			Projects:     projects,
+			ProjectsPage: &paginatedResponse[ProjectDTO]{Items: projects, Page: pagination.Page, Limit: pagination.Limit, Total: total},
+		})
+		return
+	}
+
 	projects, err := s.listCourseSectionProjects(r.Context(), user, classID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load folder projects")
@@ -159,7 +202,25 @@ func (s *Server) handleUpdateCourseSection(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	current, err := s.getCourseSectionByID(r.Context(), classID)
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update folder")
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	actor, err := lockActiveWorkspaceActorTx(r.Context(), tx, user)
+	if err != nil {
+		writeWorkspaceActorAccessError(w, err, "you do not have access to this folder")
+		return
+	}
+	var current CourseSectionDTO
+	var currentDescription sql.NullString
+	err = tx.QueryRow(r.Context(), `
+		SELECT title, color, description, owner_teacher_id::text, status
+		FROM course_sections
+		WHERE id = $1
+		FOR UPDATE
+	`, classID).Scan(&current.Title, &current.Color, &currentDescription, &current.OwnerTeacherID, &current.Status)
 	if isNoRows(err) {
 		writeError(w, http.StatusNotFound, "folder not found")
 		return
@@ -168,6 +229,11 @@ func (s *Server) handleUpdateCourseSection(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "could not load folder")
 		return
 	}
+	if actor.Role != RoleAdmin && current.OwnerTeacherID != actor.ID {
+		writeError(w, http.StatusForbidden, "you do not have access to this folder")
+		return
+	}
+	current.Description = nullString(currentDescription)
 
 	var input updateCourseSectionRequest
 	if !decodeJSON(w, r, &input) {
@@ -205,13 +271,17 @@ func (s *Server) handleUpdateCourseSection(w http.ResponseWriter, r *http.Reques
 		description = strings.TrimSpace(*input.Description)
 	}
 
-	_, err = s.db.Exec(r.Context(), `
+	_, err = tx.Exec(r.Context(), `
 		UPDATE course_sections
 		SET title = $1, color = $2, description = $3, status = $4
 		WHERE id = $5
 	`, title, color, optionalString(description), status, classID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update folder")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not save folder")
 		return
 	}
 	updated, err := s.getCourseSectionByID(r.Context(), classID)
@@ -421,7 +491,44 @@ func (s *Server) listCourseSectionProjects(ctx context.Context, user User, class
 	return projects, rows.Err()
 }
 
+func (s *Server) listCourseSectionProjectsPage(ctx context.Context, user User, classID string, limit int, offset int) ([]ProjectDTO, int64, error) {
+	where := "WHERE EXISTS (SELECT 1 FROM course_section_projects csp WHERE csp.project_id = p.id AND csp.course_section_id = $1)"
+	args := []any{classID}
+	if user.Role == RoleTeacher {
+		where += " AND p.supervisor_id = $2"
+		args = append(args, user.ID)
+	} else if user.Role != RoleAdmin {
+		return []ProjectDTO{}, 0, nil
+	}
+	var total int64
+	if err := s.db.QueryRow(ctx, projectCountSQL(where), args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, limit)
+	limitPlaceholder := "$" + strconv.Itoa(len(args))
+	args = append(args, offset)
+	offsetPlaceholder := "$" + strconv.Itoa(len(args))
+	rows, err := s.db.Query(ctx, projectSelectSQL(where, "ORDER BY p.updated_at DESC LIMIT "+limitPlaceholder+" OFFSET "+offsetPlaceholder), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	projects := []ProjectDTO{}
+	for rows.Next() {
+		project, err := scanProject(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		projects = append(projects, project)
+	}
+	return projects, total, rows.Err()
+}
+
 func (s *Server) canManageCourseSection(ctx context.Context, user User, classID string) (bool, error) {
+	if !validUUIDParam(classID) {
+		return false, badRequestError("invalid folder id")
+	}
 	if user.Role == RoleAdmin {
 		var exists bool
 		err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM course_sections WHERE id = $1)`, classID).Scan(&exists)
@@ -436,6 +543,9 @@ func (s *Server) canManageCourseSection(ctx context.Context, user User, classID 
 }
 
 func (s *Server) canUseCourseSectionForProject(ctx context.Context, user User, classID string) (bool, error) {
+	if !validUUIDParam(classID) {
+		return false, badRequestError("invalid folder id")
+	}
 	var allowed bool
 	if user.Role == RoleAdmin {
 		err := s.db.QueryRow(ctx, `

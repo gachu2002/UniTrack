@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom'
 
 import { AppLayout } from '@/components/layout/app-layout'
+import { ErrorState } from '@/components/shared/error-state'
 import { ForbiddenState } from '@/components/shared/forbidden-state'
 import { LoadingState } from '@/components/shared/loading-state'
 import { LoginPage } from '@/features/auth/pages/login-page'
@@ -11,6 +12,7 @@ import { DashboardPage } from '@/features/dashboard/pages/dashboard-page'
 import { ProjectDetailPage } from '@/features/projects/pages/project-detail-page'
 import { TaskDetailPage } from '@/features/tasks/pages/task-detail-page'
 import { WorkspacePage } from '@/features/workspace/pages/workspace-page'
+import { isUnauthorizedError } from '@/lib/axios'
 
 export function AppRouter() {
   return (
@@ -60,6 +62,9 @@ function RootRedirect() {
   if (currentUser.isLoading) {
     return <LoadingState label="Checking session" variant="app" />
   }
+  if (currentUser.isError && !isUnauthorizedError(currentUser.error)) {
+    return <ErrorState message="The session could not be verified." onRetry={() => void currentUser.refetch()} />
+  }
   return <Navigate to={currentUser.data ? '/dashboard' : '/login'} replace />
 }
 
@@ -68,6 +73,9 @@ function ProtectedLayout() {
   const currentUser = useCurrentUser()
   if (currentUser.isLoading) {
     return <LoadingState label="Checking session" variant="screen" />
+  }
+  if (currentUser.isError && !isUnauthorizedError(currentUser.error)) {
+    return <ErrorState message="The session could not be verified." onRetry={() => void currentUser.refetch()} />
   }
   if (!currentUser.data) {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />

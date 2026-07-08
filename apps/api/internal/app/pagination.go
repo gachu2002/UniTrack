@@ -34,6 +34,13 @@ func parsePaginationParams(values url.Values, fallbackLimit int, maxLimit int) (
 		}
 		page = parsedPage
 	}
+	if page-1 > int(^uint(0)>>1)/limit {
+		return paginationParams{}, errors.New("invalid page")
+	}
 
 	return paginationParams{Page: page, Limit: limit, Offset: (page - 1) * limit}, nil
+}
+
+func wantsPaginatedResponse(values url.Values) bool {
+	return values.Has("page") || values.Has("limit")
 }

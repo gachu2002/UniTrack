@@ -17,7 +17,6 @@ export function PageHeader({ eyebrow, title, description, action, back, badges, 
   return (
     <header className={cn('border-b border-border/80 pb-4', className)}>
       {back ? <div className="mb-2">{back}</div> : null}
-      <div aria-hidden="true" className="mb-3 h-1 w-16 rounded-full bg-gradient-to-r from-primary via-secondary to-cyan-300" />
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           {eyebrow ? <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{eyebrow}</p> : null}

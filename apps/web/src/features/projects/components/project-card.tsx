@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom'
 import { EmptyState } from '@/components/shared/empty-state'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
-import { projectNeedsAttention } from '@/features/projects/attention'
+import { getProjectWorkSignal, type ProjectWorkSignal } from '@/features/projects/attention'
 import { cn } from '@/lib/utils'
 import type { ClassFolderColor, Project } from '@/types/api'
 
@@ -37,7 +37,7 @@ export function ProjectCardGrid({ projects, emptyTitle, emptyMessage, showContex
     <div className="space-y-4">
       <div className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {visibleItems.map((project) => <ProjectCard key={project.id} project={project} showContext={showContext} />)}
-        {placeholderCount > 0 ? Array.from({ length: placeholderCount }, (_, index) => <div key={`project-placeholder-${index}`} className="invisible hidden h-full min-h-44 pt-2 md:block" aria-hidden="true" />) : null}
+        {placeholderCount > 0 ? Array.from({ length: placeholderCount }, (_, index) => <div key={`project-placeholder-${index}`} className="invisible hidden h-56 pt-2 md:block" aria-hidden="true" />) : null}
       </div>
       {allowShowAll && items.length > PROJECT_CARD_INITIAL_COUNT ? (
         <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-border bg-white/70 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
@@ -50,11 +50,11 @@ export function ProjectCardGrid({ projects, emptyTitle, emptyMessage, showContex
 }
 
 export function ProjectCard({ project, showContext = false, actions }: { project: Project; showContext?: boolean; actions?: ReactNode }) {
-  const hasAttention = projectNeedsAttention(project)
   const context = project.classTitle || ''
   const palette = projectPalette(project.classColor)
-  const cardClass = 'group relative block h-full pt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
-  const content = <ProjectCardContent project={project} showContext={showContext} context={context} hasAttention={hasAttention} linkedTitle={Boolean(actions)} actions={actions} palette={palette} />
+  const compact = Boolean(actions)
+  const cardClass = cn('group relative block pt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30', compact ? 'h-48' : 'h-56')
+  const content = <ProjectCardContent project={project} showContext={showContext} context={context} linkedTitle={compact} actions={actions} palette={palette} />
 
   if (actions) {
     return <article className={cardClass}>{content}</article>
@@ -67,7 +67,7 @@ export function ProjectCard({ project, showContext = false, actions }: { project
   )
 }
 
-function ProjectCardContent({ project, showContext, context, hasAttention, linkedTitle, actions, palette }: { project: Project; showContext: boolean; context: string; hasAttention: boolean; linkedTitle: boolean; actions?: ReactNode; palette: ReturnType<typeof projectPalette> }) {
+function ProjectCardContent({ project, showContext, context, linkedTitle, actions, palette }: { project: Project; showContext: boolean; context: string; linkedTitle: boolean; actions?: ReactNode; palette: ReturnType<typeof projectPalette> }) {
   const compact = Boolean(actions)
   const progressPercent = clampPercent(project.plannedProgressPercent)
   const title = <h3 className={cn('line-clamp-2 font-heading font-semibold leading-tight tracking-tight text-ink transition-colors group-hover:text-primary group-focus-visible:text-primary', compact ? 'text-base' : 'text-lg')}>{project.name}</h3>
@@ -77,10 +77,10 @@ function ProjectCardContent({ project, showContext, context, hasAttention, linke
   return (
     <div className="relative h-full">
       <div className={cn('absolute left-3 top-0 rounded-t-md rounded-br-sm border border-black/5 shadow-sm transition duration-200 motion-safe:group-hover:-translate-y-0.5 motion-safe:group-focus-within:-translate-y-0.5', compact ? 'h-5 w-20' : 'h-6 w-24', palette.tab)} />
-      <div className={cn('relative h-full overflow-hidden rounded-[1.15rem] rounded-tl-[0.75rem] border shadow-sm ring-1 ring-transparent transition duration-200 group-hover:shadow-panel group-hover:ring-primary/15 group-focus-within:ring-primary/20', compact ? 'min-h-40' : 'min-h-44', palette.card)}>
+      <div className={cn('relative h-full overflow-hidden rounded-[1.15rem] rounded-tl-[0.75rem] border shadow-sm ring-1 ring-transparent transition duration-200 group-hover:shadow-panel group-hover:ring-primary/15 group-focus-within:ring-primary/20', palette.card)}>
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.9),transparent_48%)]" />
         {actions ? <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">{actions}</div> : null}
-        <div className={cn('relative flex h-full flex-col justify-between', compact ? 'min-h-40 gap-3 p-3' : 'min-h-44 gap-4 p-4')}>
+        <div className={cn('relative flex h-full flex-col justify-between', compact ? 'gap-3 p-3' : 'gap-4 p-4')}>
           <div className="flex items-start justify-between gap-3">
             <div className={cn('min-w-0 flex-1', compact ? 'pr-28' : '')}>
               {showContext && context ? <span className={cn('mb-2 inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm ring-1 ring-white/80', palette.pill)}>{context}</span> : null}
@@ -90,22 +90,16 @@ function ProjectCardContent({ project, showContext, context, hasAttention, linke
             {!actions ? <ArrowUpRight className="mt-1 size-5 shrink-0 text-muted-foreground transition duration-200 motion-safe:translate-x-1 group-hover:text-primary motion-safe:group-hover:translate-x-0 group-focus-visible:text-primary motion-safe:group-focus-visible:translate-x-0" /> : null}
           </div>
 
-          {compact ? <ProjectCardCompactFooter project={project} hasAttention={hasAttention} /> : <ProjectCardFullFooter project={project} hasAttention={hasAttention} scopeLabel={scopeLabel} progressPercent={progressPercent} palette={palette} />}
+          {compact ? <ProjectCardCompactFooter project={project} /> : <ProjectCardFullFooter project={project} scopeLabel={scopeLabel} progressPercent={progressPercent} palette={palette} />}
         </div>
       </div>
     </div>
   )
 }
 
-function ProjectCardFullFooter({ project, hasAttention, scopeLabel, progressPercent, palette }: { project: Project; hasAttention: boolean; scopeLabel: string; progressPercent: number; palette: ReturnType<typeof projectPalette> }) {
+function ProjectCardFullFooter({ project, scopeLabel, progressPercent, palette }: { project: Project; scopeLabel: string; progressPercent: number; palette: ReturnType<typeof projectPalette> }) {
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge value={project.status} />
-        <StatusBadge value={project.officialProgressState} />
-        {hasAttention ? <StatusBadge value="attention" tone="red" /> : null}
-      </div>
-
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
           <span>{scopeLabel}</span>
@@ -116,23 +110,55 @@ function ProjectCardFullFooter({ project, hasAttention, scopeLabel, progressPerc
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="rounded-full bg-white/80 px-2.5 py-1 font-medium text-muted-foreground shadow-sm ring-1 ring-white/80">{project.memberCount} member{project.memberCount === 1 ? '' : 's'}</span>
-        {project.pendingReviewCount > 0 ? <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800 shadow-sm ring-1 ring-amber-200">{project.pendingReviewCount} review{project.pendingReviewCount === 1 ? '' : 's'}</span> : null}
-        {project.overdueTaskCount > 0 ? <span className="rounded-full bg-red-100 px-2.5 py-1 font-semibold text-red-700 shadow-sm ring-1 ring-red-200">{project.overdueTaskCount} overdue</span> : null}
+      <div className="flex min-h-7 min-w-0 items-center gap-2 overflow-hidden text-xs">
+        <span className="shrink-0 rounded-full bg-white/80 px-2.5 py-1 font-medium text-muted-foreground shadow-sm ring-1 ring-white/80">{project.memberCount} member{project.memberCount === 1 ? '' : 's'}</span>
+        <ProjectCardLifecycleBadge project={project} />
+        <ProjectCardStateBadge project={project} />
       </div>
     </div>
   )
 }
 
-function ProjectCardCompactFooter({ project, hasAttention }: { project: Project; hasAttention: boolean }) {
+function ProjectCardCompactFooter({ project }: { project: Project }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-white/70 pt-3 text-xs">
-      <StatusBadge value={project.status} />
-      <span className="rounded-full bg-white/80 px-2.5 py-1 font-medium text-muted-foreground shadow-sm ring-1 ring-white/80">{project.taskCount} assignment{project.taskCount === 1 ? '' : 's'}</span>
-      {hasAttention ? <span className="rounded-full bg-red-100 px-2.5 py-1 font-semibold text-red-700 shadow-sm ring-1 ring-red-200">Needs attention</span> : null}
+    <div className="flex min-h-10 min-w-0 items-center gap-2 overflow-hidden border-t border-white/70 pt-3 text-xs">
+      <span className="shrink-0 rounded-full bg-white/80 px-2.5 py-1 font-medium text-muted-foreground shadow-sm ring-1 ring-white/80">{project.taskCount} assignment{project.taskCount === 1 ? '' : 's'}</span>
+      <ProjectCardLifecycleBadge project={project} />
+      <ProjectCardStateBadge project={project} />
     </div>
   )
+}
+
+function ProjectCardLifecycleBadge({ project }: { project: Project }) {
+  if (project.status === 'active') {
+    return null
+  }
+  return <StatusBadge value={project.status} />
+}
+
+function ProjectCardStateBadge({ project }: { project: Project }) {
+  const signal = getProjectWorkSignal(project, { includeGeneralAttention: true })
+  if (signal) {
+    return <ProjectCardSignalBadge project={project} signal={signal} />
+  }
+  return <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 shadow-sm ring-1 ring-emerald-200/70">steady</span>
+}
+
+function ProjectCardSignalBadge({ project, signal }: { project: Project; signal: ProjectWorkSignal }) {
+  return <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm ring-1', signal.tone === 'red' ? 'bg-red-100 text-red-700 ring-red-200' : 'bg-amber-100 text-amber-800 ring-amber-200')}>{projectCardSignalLabel(project)}</span>
+}
+
+function projectCardSignalLabel(project: Project) {
+  if (project.pendingReviewCount > 0) {
+    return `${project.pendingReviewCount} review`
+  }
+  if (project.overdueTaskCount > 0) {
+    return `${project.overdueTaskCount} overdue`
+  }
+  if (project.needsChangesTaskCount > 0 || project.officialProgressState === 'needs_changes') {
+    return 'revision'
+  }
+  return 'attention'
 }
 
 function projectPalette(color?: ClassFolderColor) {

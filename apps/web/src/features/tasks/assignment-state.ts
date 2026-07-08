@@ -18,7 +18,7 @@ export function getAssignmentState(task: Task): AssignmentState {
       description: 'A student submitted work and needs a teacher decision.',
     }
   }
-  if (task.officialProgressState === 'needs_changes') {
+  if (isAssignmentNeedsRevision(task)) {
     return {
       key: 'needs_revision',
       label: 'Needs revision',
@@ -56,4 +56,8 @@ export function getAssignmentState(task: Task): AssignmentState {
     tone: 'slate',
     description: 'No reviewed work has started this assignment yet.',
   }
+}
+
+export function isAssignmentNeedsRevision(task: Task) {
+  return task.status === 'needs_changes' || task.officialProgressState === 'needs_changes'
 }

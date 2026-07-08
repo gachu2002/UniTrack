@@ -16,17 +16,19 @@ import { Dialog } from '@/components/ui/dialog'
 import { Field as BaseField, FieldError, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { SortableTableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { createAdminUser, getAdminUsers, getAdminUsersPage, setAdminUserPassword, updateAdminUser, type GetAdminUsersParams } from '@/features/admin/api'
-import { getErrorMessage, getErrorPayload, isForbiddenError } from '@/lib/axios'
+import { getErrorMessage, getErrorPayload, isForbiddenError, isForbiddenOrConflictError } from '@/lib/axios'
 import { formatDateTime } from '@/lib/format'
 import { invalidateAdminAccountImpactData } from '@/lib/query-invalidation'
 import { queryKeys } from '@/lib/query-keys'
+import { dateSortValue, sortItems, toggleSort, type SortState } from '@/lib/sort'
 import { useAuthStore } from '@/stores/auth-store'
 import type { User, UserRole } from '@/types/api'
 
 type RoleFilter = UserRole | 'all'
 type StatusFilter = User['status'] | 'all'
+type AccountSortKey = 'account' | 'role' | 'status' | 'created'
 const ACCOUNT_PAGE_SIZE = 10
 
 interface AccountTransitionImpact {
@@ -47,6 +49,7 @@ export function AdminUsersPage() {
   const [role, setRole] = useState<RoleFilter>('all')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [page, setPage] = useState(1)
+  const [sort, setSort] = useState<SortState<AccountSortKey> | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<User | null>(null)
   const [passwordTarget, setPasswordTarget] = useState<User | null>(null)
@@ -69,6 +72,21 @@ export function AdminUsersPage() {
     }
   }, [adminForbidden, queryClient])
 
+  const usersPage = usersQuery.data
+  const users = usersPage?.items || []
+  const totalUsers = usersPage?.total || 0
+  const totalPages = Math.max(1, Math.ceil(totalUsers / ACCOUNT_PAGE_SIZE))
+  const currentPage = Math.min(usersPage?.page || page, totalPages)
+  const startItem = totalUsers === 0 ? 0 : (currentPage - 1) * ACCOUNT_PAGE_SIZE + 1
+  const endItem = totalUsers === 0 ? 0 : Math.min(startItem + users.length - 1, totalUsers)
+  const visibleUsers = sortItems(users, sort, {
+    account: (user) => `${user.fullName} ${user.email}`,
+    role: (user) => user.role,
+    status: (user) => user.status,
+    created: (user) => dateSortValue(user.createdAt),
+  })
+  const onSort = (key: AccountSortKey) => setSort((current) => toggleSort(current, key))
+
   if (usersQuery.isLoading && !usersQuery.data) {
     return <LoadingState label="Loading accounts" />
   }
@@ -79,15 +97,7 @@ export function AdminUsersPage() {
     return <ErrorState message="Admin accounts could not be loaded." onRetry={() => void usersQuery.refetch()} />
   }
 
-  const usersPage = usersQuery.data
-  const users = usersPage?.items || []
-  const totalUsers = usersPage?.total || 0
   const isRefreshing = usersQuery.isFetching && Boolean(usersQuery.data)
-  const totalPages = Math.max(1, Math.ceil(totalUsers / ACCOUNT_PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const startItem = totalUsers === 0 ? 0 : (currentPage - 1) * ACCOUNT_PAGE_SIZE + 1
-  const endItem = totalUsers === 0 ? 0 : Math.min(startItem + users.length - 1, totalUsers)
-  const visibleUsers = users
   const hasActiveFilters = search.trim().length > 0 || role !== 'all' || status !== 'all'
   const pageLabel = totalUsers === 0 ? 'No accounts' : `${startItem}-${endItem} of ${totalUsers} accounts`
   const clearFilters = () => {
@@ -134,7 +144,7 @@ export function AdminUsersPage() {
             </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(0,10rem)_minmax(0,10rem)_auto] sm:items-center xl:w-[26rem]">
               <Select value={role} onValueChange={(value) => { setRole(value as RoleFilter); setPage(1) }}>
-                <SelectTrigger className="bg-white shadow-sm"><SelectValue placeholder="Role" /></SelectTrigger>
+                <SelectTrigger className="bg-white shadow-sm" aria-label="Filter by role"><SelectValue placeholder="Role" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All roles</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
@@ -143,7 +153,7 @@ export function AdminUsersPage() {
                 </SelectContent>
               </Select>
               <Select value={status} onValueChange={(value) => { setStatus(value as StatusFilter); setPage(1) }}>
-                <SelectTrigger className="bg-white shadow-sm"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectTrigger className="bg-white shadow-sm" aria-label="Filter by status"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
@@ -166,10 +176,10 @@ export function AdminUsersPage() {
               <Table className="min-w-[58rem]">
                 <TableHeader className="bg-primary/5">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[42%] text-ink">Account</TableHead>
-                    <TableHead className="w-[10rem] text-ink">Role</TableHead>
-                    <TableHead className="w-[10rem] text-ink">Status</TableHead>
-                    <TableHead className="w-[14rem] text-ink">Created</TableHead>
+                    <SortableTableHead sortKey="account" sort={sort} onSort={onSort} className="w-[42%] text-ink">Account</SortableTableHead>
+                    <SortableTableHead sortKey="role" sort={sort} onSort={onSort} className="w-[10rem] text-ink">Role</SortableTableHead>
+                    <SortableTableHead sortKey="status" sort={sort} onSort={onSort} className="w-[10rem] text-ink">Status</SortableTableHead>
+                    <SortableTableHead sortKey="created" sort={sort} onSort={onSort} className="w-[14rem] text-ink">Created</SortableTableHead>
                     <TableHead className="w-[15rem] text-right text-ink">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -276,7 +286,12 @@ function AccountForm({ user, onSaved, onCancel }: { user?: User; onSaved: () => 
       invalidateAdminAccountImpactData(queryClient)
       onSaved()
     },
-    onError: (error) => setError(getErrorMessage(error)),
+    onError: (error) => {
+      if (isForbiddenOrConflictError(error)) {
+        invalidateAdminAccountImpactData(queryClient)
+      }
+      setError(getErrorMessage(error))
+    },
   })
   const updateMutation = useMutation({
     mutationFn: updateAdminUser,
@@ -294,6 +309,9 @@ function AccountForm({ user, onSaved, onCancel }: { user?: User; onSaved: () => 
         setTransitionImpact(impact)
         setError('')
         return
+      }
+      if (isForbiddenOrConflictError(error)) {
+        invalidateAdminAccountImpactData(queryClient)
       }
       setError(getErrorMessage(error))
     },
@@ -485,7 +503,12 @@ function PasswordForm({ user, onSaved, onCancel }: { user: User; onSaved: () => 
       queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers })
       onSaved()
     },
-    onError: (error) => setError(getErrorMessage(error)),
+    onError: (error) => {
+      if (isForbiddenOrConflictError(error)) {
+        invalidateAdminAccountImpactData(queryClient)
+      }
+      setError(getErrorMessage(error))
+    },
   })
 
   return (

@@ -53,7 +53,7 @@ export interface ProjectMember {
   fullName: string
   email: string
   role: UserRole
-  status: string
+  status: User['status']
   memberRole: 'member' | 'leader'
   joinedAt: string
 }
@@ -78,6 +78,7 @@ export interface ClassFolder {
 export interface ClassFolderDetail {
   classFolder: ClassFolder
   projects: Project[]
+  projectsPage?: PaginatedResponse<Project>
 }
 
 export interface Task {

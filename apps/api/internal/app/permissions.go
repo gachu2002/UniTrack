@@ -11,6 +11,9 @@ import (
 var errProjectManagerAccessRequired = errors.New("project manager access required")
 
 func (s *Server) canViewProject(ctx context.Context, user User, projectID string) (bool, error) {
+	if !validUUIDParam(projectID) {
+		return false, badRequestError("invalid project id")
+	}
 	if user.Role == RoleAdmin {
 		return s.projectExists(ctx, projectID)
 	}
@@ -38,6 +41,9 @@ func (s *Server) canViewProject(ctx context.Context, user User, projectID string
 }
 
 func (s *Server) canManageProject(ctx context.Context, user User, projectID string) (bool, error) {
+	if !validUUIDParam(projectID) {
+		return false, badRequestError("invalid project id")
+	}
 	if user.Role == RoleAdmin {
 		return s.projectExists(ctx, projectID)
 	}

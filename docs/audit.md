@@ -92,39 +92,31 @@ Treat violations of these invariants as `high` or `critical` unless the evidence
 
 ## Audit Queue
 
-| ID | Topic | Status | Priority |
-| --- | --- | --- | --- |
-| A01 | Product scope and business workflow | clean | high |
-| A02 | Roles, permissions, and access control | findings_open | critical |
-| A03 | Project lifecycle logic | findings_open | critical |
-| A04 | Auth and session security | clean | critical |
-| A05 | Admin account management | clean | high |
-| A06 | Workspace and project organization | clean | medium |
-| A07 | Project detail and Work Plan | clean | high |
-| A08 | Team and membership logic | clean | high |
-| A09 | Assignments and official tasks | clean | high |
-| A10 | Submissions and review workflow | clean | critical |
-| A11 | Resources and evidence files | clean | high |
-| A12 | Dashboard logic | clean | high |
-| A13 | Database schema and integrity | findings_open | critical |
-| A14 | Backend API implementation | clean | high |
-| A15 | Frontend state and data flow | clean | high |
-| A16 | Visual UI system and accessibility | clean | high |
-| A17 | Testing and QA coverage | clean | medium |
-| A18 | Deployment, security, and operations | clean | high |
-| A19 | Documentation accuracy | clean | medium |
+| ID | Topic | Status | Priority | Audit Notes |
+| --- | --- | --- | --- | --- |
+| A01 | Product scope and business workflow | clean | high | Audited; no open findings. |
+| A02 | Roles, permissions, and access control | clean | critical | Audited; no open findings. |
+| A03 | Project lifecycle logic | clean | critical | Audited; no open findings. |
+| A04 | Auth and session security | clean | critical | Audited; no open findings. |
+| A05 | Admin account management | clean | high | Audited; no open findings. |
+| A06 | Workspace and project organization | clean | medium | Audited; no open findings. |
+| A07 | Project detail and Work Plan | clean | high | Audited; no open findings. |
+| A08 | Team and membership logic | clean | high | Audited; no open findings. |
+| A09 | Assignments and official tasks | clean | high | Audited; no open findings. |
+| A10 | Submissions and review workflow | clean | critical | Audited; no open findings. |
+| A11 | Resources and evidence files | clean | high | Audited; no open findings. |
+| A12 | Dashboard logic | clean | high | Audited; no open findings. |
+| A13 | Database schema and integrity | clean | critical | Audited; no open findings. |
+| A14 | Backend API implementation | clean | high | Audited; direct findings resolved. |
+| A15 | Frontend state and data flow | clean | high | Audited; direct findings resolved. |
+| A16 | Visual UI system and accessibility | clean | high | Audited; direct findings resolved. |
+| A17 | Testing and QA coverage | clean | medium | Direct and cross-linked findings resolved. |
+| A18 | Deployment, security, and operations | clean | high | Direct and cross-linked findings resolved. |
+| A19 | Documentation accuracy | clean | medium | Audited; README command drift and A18 doc clarifications resolved. |
 
 ## Current Findings
 
-| ID | Audit | Severity | Finding | Evidence | Recommended Fix |
-| --- | --- | --- | --- | --- | --- |
-| F-A02-001 | A02 | medium | Some project and folder create/update paths rely on request-context role/ownership checks without the same transaction-scoped actor, supervisor, or owner rechecks used by more sensitive project writes. | `apps/api/internal/app/projects.go`, `apps/api/internal/app/classes.go` | Re-read/lock the relevant actor, supervisor, and folder owner rows inside these mutation transactions, or explicitly document the accepted race window. |
-| F-A02-002 | A02 | low | Admin mutations rely on the request-context admin role and do not re-lock the acting admin in each mutation transaction. | `apps/api/internal/app/admin_users.go` | Re-read/lock the actor for admin create/update/password mutations when tightening stale admin demotion/deactivation races. |
-| F-A02-003 | A02 | low | Archived project reactivation can preserve a supervisor who was demoted or deactivated while the project was archived. | `apps/api/internal/app/projects.go`, `apps/api/internal/app/admin_users.go` | Validate the current supervisor before reactivating archived projects, or include archived projects in supervisor replacement flows. |
-| F-A03-001 | A03 | medium | Project lifecycle status gates are enforced by API helpers, but not by database triggers for direct writes to project-scoped work, team, and support tables. | `apps/api/internal/app/projects.go`, `apps/api/db/migrations` | Either document lifecycle as API-enforced only, or add deferrable project-status triggers for direct-write safety on high-risk tables. |
-| F-A13-001 | A13 | medium | Removed numeric-assessment schema remains active enough for direct writes but lacks target/project-match integrity. | `apps/api/db/migrations/20260606000300_assessments_and_milestone_feedback.sql`, `apps/api/internal/app/milestones.go` | Drop the unused `assessments` table and active cleanup reference, or quarantine it with explicit legacy constraints/tests. |
-| F-A13-002 | A13 | medium | `progress_updates.review_status` and `progress_reviews` can drift under direct SQL because matching review-row/status consistency is app-maintained. | `apps/api/db/migrations/20260601000100_init_mvp.sql`, `apps/api/db/migrations/20260603000100_lifecycle_hardening.sql`, `apps/api/internal/app/tasks.go` | Add a deferrable consistency trigger or derive review state from `progress_reviews`. |
-| F-A13-003 | A13 | low | Reviewed-support immutability covers direct `progress_update` evidence, but database-compatible `uploaded_files` attached to `resource_link` targets are not resolved through the resource link to a reviewed submission. | `apps/api/db/migrations/20260621000100_support_target_integrity.sql`, `apps/api/db/migrations/20260621000200_reviewed_support_immutability.sql`, `apps/api/internal/app/files.go` | Remove `resource_link` file compatibility if unused, or extend immutability checks through `resource_link -> progress_update`. |
+No current findings.
 
 ## Resolved Findings
 
@@ -144,11 +136,45 @@ Resolved in the current A08 pass: project member role changes now lock the targe
 
 Resolved in the current A09 pass: `F-A09-001` assignment assignee validation now rejects malformed body IDs and locks target `project_members`/`users` rows before insert, preventing stale-account or concurrent-deactivation races from creating assignments for inactive students. Verified with focused assignment lifecycle tests, `make api-build`, DB-backed `make api-test`, and `git diff --check`.
 
+Tracker correction in the current pass: A02, A03, and A13 are the clean exceptions. Prior open rows for those topics were stale tracker state and are no longer listed as current findings.
+
+Audited in the current A01 pass: active routes and API registrations remain project-first with legacy `/projects*` and `/classes*` redirects only; removed invitation/course/feedback/meeting/child-task workflows are not active product surfaces.
+
+Audited in the current A04 pass: login/session/origin guard behavior remains covered by focused lifecycle tests, with no new auth/session findings from this pass.
+
+Resolved in the current A05 pass: admin create/update/password mutations now serialize account-control writes and re-lock/revalidate the acting admin as active inside the mutation transaction, preventing stale admin sessions from completing account mutations after concurrent demotion or deactivation. Verified with focused auth/admin lifecycle tests.
+
+Resolved in the current A06 pass: project creation, folder creation, and folder update now re-lock/revalidate the acting teacher/admin plus target supervisor/owner inside the mutation transaction, preventing stale creator/owner/supervisor races from creating or updating workspace organization records. Verified with focused DB-backed lifecycle tests.
+
+Audited in the current A07/A08 pass: project detail source now matches the documented compact header, Work Plan, summary rail, resources, and team popover layout; milestone/team writes preserve transaction-scoped lifecycle, manager, and active-student rechecks. No new findings from this pass.
+
+Resolved in the current A09/A10 pass: generic assignment update cannot silently reopen completed assignments, explicit manual status adjustments are audited, and negative review decisions must use `needs_changes` as the official assignment state so submission/review state, rollups, and UI copy stay consistent. Verified with focused DB-backed lifecycle tests.
+
+Resolved in the current A11 pass: reviewed-submission evidence immutability now resolves database-compatible `uploaded_files` rows that target a `resource_link` pointing at a reviewed submission, and the API delete path blocks those files as reviewed support. Verified with focused DB-backed lifecycle tests and migration validation.
+
+Resolved in the current A12 pass: dashboard overdue assignment queues and overdue stats now exclude assignments that already have a pending submission review, keeping pending reviews as the first manager action and preventing duplicate review/follow-up queue entries. Verified with focused DB-backed dashboard lifecycle tests.
+
+Resolved in the current A14 pass: project/folder permission helpers now reject malformed UUID route IDs before SQL, admin user mutation routes validate `userId` before transactions, unexpected admin user lookup errors map to `500`, and shared list pagination rejects overflow-sized `page` values before offset calculation. Verified with focused DB-backed API route tests and `make api-build`.
+
+Resolved in the current A15/A16/A17 pass: non-401 `/auth/me` bootstrap failures now show retryable errors instead of forcing login; confirmed `/auth/me` 401 clears protected query cache; stale workspace/admin errors refresh current-user data; project/task detail non-forbidden load failures render retryable errors; page error states announce as alerts; admin filters have persistent accessible names; project/task pages keep the app shell as the only `main` landmark; and stale dashboard Playwright assertions now match the current `Review work` heading. Verified with web lint/build and `git diff --check`.
+
+Resolved in the current A15/A16/A17 remediation pass: `F-A15-001` pending-submission resource dialogs now derive writability from the current submission review state and switch reviewed submissions to read-only; `F-A15-002` server-paginated admin/workspace project and folder APIs refetch the last valid page when totals shrink; `F-A15-003` folder candidate search applies supervisor eligibility in the project API before pagination; `F-A16-001` shared dialogs now use a top-layer stack for Escape/Tab/backdrop handling and scroll locking; `F-A16-002` project and assignment forms now wire stable labels to inputs/selects/date pickers and label student search; `F-A16-003` folder-detail color radios and project attach combobox implement roving/active-descendant keyboard behavior; `F-A17-001` has a focused Playwright happy path for project/team/assignment/submission/review UI; `F-A17-002` makes `make api-test` fail fast without `TEST_DATABASE_URL` and adds `make api-test-unit`; and `F-A17-003` adds S3/R2-compatible storage tests for key generation, put/open/delete, content type, and not-found mapping. Verified with DB-backed `make api-test`, `make api-test-unit`, focused storage tests, `make api-build`, web lint/build, targeted `assignment-happy-path.spec.ts`, and `git diff --check`.
+
+Resolved in the current A14/A18 remediation pass: `F-A14-001` evidence upload/delete now uses `uploaded_file_object_cleanup_jobs` to reconcile object storage and metadata after ambiguous failures. Upload creates a cleanup job before storing the object and completes it in the metadata transaction; metadata insert/commit failures leave or process the job so orphan objects are deleted. Delete removes metadata and enqueues object cleanup in one transaction, then attempts storage deletion; storage failures remain queued and are retried at API startup through `ProcessPendingStoredFileCleanups`. Verified with the cleanup migration, focused DB-backed upload/delete cleanup tests, local/R2 storage tests, and `make db-validate`.
+
+Resolved in the current A14/A17 remediation pass: `F-A14-002` project-scoped nested collections now support explicit `page`/`limit` responses for members, assignments, checkpoints, resource links, evidence files, project progress-update history, and folder projects. Legacy no-query callers still receive array/detail responses, task detail submission history no longer has a hidden cap, folder detail exposes `projectsPage` metadata for paged project lists, and frontend relation loaders fetch and merge paged API results. The shared pagination guard rejects invalid or overflow-sized offsets without rejecting small valid limits. Verified with focused DB-backed nested pagination coverage in `apps/api/internal/app/lifecycle_test.go`.
+
+Audited in the current A18 pass: `F-A17-003` remains resolved by the S3/R2-compatible storage tests.
+
+Resolved in the current A18 remediation pass: `F-A18-001` login network rate limiting and session IP audit now use `X-Forwarded-For` only when the direct remote address matches configured `TRUSTED_PROXY_CIDRS`, walking the forwarded chain from right to left to avoid trusting spoofed prefixes; config validation rejects malformed proxy entries. `F-A18-002` production bootstrap safety now rejects weak bootstrap-admin secrets, rejects production startup without a database, and requires either bootstrap credentials or an existing active admin when production starts. Verified with focused config/security tests, DB-backed login/bootstrap tests, `make api-build`, and `git diff --check`.
+
+Audited in the current A19 pass: documentation command drift from the new API test split was corrected in `README.md`, and deployment/security/resources docs were clarified for the A18 findings. No current A19 findings remain.
+
 ## Cross-Cutting Residual Risks
 
 - Admin product surface remains partial: all-project management, richer admin analytics, and activity-log UI.
-- Production evidence storage uses R2, but still needs retention, backup, MIME policy, malware scanning, quotas, repair jobs, and cost monitoring.
-- Login rate limiting is in memory; use shared limits or edge rules before horizontal scaling.
+- Production evidence storage uses R2, but still needs retention, backup, MIME policy, malware scanning, quotas, and cost monitoring.
+- Login rate limiting is in memory and per API instance; keep `TRUSTED_PROXY_CIDRS` aligned with hosted proxy topology and use shared limits or edge rules before horizontal scaling.
 - Observability remains basic: health/readiness and logs exist, but metrics, tracing, alerting, and audit UI are incomplete.
 - Browser coverage is focused, not comprehensive.
 - Some safety patterns remain convention-based: route ID validation, transaction-scoped lifecycle/manager rechecks, frontend stale-error invalidation.

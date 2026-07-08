@@ -20,7 +20,7 @@ This repository is intentionally scaffold-first.
 - Web lint: `pnpm --filter @unitrack/web lint`
 - API run: `go run ./apps/api/cmd/server`
 - API build: `make api-build`
-- API test: `make api-test`; DB lifecycle coverage requires `TEST_DATABASE_URL='<postgres-url>' make api-test`
+- API test: `TEST_DATABASE_URL='<postgres-url>' make api-test`; non-DB tests use `make api-test-unit`
 - DB validate: `make db-validate`
 
 ## Documentation

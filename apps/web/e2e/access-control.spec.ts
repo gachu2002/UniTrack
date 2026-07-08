@@ -100,7 +100,7 @@ test('project pages hide manager actions and reject non-members', async ({ page 
 
   await signIn(page, data.nonMemberStudent.email, userPassword)
   await page.goto(`/workspace/projects/${data.project.id}`)
-  await expect(page.getByText('This project is restricted, missing, or temporarily unavailable.')).toBeVisible()
+  await expect(page.getByText('This project is restricted or missing.')).toBeVisible()
 })
 
 test('closed assignment evidence stays downloadable but read-only', async ({ page }) => {

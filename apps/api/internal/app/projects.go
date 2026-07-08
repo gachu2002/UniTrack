@@ -51,7 +51,12 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid project list pagination")
 		return
 	}
-	projects, total, err := s.listProjectsFiltered(r.Context(), user, pagination.Limit, pagination.Offset, r.URL.Query().Get("unassigned") == "true", r.URL.Query().Get("search"), r.URL.Query().Get("excludeArchived") == "true")
+	supervisorID := strings.TrimSpace(r.URL.Query().Get("supervisorId"))
+	if supervisorID != "" && !validUUIDParam(supervisorID) {
+		writeError(w, http.StatusBadRequest, "invalid project supervisor id")
+		return
+	}
+	projects, total, err := s.listProjectsFiltered(r.Context(), user, pagination.Limit, pagination.Offset, r.URL.Query().Get("unassigned") == "true", r.URL.Query().Get("search"), r.URL.Query().Get("excludeArchived") == "true", supervisorID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load projects")
 		return
@@ -166,8 +171,21 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
+	actor, err := lockActiveWorkspaceActorTx(r.Context(), tx, user)
+	if err != nil {
+		writeWorkspaceActorAccessError(w, err, "only teachers and admins can create projects")
+		return
+	}
+	if actor.Role != RoleAdmin && supervisorID != actor.ID {
+		writeError(w, http.StatusForbidden, "only admins can assign project supervisors")
+		return
+	}
+	if err := ensureSupervisorTx(r.Context(), tx, supervisorID); err != nil {
+		writeError(w, http.StatusBadRequest, "supervisor must be an active teacher or admin")
+		return
+	}
 	if classID != "" {
-		if err := validateCourseSectionForProjectTx(r.Context(), tx, user, classID, supervisorID); err != nil {
+		if err := validateCourseSectionForProjectTx(r.Context(), tx, actor, classID, supervisorID); err != nil {
 			writeCourseSectionProjectUseError(w, err)
 			return
 		}
@@ -403,8 +421,30 @@ func (s *Server) handleListProjectMembers(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusForbidden, "you do not have access to this project")
 		return
 	}
+	if wantsPaginatedResponse(r.URL.Query()) {
+		pagination, err := parsePaginationParams(r.URL.Query(), 100, 500)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid member list pagination")
+			return
+		}
+		members, total, err := s.listProjectMembersPage(r.Context(), projectID, pagination.Limit, pagination.Offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load members")
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse[ProjectMemberDTO]{Items: members, Page: pagination.Page, Limit: pagination.Limit, Total: total})
+		return
+	}
+	members, err := s.listProjectMembers(r.Context(), projectID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load members")
+		return
+	}
+	writeJSON(w, http.StatusOK, members)
+}
 
-	rows, err := s.db.Query(r.Context(), `
+func (s *Server) listProjectMembers(ctx context.Context, projectID string) ([]ProjectMemberDTO, error) {
+	rows, err := s.db.Query(ctx, `
 		SELECT u.id::text, u.full_name, u.email, u.role, u.status, pm.member_role, pm.joined_at
 		FROM project_members pm
 		JOIN users u ON u.id = pm.student_id
@@ -412,8 +452,7 @@ func (s *Server) handleListProjectMembers(w http.ResponseWriter, r *http.Request
 		ORDER BY pm.joined_at ASC, u.full_name ASC
 	`, projectID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load members")
-		return
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -421,17 +460,46 @@ func (s *Server) handleListProjectMembers(w http.ResponseWriter, r *http.Request
 	for rows.Next() {
 		var member ProjectMemberDTO
 		if err := rows.Scan(&member.ID, &member.FullName, &member.Email, &member.Role, &member.Status, &member.MemberRole, &member.JoinedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "could not load members")
-			return
+			return nil, err
 		}
 		members = append(members, member)
 	}
 	if err := rows.Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load members")
-		return
+		return nil, err
 	}
+	return members, nil
+}
 
-	writeJSON(w, http.StatusOK, members)
+func (s *Server) listProjectMembersPage(ctx context.Context, projectID string, limit int, offset int) ([]ProjectMemberDTO, int64, error) {
+	var total int64
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*)::bigint FROM project_members WHERE project_id = $1`, projectID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT u.id::text, u.full_name, u.email, u.role, u.status, pm.member_role, pm.joined_at
+		FROM project_members pm
+		JOIN users u ON u.id = pm.student_id
+		WHERE pm.project_id = $1
+		ORDER BY pm.joined_at ASC, u.full_name ASC
+		LIMIT $2 OFFSET $3
+	`, projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	members := []ProjectMemberDTO{}
+	for rows.Next() {
+		var member ProjectMemberDTO
+		if err := rows.Scan(&member.ID, &member.FullName, &member.Email, &member.Role, &member.Status, &member.MemberRole, &member.JoinedAt); err != nil {
+			return nil, 0, err
+		}
+		members = append(members, member)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return members, total, nil
 }
 
 func (s *Server) handleUpdateProjectMember(w http.ResponseWriter, r *http.Request) {
@@ -755,11 +823,11 @@ func (s *Server) updateProjectMemberRole(ctx context.Context, user User, project
 }
 
 func (s *Server) listProjects(ctx context.Context, user User, limit int) ([]ProjectDTO, error) {
-	projects, _, err := s.listProjectsFiltered(ctx, user, limit, 0, false, "", false)
+	projects, _, err := s.listProjectsFiltered(ctx, user, limit, 0, false, "", false, "")
 	return projects, err
 }
 
-func (s *Server) listProjectsFiltered(ctx context.Context, user User, limit int, offset int, unassigned bool, search string, excludeArchived bool) ([]ProjectDTO, int64, error) {
+func (s *Server) listProjectsFiltered(ctx context.Context, user User, limit int, offset int, unassigned bool, search string, excludeArchived bool, supervisorID string) ([]ProjectDTO, int64, error) {
 	where := ""
 	args := []any{}
 
@@ -770,6 +838,17 @@ func (s *Server) listProjectsFiltered(ctx context.Context, user User, limit int,
 	case RoleStudent:
 		args = append(args, user.ID)
 		where = appendProjectWhere(where, "EXISTS (SELECT 1 FROM project_members pm2 WHERE pm2.project_id = p.id AND pm2.student_id = $1)")
+	}
+	supervisorID = strings.TrimSpace(supervisorID)
+	if supervisorID != "" {
+		if user.Role == RoleTeacher {
+			if supervisorID != user.ID {
+				return []ProjectDTO{}, 0, nil
+			}
+		} else {
+			args = append(args, supervisorID)
+			where = appendProjectWhere(where, "p.supervisor_id = $"+strconv.Itoa(len(args)))
+		}
 	}
 	if unassigned {
 		where = appendProjectWhere(where, "NOT EXISTS (SELECT 1 FROM course_section_projects csp_filter WHERE csp_filter.project_id = p.id)")
@@ -970,6 +1049,33 @@ func (s *Server) ensureSupervisor(ctx context.Context, supervisorID string) erro
 		return errors.New("invalid supervisor")
 	}
 	return nil
+}
+
+var errWorkspaceActorAccessRequired = errors.New("workspace actor access required")
+
+func lockActiveWorkspaceActorTx(ctx context.Context, tx pgx.Tx, user User) (User, error) {
+	actor := user
+	err := tx.QueryRow(ctx, `
+		SELECT role, status
+		FROM users
+		WHERE id = $1
+		FOR UPDATE
+	`, user.ID).Scan(&actor.Role, &actor.Status)
+	if err != nil {
+		return User{}, err
+	}
+	if actor.Status != "active" || !canCreateProject(actor) {
+		return User{}, errWorkspaceActorAccessRequired
+	}
+	return actor, nil
+}
+
+func writeWorkspaceActorAccessError(w http.ResponseWriter, err error, forbiddenMessage string) {
+	if errors.Is(err, errWorkspaceActorAccessRequired) || isNoRows(err) {
+		writeError(w, http.StatusForbidden, forbiddenMessage)
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "could not verify workspace access")
 }
 
 func validEmailAddress(email string) bool {

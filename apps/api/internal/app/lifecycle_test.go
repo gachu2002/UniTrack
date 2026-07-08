@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 )
 
 type testApp struct {
+	api    *Server
 	server *httptest.Server
 	db     *pgxpool.Pool
 	client *http.Client
@@ -72,7 +74,7 @@ func newTestAppWithConfig(t *testing.T, configure func(*config.Config)) *testApp
 		db.Close()
 	})
 
-	return &testApp{server: server, db: db, client: &http.Client{Jar: jar}, cfg: cfg}
+	return &testApp{api: api, server: server, db: db, client: &http.Client{Jar: jar}, cfg: cfg}
 }
 
 func TestAuthSessionLifecycle(t *testing.T) {
@@ -149,6 +151,44 @@ func TestSessionCookieFlagsFollowConfig(t *testing.T) {
 		t.Fatalf("logout status = %d", logoutResponse.StatusCode)
 	}
 	assertSessionCookieAttrs(t, logoutResponse, app.cfg.SessionCookieName, "HttpOnly", "Secure", "SameSite=None", "Max-Age=0")
+}
+
+func TestLoginStoresTrustedForwardedIP(t *testing.T) {
+	app := newTestAppWithConfig(t, func(cfg *config.Config) {
+		cfg.TrustedProxyCIDRs = []string{"127.0.0.0/8", "::1/128"}
+	})
+	prefix := testPrefix()
+	userID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	body, err := json.Marshal(map[string]string{"email": prefix + "teacher@unitrack.local", "password": "teacher12345"})
+	if err != nil {
+		t.Fatalf("marshal login payload: %v", err)
+	}
+	request, err := http.NewRequest(http.MethodPost, app.server.URL+"/api/v1/auth/login", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("new login request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Forwarded-For", "192.0.2.200, 198.51.100.44")
+	setTrustedOriginForUnsafeRequest(request)
+	response, err := app.client.Do(request)
+	if err != nil {
+		t.Fatalf("do login request: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(response.Body)
+		t.Fatalf("login status = %d body = %s", response.StatusCode, string(responseBody))
+	}
+
+	var sessionIP string
+	if err := app.db.QueryRow(context.Background(), `SELECT ip_address FROM sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, userID).Scan(&sessionIP); err != nil {
+		t.Fatalf("load session IP: %v", err)
+	}
+	if sessionIP != "198.51.100.44" {
+		t.Fatalf("session IP = %q, want trusted forwarded client IP", sessionIP)
+	}
 }
 
 func TestInactiveUserCannotLogin(t *testing.T) {
@@ -470,6 +510,69 @@ func TestLoginWaitsForAccountControlLock(t *testing.T) {
 	}
 }
 
+func TestAdminMutationRechecksActorAfterConcurrentDemotion(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	actorID := createTestUser(t, app.db, prefix+"actor.admin@unitrack.local", "admin12345", RoleAdmin, "Actor Admin")
+	createTestUser(t, app.db, prefix+"other.admin@unitrack.local", "admin12345", RoleAdmin, "Other Admin")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	login(t, app, prefix+"actor.admin@unitrack.local", "admin12345")
+	tx, err := app.db.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin actor demotion tx: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(context.Background(), `UPDATE users SET role = 'teacher' WHERE id = $1`, actorID); err != nil {
+		t.Fatalf("demote actor admin: %v", err)
+	}
+
+	resultCh := make(chan asyncHTTPResult, 1)
+	go func() {
+		status, body, err := requestJSONBodyNoFatal(app, http.MethodPost, "/api/v1/admin/users", map[string]string{
+			"fullName": "Stale Actor Created User",
+			"email":    prefix + "stale-created@unitrack.local",
+			"password": "created12345",
+			"role":     RoleStudent,
+			"status":   "active",
+		})
+		resultCh <- asyncHTTPResult{status: status, body: body, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("admin create failed before actor lock release: %v", result.err)
+		}
+		t.Fatalf("admin create completed before actor lock release with status %d body = %s", result.status, string(result.body))
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatalf("commit actor demotion: %v", err)
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("admin create request failed: %v", result.err)
+		}
+		if result.status != http.StatusForbidden {
+			t.Fatalf("admin create after actor demotion status = %d body = %s", result.status, string(result.body))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("admin create request did not finish after actor lock released")
+	}
+
+	var createdCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM users WHERE email = $1`, prefix+"stale-created@unitrack.local").Scan(&createdCount); err != nil {
+		t.Fatalf("count stale actor created users: %v", err)
+	}
+	if createdCount != 0 {
+		t.Fatalf("stale actor created users = %d, want 0", createdCount)
+	}
+}
+
 func TestConcurrentAdminDeactivationKeepsActiveAdmin(t *testing.T) {
 	app := newTestApp(t)
 	prefix := testPrefix()
@@ -535,6 +638,61 @@ func TestBootstrapRejectsExistingNonAdminAccount(t *testing.T) {
 	api := NewServer(cfg, app.db, nil)
 	if err := api.Bootstrap(context.Background()); err == nil {
 		t.Fatal("Bootstrap accepted existing non-admin account")
+	}
+}
+
+func TestProductionBootstrapRequiresExistingAdminWithoutCredentials(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	deactivateOtherActiveAdmins(t, app.db, prefix)
+
+	cfg := app.cfg
+	cfg.AppEnv = "production"
+	cfg.BootstrapAdminEmail = ""
+	cfg.BootstrapAdminPassword = ""
+	api := NewServer(cfg, app.db, nil)
+	if err := api.Bootstrap(context.Background()); err == nil {
+		t.Fatal("Bootstrap accepted production startup without bootstrap credentials or active admin")
+	}
+}
+
+func TestProductionBootstrapAcceptsExistingAdminWithoutCredentials(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	createTestUser(t, app.db, prefix+"admin@unitrack.local", "admin12345", RoleAdmin, "Admin")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	cfg := app.cfg
+	cfg.AppEnv = "production"
+	cfg.BootstrapAdminEmail = ""
+	cfg.BootstrapAdminPassword = ""
+	api := NewServer(cfg, app.db, nil)
+	if err := api.Bootstrap(context.Background()); err != nil {
+		t.Fatalf("Bootstrap rejected production startup with active admin: %v", err)
+	}
+}
+
+func TestProductionBootstrapCreatesAdminWithCredentials(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	deactivateOtherActiveAdmins(t, app.db, prefix)
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	cfg := app.cfg
+	cfg.AppEnv = "production"
+	cfg.BootstrapAdminEmail = prefix + "bootstrap.admin@unitrack.local"
+	cfg.BootstrapAdminPassword = "Strong-bootstrap-admin-2026!"
+	api := NewServer(cfg, app.db, nil)
+	if err := api.Bootstrap(context.Background()); err != nil {
+		t.Fatalf("Bootstrap rejected production bootstrap credentials: %v", err)
+	}
+
+	var count int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM users WHERE email = $1 AND role = 'admin' AND status = 'active'`, cfg.BootstrapAdminEmail).Scan(&count); err != nil {
+		t.Fatalf("count created bootstrap admin: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("created bootstrap admin count = %d, want 1", count)
 	}
 }
 
@@ -807,6 +965,54 @@ func TestTeacherDashboardProjectFollowUpsAreNotStarvedByPendingReviews(t *testin
 	}
 }
 
+func TestTeacherDashboardOverdueAssignmentsExcludePendingReviews(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	studentID := createTestUser(t, app.db, prefix+"student@unitrack.local", "student12345", RoleStudent, "Student")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Overdue Dashboard Project")
+	overdueTaskID := createTestTask(t, app.db, projectID, teacherID, prefix+"Overdue needs follow-up")
+	waitingTaskID := createTestTask(t, app.db, projectID, teacherID, prefix+"Overdue waiting review")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+
+	addProjectMember(t, app.db, projectID, studentID)
+	assignTask(t, app.db, overdueTaskID, studentID)
+	assignTask(t, app.db, waitingTaskID, studentID)
+	createTestProgressUpdate(t, app.db, projectID, waitingTaskID, studentID, prefix+"Waiting review for overdue assignment")
+	if _, err := app.db.Exec(context.Background(), `UPDATE tasks SET deadline = current_date - 1 WHERE id IN ($1, $2)`, overdueTaskID, waitingTaskID); err != nil {
+		t.Fatalf("mark dashboard assignments overdue: %v", err)
+	}
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	status, body := requestJSONBody(t, app, http.MethodGet, "/api/v1/dashboard", nil)
+	if status != http.StatusOK {
+		t.Fatalf("dashboard status = %d body = %s", status, string(body))
+	}
+	var dashboard DashboardDTO
+	if err := json.Unmarshal(body, &dashboard); err != nil {
+		t.Fatalf("decode dashboard: %v", err)
+	}
+
+	seenOverdue := false
+	for _, task := range dashboard.Tasks {
+		if task.ID == waitingTaskID {
+			t.Fatalf("dashboard overdue queue included assignment already waiting for review: %#v", task)
+		}
+		if task.ID == overdueTaskID {
+			seenOverdue = true
+		}
+	}
+	if !seenOverdue {
+		t.Fatalf("dashboard overdue queue missing follow-up assignment: %#v", dashboard.Tasks)
+	}
+	if dashboard.Stats.OverdueTaskCount != 1 {
+		t.Fatalf("dashboard overdue stat = %d, want 1", dashboard.Stats.OverdueTaskCount)
+	}
+	if dashboard.Stats.PendingReviews != 1 {
+		t.Fatalf("dashboard pending reviews stat = %d, want 1", dashboard.Stats.PendingReviews)
+	}
+}
+
 func TestStudentDashboardListsOnlyActionableAssignments(t *testing.T) {
 	app := newTestApp(t)
 	prefix := testPrefix()
@@ -827,6 +1033,9 @@ func TestStudentDashboardListsOnlyActionableAssignments(t *testing.T) {
 		t.Fatalf("mark actionable task: %v", err)
 	}
 	createTestProgressUpdate(t, app.db, projectID, waitingTaskID, studentID, "Waiting for review")
+	if _, err := app.db.Exec(context.Background(), `UPDATE tasks SET deadline = current_date - 1 WHERE id = $1`, waitingTaskID); err != nil {
+		t.Fatalf("mark waiting review task overdue: %v", err)
+	}
 	if _, err := app.db.Exec(context.Background(), `UPDATE tasks SET status = 'done', official_progress_state = 'completed' WHERE id = $1`, completedTaskID); err != nil {
 		t.Fatalf("mark completed task: %v", err)
 	}
@@ -854,6 +1063,9 @@ func TestStudentDashboardListsOnlyActionableAssignments(t *testing.T) {
 	}
 	if !seenActionable {
 		t.Fatalf("dashboard missing actionable task: %#v", dashboard.Tasks)
+	}
+	if dashboard.Stats.OverdueTaskCount != 0 {
+		t.Fatalf("dashboard overdue stat = %d, want 0", dashboard.Stats.OverdueTaskCount)
 	}
 }
 
@@ -1570,11 +1782,19 @@ func TestProjectRoutesEnforceMembershipAndSupervisor(t *testing.T) {
 func TestProtectedRoutesRejectMalformedUUIDParams(t *testing.T) {
 	app := newTestApp(t)
 	prefix := testPrefix()
+	createTestUser(t, app.db, prefix+"admin@unitrack.local", "admin12345", RoleAdmin, "Admin")
 	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
 	projectID := createTestProject(t, app.db, teacherID, prefix+"Malformed UUID Project")
 	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
 
 	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodGet, "/api/v1/projects/not-a-uuid", nil, "malformed project read")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodPatch, "/api/v1/projects/not-a-uuid", map[string]string{"name": "Updated"}, "malformed project update")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodGet, "/api/v1/projects/not-a-uuid/members", nil, "malformed project members")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodGet, "/api/v1/projects/not-a-uuid/tasks", nil, "malformed project tasks")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodGet, "/api/v1/projects/not-a-uuid/resource-links", nil, "malformed project resources")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodGet, "/api/v1/projects/not-a-uuid/files", nil, "malformed project files")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodGet, "/api/v1/classes/not-a-uuid", nil, "malformed folder read")
 	assertStatus(t, requestJSON(t, app, http.MethodGet, "/api/v1/projects/"+projectID+"/tasks/not-a-uuid", nil), http.StatusBadRequest, "malformed task read")
 	assertStatus(t, requestJSON(t, app, http.MethodPatch, "/api/v1/projects/"+projectID+"/tasks/not-a-uuid", map[string]string{"title": "Updated"}), http.StatusBadRequest, "malformed task update")
 	assertStatus(t, requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/tasks/not-a-uuid/progress-updates", map[string]string{"description": "Progress"}), http.StatusBadRequest, "malformed progress task")
@@ -1589,6 +1809,30 @@ func TestProtectedRoutesRejectMalformedUUIDParams(t *testing.T) {
 	uploadStatus, uploadBody := requestMultipartFile(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/progress-updates/not-a-uuid/files", "file", "evidence.txt", []byte("evidence"))
 	if uploadStatus != http.StatusBadRequest {
 		t.Fatalf("malformed evidence upload status = %d body = %s", uploadStatus, string(uploadBody))
+	}
+	assertBadRequestWithoutRawSQL(t, app, http.MethodPatch, "/api/v1/projects/"+projectID+"/resource-links/not-a-uuid", map[string]string{"title": "Updated"}, "malformed resource update")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodDelete, "/api/v1/projects/"+projectID+"/resource-links/not-a-uuid", nil, "malformed resource delete")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodGet, "/api/v1/projects/"+projectID+"/files/not-a-uuid/download", nil, "malformed file download")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodDelete, "/api/v1/projects/"+projectID+"/files/not-a-uuid", nil, "malformed file delete")
+
+	login(t, app, prefix+"admin@unitrack.local", "admin12345")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodPatch, "/api/v1/admin/users/not-a-uuid", map[string]string{"fullName": "Updated"}, "malformed admin user update")
+	assertBadRequestWithoutRawSQL(t, app, http.MethodPost, "/api/v1/admin/users/not-a-uuid/password", map[string]string{"password": "updated12345"}, "malformed admin password update")
+}
+
+func TestListPaginationRejectsInvalidValues(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	createTestUser(t, app.db, prefix+"admin@unitrack.local", "admin12345", RoleAdmin, "Admin")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	login(t, app, prefix+"admin@unitrack.local", "admin12345")
+	endpoints := []string{"/api/v1/admin/users", "/api/v1/projects", "/api/v1/classes"}
+	queries := []string{"limit=0", "limit=-1", "limit=abc", "page=0", "page=-1", "page=abc", "page=9223372036854775807"}
+	for _, endpoint := range endpoints {
+		for _, query := range queries {
+			assertStatus(t, requestJSON(t, app, http.MethodGet, endpoint+"?"+query, nil), http.StatusBadRequest, endpoint+" "+query)
+		}
 	}
 }
 
@@ -1852,6 +2096,327 @@ func TestProjectCreationAllowsOptionalClass(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("class detail projects missing created project: %#v", detail.Projects)
+	}
+}
+
+func TestNestedCollectionEndpointsSupportOptionalPagination(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	studentAID := createTestUser(t, app.db, prefix+"student.a@unitrack.local", "student12345", RoleStudent, "Student A")
+	studentBID := createTestUser(t, app.db, prefix+"student.b@unitrack.local", "student12345", RoleStudent, "Student B")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Nested Pagination Project")
+	folderProjectID := createTestProject(t, app.db, teacherID, prefix+"Nested Pagination Folder Project")
+	classID := createTestCourseSection(t, app.db, teacherID, prefix+"Nested Pagination Folder")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	addProjectMember(t, app.db, projectID, studentAID)
+	addProjectMember(t, app.db, projectID, studentBID)
+	milestoneAID := createTestMilestone(t, app.db, projectID, teacherID, "Nested pagination checkpoint A", 1)
+	milestoneBID := createTestMilestone(t, app.db, projectID, teacherID, "Nested pagination checkpoint B", 2)
+	taskAID := createTestTaskInMilestone(t, app.db, projectID, teacherID, milestoneAID, "Nested pagination assignment A")
+	taskBID := createTestTaskInMilestone(t, app.db, projectID, teacherID, milestoneBID, "Nested pagination assignment B")
+	updateAID := createTestProgressUpdate(t, app.db, projectID, taskAID, studentAID, "Nested pagination submission A")
+	updateBID := createTestProgressUpdate(t, app.db, projectID, taskBID, studentBID, "Nested pagination submission B")
+	for index, updateID := range []string{updateAID, updateBID} {
+		if _, err := app.db.Exec(context.Background(), `
+			INSERT INTO resource_links (project_id, related_entity_type, related_entity_id, title, url, added_by)
+			VALUES ($1, 'progress_update', $2, $3, $4, $5)
+		`, projectID, updateID, prefix+"Nested Pagination Resource "+strconv.Itoa(index), "https://example.com/nested-pagination/"+strconv.Itoa(index), teacherID); err != nil {
+			t.Fatalf("insert paginated resource link: %v", err)
+		}
+		if _, err := app.db.Exec(context.Background(), `
+			INSERT INTO uploaded_files (project_id, related_entity_type, related_entity_id, original_file_name, stored_file_name, storage_path, file_size_bytes, uploaded_by)
+			VALUES ($1, 'progress_update', $2, $3, $4, $5, $6, $7)
+		`, projectID, updateID, "nested-pagination-"+strconv.Itoa(index)+".txt", "nested-pagination-"+strconv.Itoa(index)+".txt", "projects/"+projectID+"/nested-pagination-"+strconv.Itoa(index)+".txt", int64(index+1), teacherID); err != nil {
+			t.Fatalf("insert paginated uploaded file: %v", err)
+		}
+	}
+	for _, linkedProjectID := range []string{projectID, folderProjectID} {
+		if _, err := app.db.Exec(context.Background(), `
+			INSERT INTO course_section_projects (course_section_id, project_id, added_by)
+			VALUES ($1, $2, $3)
+		`, classID, linkedProjectID, teacherID); err != nil {
+			t.Fatalf("insert paginated folder project: %v", err)
+		}
+	}
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	status, body := requestJSONBody(t, app, http.MethodGet, "/api/v1/projects/"+projectID+"/members", nil)
+	if status != http.StatusOK {
+		t.Fatalf("legacy member list status = %d body = %s", status, string(body))
+	}
+	var legacyMembers []ProjectMemberDTO
+	if err := json.Unmarshal(body, &legacyMembers); err != nil {
+		t.Fatalf("decode legacy member list: %v", err)
+	}
+	if len(legacyMembers) != 2 {
+		t.Fatalf("legacy member list length = %d, want 2", len(legacyMembers))
+	}
+
+	assertPaginatedNestedEndpoint[ProjectMemberDTO](t, app, "/api/v1/projects/"+projectID+"/members?limit=1&page=2", "project members")
+	assertPaginatedNestedEndpoint[MilestoneDTO](t, app, "/api/v1/projects/"+projectID+"/milestones?limit=1&page=2", "project milestones")
+	assertPaginatedNestedEndpoint[TaskDTO](t, app, "/api/v1/projects/"+projectID+"/tasks?limit=1&page=2", "project assignments")
+	assertPaginatedNestedEndpoint[ProgressUpdateDTO](t, app, "/api/v1/projects/"+projectID+"/progress-updates?limit=1&page=2", "project progress updates")
+	assertPaginatedNestedEndpoint[ResourceLinkDTO](t, app, "/api/v1/projects/"+projectID+"/resource-links?limit=1&page=2", "project resource links")
+	assertPaginatedNestedEndpoint[UploadedFileDTO](t, app, "/api/v1/projects/"+projectID+"/files?limit=1&page=2", "project files")
+
+	status, body = requestJSONBody(t, app, http.MethodGet, "/api/v1/classes/"+classID+"?limit=1&page=2", nil)
+	if status != http.StatusOK {
+		t.Fatalf("paginated folder projects status = %d body = %s", status, string(body))
+	}
+	var detail CourseSectionDetailDTO
+	if err := json.Unmarshal(body, &detail); err != nil {
+		t.Fatalf("decode paginated folder projects: %v", err)
+	}
+	if detail.ProjectsPage == nil || detail.ProjectsPage.Page != 2 || detail.ProjectsPage.Limit != 1 || detail.ProjectsPage.Total != 2 || len(detail.ProjectsPage.Items) != 1 || len(detail.Projects) != 1 {
+		t.Fatalf("paginated folder projects = %#v projects=%#v", detail.ProjectsPage, detail.Projects)
+	}
+}
+
+func TestProjectCreateRechecksCreatorAfterAccountLock(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	tx, err := app.db.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin creator lock tx: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	var lockedStatus string
+	if err := tx.QueryRow(context.Background(), `SELECT status FROM users WHERE id = $1 FOR UPDATE`, teacherID).Scan(&lockedStatus); err != nil {
+		t.Fatalf("lock creator account: %v", err)
+	}
+	if _, err := tx.Exec(context.Background(), `UPDATE users SET status = 'inactive' WHERE id = $1`, teacherID); err != nil {
+		t.Fatalf("deactivate locked creator account: %v", err)
+	}
+
+	projectName := prefix + "Stale Creator Project"
+	resultCh := make(chan asyncHTTPResult, 1)
+	go func() {
+		status, body, err := requestJSONBodyNoFatal(app, http.MethodPost, "/api/v1/projects", map[string]string{"name": projectName})
+		resultCh <- asyncHTTPResult{status: status, body: body, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("project create failed before creator lock release: %v", result.err)
+		}
+		t.Fatalf("project create completed before creator lock release with status %d body = %s", result.status, string(result.body))
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatalf("commit creator deactivation: %v", err)
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("project create request failed: %v", result.err)
+		}
+		if result.status != http.StatusForbidden {
+			t.Fatalf("project create after creator deactivation status = %d body = %s", result.status, string(result.body))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("project create request did not finish after creator lock released")
+	}
+
+	var projectCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM projects WHERE name = $1`, projectName).Scan(&projectCount); err != nil {
+		t.Fatalf("count projects after creator race: %v", err)
+	}
+	if projectCount != 0 {
+		t.Fatalf("project count after creator race = %d, want 0", projectCount)
+	}
+}
+
+func TestProjectCreateRechecksSupervisorAfterAccountLock(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	createTestUser(t, app.db, prefix+"admin@unitrack.local", "admin12345", RoleAdmin, "Admin")
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	login(t, app, prefix+"admin@unitrack.local", "admin12345")
+	tx, err := app.db.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin supervisor lock tx: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	var lockedStatus string
+	if err := tx.QueryRow(context.Background(), `SELECT status FROM users WHERE id = $1 FOR UPDATE`, teacherID).Scan(&lockedStatus); err != nil {
+		t.Fatalf("lock supervisor account: %v", err)
+	}
+	if _, err := tx.Exec(context.Background(), `UPDATE users SET status = 'inactive' WHERE id = $1`, teacherID); err != nil {
+		t.Fatalf("deactivate locked supervisor account: %v", err)
+	}
+
+	projectName := prefix + "Stale Supervisor Project"
+	resultCh := make(chan asyncHTTPResult, 1)
+	go func() {
+		status, body, err := requestJSONBodyNoFatal(app, http.MethodPost, "/api/v1/projects", map[string]string{"name": projectName, "supervisorId": teacherID})
+		resultCh <- asyncHTTPResult{status: status, body: body, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("project create failed before supervisor lock release: %v", result.err)
+		}
+		t.Fatalf("project create completed before supervisor lock release with status %d body = %s", result.status, string(result.body))
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatalf("commit supervisor deactivation: %v", err)
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("project create request failed: %v", result.err)
+		}
+		if result.status != http.StatusBadRequest || !strings.Contains(string(result.body), "supervisor must be an active teacher or admin") {
+			t.Fatalf("project create after supervisor deactivation status = %d body = %s", result.status, string(result.body))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("project create request did not finish after supervisor lock released")
+	}
+
+	var projectCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM projects WHERE name = $1`, projectName).Scan(&projectCount); err != nil {
+		t.Fatalf("count projects after supervisor race: %v", err)
+	}
+	if projectCount != 0 {
+		t.Fatalf("project count after supervisor race = %d, want 0", projectCount)
+	}
+}
+
+func TestCourseSectionCreateRechecksOwnerAfterAccountLock(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	createTestUser(t, app.db, prefix+"admin@unitrack.local", "admin12345", RoleAdmin, "Admin")
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	login(t, app, prefix+"admin@unitrack.local", "admin12345")
+	tx, err := app.db.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin owner lock tx: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	var lockedStatus string
+	if err := tx.QueryRow(context.Background(), `SELECT status FROM users WHERE id = $1 FOR UPDATE`, teacherID).Scan(&lockedStatus); err != nil {
+		t.Fatalf("lock folder owner account: %v", err)
+	}
+	if _, err := tx.Exec(context.Background(), `UPDATE users SET status = 'inactive' WHERE id = $1`, teacherID); err != nil {
+		t.Fatalf("deactivate locked folder owner account: %v", err)
+	}
+
+	folderTitle := prefix + "Stale Owner Folder"
+	resultCh := make(chan asyncHTTPResult, 1)
+	go func() {
+		status, body, err := requestJSONBodyNoFatal(app, http.MethodPost, "/api/v1/classes", map[string]string{"title": folderTitle, "ownerTeacherId": teacherID})
+		resultCh <- asyncHTTPResult{status: status, body: body, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("folder create failed before owner lock release: %v", result.err)
+		}
+		t.Fatalf("folder create completed before owner lock release with status %d body = %s", result.status, string(result.body))
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatalf("commit folder owner deactivation: %v", err)
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("folder create request failed: %v", result.err)
+		}
+		if result.status != http.StatusBadRequest || !strings.Contains(string(result.body), "owner must be an active teacher or admin") {
+			t.Fatalf("folder create after owner deactivation status = %d body = %s", result.status, string(result.body))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("folder create request did not finish after owner lock released")
+	}
+
+	var folderCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM course_sections WHERE title = $1`, folderTitle).Scan(&folderCount); err != nil {
+		t.Fatalf("count folders after owner race: %v", err)
+	}
+	if folderCount != 0 {
+		t.Fatalf("folder count after owner race = %d, want 0", folderCount)
+	}
+}
+
+func TestCourseSectionUpdateRechecksManagerAfterAccountLock(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	folderID := createTestCourseSection(t, app.db, teacherID, prefix+"Original Folder")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, "", prefix) })
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	tx, err := app.db.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin folder manager lock tx: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	var lockedStatus string
+	if err := tx.QueryRow(context.Background(), `SELECT status FROM users WHERE id = $1 FOR UPDATE`, teacherID).Scan(&lockedStatus); err != nil {
+		t.Fatalf("lock folder manager account: %v", err)
+	}
+	if _, err := tx.Exec(context.Background(), `UPDATE users SET status = 'inactive' WHERE id = $1`, teacherID); err != nil {
+		t.Fatalf("deactivate locked folder manager account: %v", err)
+	}
+
+	resultCh := make(chan asyncHTTPResult, 1)
+	go func() {
+		status, body, err := requestJSONBodyNoFatal(app, http.MethodPatch, "/api/v1/classes/"+folderID, map[string]string{"title": prefix + "Updated Folder"})
+		resultCh <- asyncHTTPResult{status: status, body: body, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("folder update failed before manager lock release: %v", result.err)
+		}
+		t.Fatalf("folder update completed before manager lock release with status %d body = %s", result.status, string(result.body))
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatalf("commit folder manager deactivation: %v", err)
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("folder update request failed: %v", result.err)
+		}
+		if result.status != http.StatusForbidden {
+			t.Fatalf("folder update after manager deactivation status = %d body = %s", result.status, string(result.body))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("folder update request did not finish after manager lock released")
+	}
+
+	var title string
+	if err := app.db.QueryRow(context.Background(), `SELECT title FROM course_sections WHERE id = $1`, folderID).Scan(&title); err != nil {
+		t.Fatalf("load folder after manager race: %v", err)
+	}
+	if title != prefix+"Original Folder" {
+		t.Fatalf("folder title after manager race = %q", title)
 	}
 }
 
@@ -2385,6 +2950,195 @@ func TestStudentProgressRequiresAssignedOfficialTask(t *testing.T) {
 	}
 }
 
+func TestCompletedAssignmentGenericUpdatePreservesCompletedState(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	studentID := createTestUser(t, app.db, prefix+"student@unitrack.local", "student12345", RoleStudent, "Student")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Completed Assignment Reopen Project")
+	addProjectMember(t, app.db, projectID, studentID)
+	taskID := createTestTask(t, app.db, projectID, teacherID, "Completed assignment")
+	assignTask(t, app.db, taskID, studentID)
+	updateID := createTestProgressUpdate(t, app.db, projectID, taskID, studentID, "Ready to complete")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	reviewStatus, reviewBody := requestJSONBody(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/progress-updates/"+updateID+"/reviews", map[string]string{
+		"reviewStatus":          "approved",
+		"officialProgressState": "completed",
+	})
+	if reviewStatus != http.StatusOK {
+		t.Fatalf("complete assignment review status = %d body = %s", reviewStatus, string(reviewBody))
+	}
+
+	reopen := requestJSON(t, app, http.MethodPatch, "/api/v1/projects/"+projectID+"/tasks/"+taskID, map[string]string{"status": "in_progress", "officialProgressState": "in_progress"})
+	if reopen.StatusCode != http.StatusConflict {
+		t.Fatalf("reopen completed assignment status = %d", reopen.StatusCode)
+	}
+
+	metadataStatus, metadataBody := requestJSONBody(t, app, http.MethodPatch, "/api/v1/projects/"+projectID+"/tasks/"+taskID, map[string]string{"title": "Completed assignment renamed"})
+	if metadataStatus != http.StatusOK {
+		t.Fatalf("completed assignment metadata update status = %d body = %s", metadataStatus, string(metadataBody))
+	}
+	var detail TaskDetailDTO
+	if err := json.Unmarshal(metadataBody, &detail); err != nil {
+		t.Fatalf("decode completed assignment metadata update: %v", err)
+	}
+	if detail.Task.Status != "done" || detail.Task.OfficialProgressState != "completed" {
+		t.Fatalf("completed assignment state after metadata update = %s/%s", detail.Task.Status, detail.Task.OfficialProgressState)
+	}
+
+	login(t, app, prefix+"student@unitrack.local", "student12345")
+	resubmit := requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/tasks/"+taskID+"/progress-updates", map[string]string{"description": "Another pass"})
+	if resubmit.StatusCode != http.StatusConflict {
+		t.Fatalf("resubmit completed assignment status = %d", resubmit.StatusCode)
+	}
+}
+
+func TestManualAssignmentStatusAdjustmentLifecycleAndAudit(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	studentID := createTestUser(t, app.db, prefix+"student@unitrack.local", "student12345", RoleStudent, "Student")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Manual Status Project")
+	addProjectMember(t, app.db, projectID, studentID)
+	taskID := createTestTask(t, app.db, projectID, teacherID, "Manual status assignment")
+	assignTask(t, app.db, taskID, studentID)
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+
+	path := "/api/v1/projects/" + projectID + "/tasks/" + taskID + "/status-adjustments"
+	login(t, app, prefix+"student@unitrack.local", "student12345")
+	studentAdjust := requestJSON(t, app, http.MethodPost, path, map[string]string{"officialProgressState": "in_progress"})
+	if studentAdjust.StatusCode != http.StatusForbidden {
+		t.Fatalf("student status adjustment status = %d", studentAdjust.StatusCode)
+	}
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	missingCompleteReason := requestJSON(t, app, http.MethodPost, path, map[string]string{"officialProgressState": "completed"})
+	if missingCompleteReason.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing complete reason status = %d", missingCompleteReason.StatusCode)
+	}
+	completeStatus, completeBody := requestJSONBody(t, app, http.MethodPost, path, map[string]string{"officialProgressState": "completed", "reason": "Reviewed during class presentation."})
+	if completeStatus != http.StatusOK {
+		t.Fatalf("manual complete status = %d body = %s", completeStatus, string(completeBody))
+	}
+	var completed TaskDetailDTO
+	if err := json.Unmarshal(completeBody, &completed); err != nil {
+		t.Fatalf("decode manual complete: %v", err)
+	}
+	if completed.Task.Status != "done" || completed.Task.OfficialProgressState != "completed" {
+		t.Fatalf("manual complete state = %s/%s", completed.Task.Status, completed.Task.OfficialProgressState)
+	}
+
+	missingRevisionReason := requestJSON(t, app, http.MethodPost, path, map[string]string{"officialProgressState": "needs_changes"})
+	if missingRevisionReason.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing reopen reason status = %d", missingRevisionReason.StatusCode)
+	}
+	revisionStatus, revisionBody := requestJSONBody(t, app, http.MethodPost, path, map[string]string{"officialProgressState": "needs_changes", "reason": "Missing testing evidence."})
+	if revisionStatus != http.StatusOK {
+		t.Fatalf("manual revision status = %d body = %s", revisionStatus, string(revisionBody))
+	}
+	var revision TaskDetailDTO
+	if err := json.Unmarshal(revisionBody, &revision); err != nil {
+		t.Fatalf("decode manual revision: %v", err)
+	}
+	if revision.Task.Status != "needs_changes" || revision.Task.OfficialProgressState != "needs_changes" {
+		t.Fatalf("manual revision state = %s/%s", revision.Task.Status, revision.Task.OfficialProgressState)
+	}
+
+	progressStatus, progressBody := requestJSONBody(t, app, http.MethodPost, path, map[string]string{"officialProgressState": "in_progress"})
+	if progressStatus != http.StatusOK {
+		t.Fatalf("manual progress status = %d body = %s", progressStatus, string(progressBody))
+	}
+	var progress TaskDetailDTO
+	if err := json.Unmarshal(progressBody, &progress); err != nil {
+		t.Fatalf("decode manual progress: %v", err)
+	}
+	if progress.Task.Status != "in_progress" || progress.Task.OfficialProgressState != "in_progress" {
+		t.Fatalf("manual progress state = %s/%s", progress.Task.Status, progress.Task.OfficialProgressState)
+	}
+
+	var auditCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM activity_logs WHERE actor_id = $1 AND project_id = $2 AND action = 'assignment.status_adjusted' AND entity_id = $3`, teacherID, projectID, taskID).Scan(&auditCount); err != nil {
+		t.Fatalf("count assignment status audit logs: %v", err)
+	}
+	if auditCount != 3 {
+		t.Fatalf("assignment status audit logs = %d, want 3", auditCount)
+	}
+	var revisionReason string
+	if err := app.db.QueryRow(context.Background(), `SELECT metadata->>'reason' FROM activity_logs WHERE actor_id = $1 AND project_id = $2 AND action = 'assignment.status_adjusted' AND entity_id = $3 AND metadata->>'toOfficialProgressState' = 'needs_changes'`, teacherID, projectID, taskID).Scan(&revisionReason); err != nil {
+		t.Fatalf("load manual revision audit reason: %v", err)
+	}
+	if revisionReason != "Missing testing evidence." {
+		t.Fatalf("manual revision audit reason = %q", revisionReason)
+	}
+}
+
+func TestManualAssignmentStatusAdjustmentRespectsProjectLifecycle(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Closed Manual Status Project")
+	taskID := createTestTask(t, app.db, projectID, teacherID, "Closed status assignment")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+	path := "/api/v1/projects/" + projectID + "/tasks/" + taskID + "/status-adjustments"
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	if _, err := app.db.Exec(context.Background(), `UPDATE projects SET status = 'completed' WHERE id = $1`, projectID); err != nil {
+		t.Fatalf("complete project: %v", err)
+	}
+	completedProjectAdjust := requestJSON(t, app, http.MethodPost, path, map[string]string{"officialProgressState": "in_progress"})
+	if completedProjectAdjust.StatusCode != http.StatusConflict {
+		t.Fatalf("completed project status adjustment status = %d", completedProjectAdjust.StatusCode)
+	}
+	if _, err := app.db.Exec(context.Background(), `UPDATE projects SET status = 'archived' WHERE id = $1`, projectID); err != nil {
+		t.Fatalf("archive project: %v", err)
+	}
+	archivedProjectAdjust := requestJSON(t, app, http.MethodPost, path, map[string]string{"officialProgressState": "in_progress"})
+	if archivedProjectAdjust.StatusCode != http.StatusConflict {
+		t.Fatalf("archived project status adjustment status = %d", archivedProjectAdjust.StatusCode)
+	}
+}
+
+func TestReviewRejectsNegativeDecisionWithoutRevisionState(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	studentID := createTestUser(t, app.db, prefix+"student@unitrack.local", "student12345", RoleStudent, "Student")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Negative Review State Project")
+	addProjectMember(t, app.db, projectID, studentID)
+	taskID := createTestTask(t, app.db, projectID, teacherID, "Negative review assignment")
+	assignTask(t, app.db, taskID, studentID)
+	updateID := createTestProgressUpdate(t, app.db, projectID, taskID, studentID, "Needs teacher decision")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	for _, payload := range []map[string]string{
+		{"reviewStatus": "needs_changes", "officialProgressState": "in_progress", "reviewComment": "Revise this work."},
+		{"reviewStatus": "rejected", "officialProgressState": "no_progress", "reviewComment": "This cannot be accepted."},
+	} {
+		status, body := requestJSONBody(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/progress-updates/"+updateID+"/reviews", payload)
+		if status != http.StatusBadRequest || !strings.Contains(string(body), "review decision conflicts with official progress state") {
+			t.Fatalf("negative review state status = %d body = %s", status, string(body))
+		}
+	}
+
+	var reviewCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM progress_reviews WHERE progress_update_id = $1`, updateID).Scan(&reviewCount); err != nil {
+		t.Fatalf("count rejected inconsistent reviews: %v", err)
+	}
+	if reviewCount != 0 {
+		t.Fatalf("inconsistent review count = %d, want 0", reviewCount)
+	}
+	var reviewStatusValue string
+	if err := app.db.QueryRow(context.Background(), `SELECT review_status FROM progress_updates WHERE id = $1`, updateID).Scan(&reviewStatusValue); err != nil {
+		t.Fatalf("load review status after inconsistent reviews: %v", err)
+	}
+	if reviewStatusValue != "pending_review" {
+		t.Fatalf("review status after inconsistent reviews = %s, want pending_review", reviewStatusValue)
+	}
+}
+
 func TestStudentProgressRechecksAssignmentAfterLifecycleLock(t *testing.T) {
 	app := newTestApp(t)
 	prefix := testPrefix()
@@ -2493,6 +3247,13 @@ func TestAssignmentCompletionRequiresPendingReviewResolution(t *testing.T) {
 	})
 	if complete.StatusCode != http.StatusConflict {
 		t.Fatalf("complete with pending review status = %d", complete.StatusCode)
+	}
+	adjust := requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/tasks/"+taskID+"/status-adjustments", map[string]string{
+		"officialProgressState": "completed",
+		"reason":                "Reviewed outside UniTrack.",
+	})
+	if adjust.StatusCode != http.StatusConflict {
+		t.Fatalf("status adjustment with pending review status = %d", adjust.StatusCode)
 	}
 
 	review := requestJSON(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/progress-updates/"+updateID+"/reviews", map[string]string{
@@ -2806,6 +3567,144 @@ func TestProgressEvidenceFileLifecycleAndPermissions(t *testing.T) {
 	}
 }
 
+func TestEvidenceDeleteQueuesStorageCleanupOnDeleteFailure(t *testing.T) {
+	app := newTestApp(t)
+	store := &flakyDeleteFileStore{uploadFileStore: app.api.fileStore}
+	app.api.fileStore = store
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	studentID := createTestUser(t, app.db, prefix+"student@unitrack.local", "student12345", RoleStudent, "Student")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Queued Evidence Delete Project")
+	addProjectMember(t, app.db, projectID, studentID)
+	taskID := createTestTask(t, app.db, projectID, teacherID, "Queued delete assignment")
+	assignTask(t, app.db, taskID, studentID)
+	updateID := createTestProgressUpdate(t, app.db, projectID, taskID, studentID, "Ready for queued delete")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+	t.Cleanup(func() {
+		_, _ = app.db.Exec(context.Background(), `DELETE FROM uploaded_file_object_cleanup_jobs WHERE storage_path LIKE $1`, app.cfg.UploadStorageDir+"%")
+	})
+
+	login(t, app, prefix+"student@unitrack.local", "student12345")
+	uploadStatus, uploadBody := requestMultipartFile(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/progress-updates/"+updateID+"/files", "file", "queued-delete.txt", []byte("queued delete"))
+	if uploadStatus != http.StatusCreated {
+		t.Fatalf("evidence upload status = %d body = %s", uploadStatus, string(uploadBody))
+	}
+	var uploaded UploadedFileDTO
+	if err := json.Unmarshal(uploadBody, &uploaded); err != nil {
+		t.Fatalf("decode uploaded file: %v", err)
+	}
+	var storagePath string
+	if err := app.db.QueryRow(context.Background(), `SELECT storage_path FROM uploaded_files WHERE id = $1`, uploaded.ID).Scan(&storagePath); err != nil {
+		t.Fatalf("load uploaded storage path: %v", err)
+	}
+
+	store.failDelete = true
+	login(t, app, prefix+"teacher@unitrack.local", "teacher12345")
+	deleteFile := requestJSON(t, app, http.MethodDelete, "/api/v1/projects/"+projectID+"/files/"+uploaded.ID, nil)
+	if deleteFile.StatusCode != http.StatusOK {
+		t.Fatalf("delete evidence status = %d", deleteFile.StatusCode)
+	}
+	var fileCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM uploaded_files WHERE id = $1`, uploaded.ID).Scan(&fileCount); err != nil {
+		t.Fatalf("count deleted uploaded files: %v", err)
+	}
+	if fileCount != 0 {
+		t.Fatalf("uploaded file count after delete = %d, want 0", fileCount)
+	}
+	var jobID, lastError string
+	var attempts int
+	var isPending bool
+	if err := app.db.QueryRow(context.Background(), `
+		SELECT id::text, attempts, COALESCE(last_error, ''), completed_at IS NULL
+		FROM uploaded_file_object_cleanup_jobs
+		WHERE storage_path = $1 AND reason = 'metadata_deleted'
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, storagePath).Scan(&jobID, &attempts, &lastError, &isPending); err != nil {
+		t.Fatalf("load queued cleanup job: %v", err)
+	}
+	if !isPending || attempts != 1 || !strings.Contains(lastError, "delete unavailable") {
+		t.Fatalf("cleanup job pending=%v attempts=%d lastError=%q", isPending, attempts, lastError)
+	}
+	if _, err := os.Stat(storagePath); err != nil {
+		t.Fatalf("stored file should remain after failed delete: %v", err)
+	}
+
+	store.failDelete = false
+	if err := app.api.ProcessPendingStoredFileCleanups(context.Background(), 10); err != nil {
+		t.Fatalf("process pending cleanup jobs: %v", err)
+	}
+	if _, err := os.Stat(storagePath); !os.IsNotExist(err) {
+		t.Fatalf("stored file still exists after cleanup retry or stat failed unexpectedly: %v", err)
+	}
+	if err := app.db.QueryRow(context.Background(), `SELECT completed_at IS NOT NULL FROM uploaded_file_object_cleanup_jobs WHERE id = $1`, jobID).Scan(&isPending); err != nil {
+		t.Fatalf("load completed cleanup job: %v", err)
+	}
+	if !isPending {
+		t.Fatal("cleanup job was not completed after retry")
+	}
+}
+
+func TestEvidenceUploadMetadataFailureQueuesObjectCleanup(t *testing.T) {
+	app := newTestApp(t)
+	prefix := testPrefix()
+	teacherID := createTestUser(t, app.db, prefix+"teacher@unitrack.local", "teacher12345", RoleTeacher, "Teacher")
+	projectID := createTestProject(t, app.db, teacherID, prefix+"Upload Rollback Project")
+	t.Cleanup(func() { cleanupProjectAndUsers(t, app.db, projectID, prefix) })
+	t.Cleanup(func() {
+		_, _ = app.db.Exec(context.Background(), `DELETE FROM uploaded_file_object_cleanup_jobs WHERE storage_path LIKE $1`, app.cfg.UploadStorageDir+"%")
+	})
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "rollback.txt")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := part.Write([]byte("rollback evidence")); err != nil {
+		t.Fatalf("write multipart file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/upload", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	recorder := httptest.NewRecorder()
+
+	_, ok := app.api.storeUploadedFileFromRequest(recorder, request, User{ID: teacherID, Role: RoleTeacher, Status: "active"}, projectID, "invalid_target", projectID, nil)
+	if ok {
+		t.Fatal("upload metadata failure unexpectedly succeeded")
+	}
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("metadata failure status = %d body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	var storagePath string
+	var completed bool
+	if err := app.db.QueryRow(context.Background(), `
+		SELECT storage_path, completed_at IS NOT NULL
+		FROM uploaded_file_object_cleanup_jobs
+		WHERE reason = 'upload_metadata_rollback' AND storage_path LIKE $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, app.cfg.UploadStorageDir+"%").Scan(&storagePath, &completed); err != nil {
+		t.Fatalf("load rollback cleanup job: %v", err)
+	}
+	if !completed {
+		t.Fatal("rollback cleanup job was not completed")
+	}
+	if _, err := os.Stat(storagePath); !os.IsNotExist(err) {
+		t.Fatalf("rolled-back stored file still exists or stat failed unexpectedly: %v", err)
+	}
+	var fileCount int
+	if err := app.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM uploaded_files WHERE project_id = $1 AND original_file_name = 'rollback.txt'`, projectID).Scan(&fileCount); err != nil {
+		t.Fatalf("count rollback uploaded files: %v", err)
+	}
+	if fileCount != 0 {
+		t.Fatalf("rollback uploaded file metadata count = %d, want 0", fileCount)
+	}
+}
+
 func TestSubmissionResourceLinksRequireSubmitterOrManager(t *testing.T) {
 	app := newTestApp(t)
 	prefix := testPrefix()
@@ -3012,6 +3911,14 @@ func TestReviewedSubmissionSupportRecordsAreImmutable(t *testing.T) {
 	if err := json.Unmarshal(resourceBody, &resource); err != nil {
 		t.Fatalf("decode submission resource: %v", err)
 	}
+	var resourceLinkFileID string
+	if err := app.db.QueryRow(context.Background(), `
+		INSERT INTO uploaded_files (project_id, related_entity_type, related_entity_id, original_file_name, stored_file_name, storage_path, file_size_bytes, uploaded_by)
+		VALUES ($1, 'resource_link', $2, 'resource-link-reviewed.txt', 'resource-link-reviewed.txt', '/tmp/unitrack-resource-link-reviewed.txt', 1, $3)
+		RETURNING id::text
+	`, projectID, resource.ID, studentID).Scan(&resourceLinkFileID); err != nil {
+		t.Fatalf("insert resource-link evidence metadata: %v", err)
+	}
 	uploadStatus, uploadBody := requestMultipartFile(t, app, http.MethodPost, "/api/v1/projects/"+projectID+"/progress-updates/"+updateID+"/files", "file", "reviewed.txt", []byte("reviewed evidence"))
 	if uploadStatus != http.StatusCreated {
 		t.Fatalf("upload pending evidence status = %d body = %s", uploadStatus, string(uploadBody))
@@ -3055,6 +3962,10 @@ func TestReviewedSubmissionSupportRecordsAreImmutable(t *testing.T) {
 	if deleteFile.StatusCode != http.StatusConflict {
 		t.Fatalf("delete reviewed evidence status = %d", deleteFile.StatusCode)
 	}
+	deleteResourceLinkFile := requestJSON(t, app, http.MethodDelete, "/api/v1/projects/"+projectID+"/files/"+resourceLinkFileID, nil)
+	if deleteResourceLinkFile.StatusCode != http.StatusConflict {
+		t.Fatalf("delete reviewed resource-link evidence status = %d", deleteResourceLinkFile.StatusCode)
+	}
 	downloadStatus, downloadBody := requestJSONBody(t, app, http.MethodGet, "/api/v1/projects/"+projectID+"/files/"+uploaded.ID+"/download", nil)
 	if downloadStatus != http.StatusOK || string(downloadBody) != "reviewed evidence" {
 		t.Fatalf("download reviewed evidence status = %d body = %q", downloadStatus, string(downloadBody))
@@ -3081,6 +3992,14 @@ func TestDatabasePreservesReviewedSubmissionSupport(t *testing.T) {
 	`, projectID, updateID, prefix+"Reviewed submission resource", studentID).Scan(&resourceID); err != nil {
 		t.Fatalf("insert pending submission resource: %v", err)
 	}
+	var fileResourceID string
+	if err := app.db.QueryRow(context.Background(), `
+		INSERT INTO resource_links (project_id, related_entity_type, related_entity_id, title, url, added_by)
+		VALUES ($1, 'progress_update', $2, $3, 'https://example.com/reviewed-db-support-file', $4)
+		RETURNING id::text
+	`, projectID, updateID, prefix+"Reviewed submission resource with file", studentID).Scan(&fileResourceID); err != nil {
+		t.Fatalf("insert pending submission resource for file: %v", err)
+	}
 
 	var projectResourceID string
 	if err := app.db.QueryRow(context.Background(), `
@@ -3098,6 +4017,14 @@ func TestDatabasePreservesReviewedSubmissionSupport(t *testing.T) {
 		RETURNING id::text
 	`, projectID, updateID, studentID).Scan(&fileID); err != nil {
 		t.Fatalf("insert pending submission evidence metadata: %v", err)
+	}
+	var resourceLinkFileID string
+	if err := app.db.QueryRow(context.Background(), `
+		INSERT INTO uploaded_files (project_id, related_entity_type, related_entity_id, original_file_name, stored_file_name, storage_path, file_size_bytes, uploaded_by)
+		VALUES ($1, 'resource_link', $2, 'resource-link-reviewed.txt', 'resource-link-reviewed.txt', '/tmp/unitrack-resource-link-reviewed-db.txt', 1, $3)
+		RETURNING id::text
+	`, projectID, fileResourceID, studentID).Scan(&resourceLinkFileID); err != nil {
+		t.Fatalf("insert pending resource-link evidence metadata: %v", err)
 	}
 
 	if _, err := app.db.Exec(context.Background(), `INSERT INTO progress_reviews (progress_update_id, reviewed_by, review_status) VALUES ($1, $2, 'approved')`, updateID, teacherID); err != nil {
@@ -3155,6 +4082,18 @@ func TestDatabasePreservesReviewedSubmissionSupport(t *testing.T) {
 		t.Fatalf("reviewed evidence metadata delete error = %v", err)
 	}
 
+	if _, err := app.db.Exec(context.Background(), `UPDATE uploaded_files SET original_file_name = 'resource-link-changed.txt' WHERE id = $1`, resourceLinkFileID); err == nil {
+		t.Fatalf("reviewed resource-link evidence metadata update succeeded")
+	} else if !strings.Contains(err.Error(), "reviewed submission evidence files are immutable") {
+		t.Fatalf("reviewed resource-link evidence metadata update error = %v", err)
+	}
+
+	if _, err := app.db.Exec(context.Background(), `DELETE FROM uploaded_files WHERE id = $1`, resourceLinkFileID); err == nil {
+		t.Fatalf("reviewed resource-link evidence metadata delete succeeded")
+	} else if !strings.Contains(err.Error(), "reviewed submission evidence files are immutable") {
+		t.Fatalf("reviewed resource-link evidence metadata delete error = %v", err)
+	}
+
 	if _, err := app.db.Exec(context.Background(), `UPDATE progress_updates SET review_status = 'pending_review' WHERE id = $1`, updateID); err == nil {
 		t.Fatalf("reviewed submission status revert succeeded")
 	} else if !strings.Contains(err.Error(), "reviewed submission review status is immutable") {
@@ -3173,9 +4112,17 @@ func TestDatabasePreservesReviewedSubmissionSupport(t *testing.T) {
 		_ = tx.Rollback(context.Background())
 		t.Fatalf("delete reviewed evidence metadata in cleanup tx: %v", err)
 	}
+	if _, err := tx.Exec(context.Background(), `DELETE FROM uploaded_files WHERE id = $1`, resourceLinkFileID); err != nil {
+		_ = tx.Rollback(context.Background())
+		t.Fatalf("delete reviewed resource-link evidence metadata in cleanup tx: %v", err)
+	}
 	if _, err := tx.Exec(context.Background(), `DELETE FROM resource_links WHERE id = $1`, resourceID); err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatalf("delete reviewed resource in cleanup tx: %v", err)
+	}
+	if _, err := tx.Exec(context.Background(), `DELETE FROM resource_links WHERE id = $1`, fileResourceID); err != nil {
+		_ = tx.Rollback(context.Background())
+		t.Fatalf("delete reviewed resource-link file resource in cleanup tx: %v", err)
 	}
 	if err := tx.Commit(context.Background()); err != nil {
 		t.Fatalf("commit reviewed support cleanup tx: %v", err)
@@ -3746,6 +4693,14 @@ func assertStatus(t *testing.T, response *http.Response, expected int, label str
 	}
 }
 
+func assertBadRequestWithoutRawSQL(t *testing.T, app *testApp, method string, path string, payload any, label string) {
+	t.Helper()
+	status, body := requestJSONBody(t, app, method, path, payload)
+	if status != http.StatusBadRequest || strings.Contains(string(body), "invalid input syntax") {
+		t.Fatalf("%s status = %d body = %s", label, status, string(body))
+	}
+}
+
 func assertProjectList(t *testing.T, app *testApp, mustContain []string, mustNotContain []string) {
 	t.Helper()
 	status, body := requestJSONBody(t, app, http.MethodGet, "/api/v1/projects", nil)
@@ -3967,6 +4922,18 @@ func newTestHTTPClient(t *testing.T) *http.Client {
 	return &http.Client{Jar: jar}
 }
 
+type flakyDeleteFileStore struct {
+	uploadFileStore
+	failDelete bool
+}
+
+func (s *flakyDeleteFileStore) Delete(ctx context.Context, key string) error {
+	if s.failDelete {
+		return errors.New("delete unavailable")
+	}
+	return s.uploadFileStore.Delete(ctx, key)
+}
+
 func loginWithClient(t *testing.T, app *testApp, client *http.Client, email string, password string) {
 	t.Helper()
 	status, body, err := requestJSONBodyWithClientNoFatal(app, client, http.MethodPost, "/api/v1/auth/login", map[string]string{"email": email, "password": password})
@@ -3985,6 +4952,21 @@ func userListContainsEmail(users []UserDTO, email string) bool {
 		}
 	}
 	return false
+}
+
+func assertPaginatedNestedEndpoint[T any](t *testing.T, app *testApp, path string, label string) {
+	t.Helper()
+	status, body := requestJSONBody(t, app, http.MethodGet, path, nil)
+	if status != http.StatusOK {
+		t.Fatalf("paginated %s status = %d body = %s", label, status, string(body))
+	}
+	var page paginatedResponse[T]
+	if err := json.Unmarshal(body, &page); err != nil {
+		t.Fatalf("decode paginated %s: %v", label, err)
+	}
+	if page.Page != 2 || page.Limit != 1 || page.Total != 2 || len(page.Items) != 1 {
+		t.Fatalf("paginated %s = %#v", label, page)
+	}
 }
 
 func deactivateOtherActiveAdmins(t *testing.T, db *pgxpool.Pool, emailPrefix string) {

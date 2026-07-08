@@ -70,6 +70,12 @@ test('role dashboards render actionable queues', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Review work' })).toBeVisible()
   await expect(page.getByText(data.waitingUpdate.title ?? data.waitingTask.title)).toBeVisible()
   await expect(page.getByText(data.overdueTask.title)).toBeVisible()
+  await page.getByLabel('Search overdue assignments').fill(data.waitingTask.title)
+  await expect(page.getByText('No matching overdue assignments')).toBeVisible()
+  await expect(page.getByText(data.waitingUpdate.title ?? data.waitingTask.title)).toBeVisible()
+  await page.getByRole('button', { name: 'Clear search overdue assignments' }).click()
+  await expect(page.getByRole('link', { name: data.overdueTask.title, exact: true })).toBeVisible()
+  await expect(page.getByText(data.waitingUpdate.title ?? data.waitingTask.title)).toBeVisible()
 
   await signIn(page, data.student.email, userPassword)
   await expect(page.getByRole('heading', { name: 'Do next' })).toBeVisible()

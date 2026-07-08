@@ -11,7 +11,7 @@ Students need one official place to submit progress for assigned work. Teachers 
 | Route / Surface | Owns |
 | --- | --- |
 | `/workspace/projects/:projectId` | Work Plan assignment list/create affordances. |
-| `/workspace/projects/:projectId/tasks/:taskId` | Assignment page, review desk, student workbench, timeline, resources/evidence. |
+| `/workspace/projects/:projectId/tasks/:taskId` | Assignment page, review desk, student workbench, timeline, optional instructions disclosure, resources/evidence. |
 
 UI says assignment, submission, review, resource, and evidence. API/DB compatibility names still include `task`, `progress_update`, and `uploaded_files`.
 
@@ -24,12 +24,23 @@ UI may say checkpoint for planning context. API/DB/source compatibility names st
 - Students can submit assignment-scoped work only when assigned, active, project member, and project/task state allows it.
 - Direct progress submission rows are database-gated to official assignments; legacy child tasks cannot receive new submissions.
 - Only one pending submission per assignment is allowed.
-- Manual assignment completion is blocked while pending review exists.
+- Manual assignment status adjustment is blocked while pending review exists.
 - Managers review pending submissions once while the project is not archived; review authority is rechecked in the review transaction.
 - Completed assignments cannot receive new submissions or duplicate reviews.
+- Completed assignments cannot be reopened through generic assignment update; metadata edits must preserve `done`/`completed` state.
+- Managers can explicitly adjust assignment status to `in_progress`, `needs_changes`, or `completed` when the project accepts plan changes and no submission is pending review.
+- Manual completion, manual revision, and reopening completed assignments require a reason and record `assignment.status_adjusted` activity history without changing submission/review/evidence history.
+- Negative review decisions (`needs_changes` or `rejected`) must store the official assignment state as `needs_changes` so API rollups and UI state remain consistent.
 - Submission and review actions require project lifecycle data; loading/error states show a retryable notice instead of silently collapsing to read-only actions.
+- Assignment headers stay focused on title and primary actions; status, priority, submission count, due date, checkpoint, project, and assignees live in the right-side Details panel.
+- Assignment and submission table variants use sortable data headers for loaded rows while action columns remain static.
+- Assignment instructions render in the right-side context/decision panel as a compact disclosure only when the assignment has description text; empty descriptions do not create a placeholder card. Assignment-level resources also live in the right-side panel, including during pending-review workflows.
 - Review decisions require support data to load and should use status-specific copy/styles.
-- Resources may attach to pending assignment submissions; API/UI evidence uploads attach to submissions only while `uploaded_files` keeps broader database target compatibility.
+- Assignment detail UI is action-first: pending teacher review shows the current submission and decision panel first, with instructions and assignment resources in the right panel while evidence and older history remain quieter reference material; short review metadata and decision controls use spacing instead of extra divider lines.
+- Assignment status adjustment is a separate teacher/admin action from editing assignment details so manual overrides stay intentional and auditable.
+- Evidence upload controls should stay compact on the assignment page; file upload affordances can sit behind an explicit add action while attached files remain readable/downloadable.
+- Submission history should be compact so older records do not compete with the current submission or next student action; API helpers must not silently cap assignment or project submission history. Project-level progress history supports explicit `page`/`limit` responses for callers that need bounded loads.
+- Resources may attach to pending assignment submissions; open submission-resource dialogs become read-only when the submission is no longer `pending_review`. API/UI evidence uploads attach to submissions only while `uploaded_files` keeps broader database target compatibility.
 - Reviewed submission support records are immutable while reads/downloads stay available.
 
 ## Source Map
@@ -59,12 +70,12 @@ UI may say checkpoint for planning context. API/DB/source compatibility names st
 
 ## Verify
 
-- Focused lifecycle tests for assignment create/update, submission authorization, pending review completion, review authority, duplicate reviews, support immutability.
+- Focused lifecycle tests for assignment create/update, submission authorization, pending review completion, review authority, duplicate reviews, support immutability, and project submission-history pagination.
 - `make db-validate` when assignment/submission/support triggers change.
-- Web lint/build and targeted browser tests for assignment forms, submission, review desk, resources, and evidence.
+- Web lint/build and targeted browser tests for assignment forms, submission, review desk, resources, and evidence, including `assignment-happy-path.spec.ts` for the core UI flow.
 
 ## Gaps
 
-- Browser coverage for assignment create/edit/submission/review permutations is still partial.
+- Browser coverage for assignment edit/submission/review permutations is still partial beyond the core happy path.
 - Submission/review status copy and derived assignment state still need polish.
 - Resource dialog and evidence panel browser coverage is partial.

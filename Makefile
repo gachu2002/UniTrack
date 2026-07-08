@@ -1,4 +1,4 @@
-.PHONY: install web-dev web-build web-lint web-test-e2e web-test-e2e-headed web-test-e2e-report api-run api-run-local api-build api-test db-create db-status db-up db-down db-reset db-validate db-local-up db-local-down db-local-reset db-status-local db-up-local diagram report-diagrams report report-watch report-clean report-deps-check report-visual-check
+.PHONY: install web-dev web-build web-lint web-test-e2e web-test-e2e-headed web-test-e2e-report api-run api-run-local api-build api-test api-test-unit db-create db-status db-up db-down db-reset db-validate db-local-up db-local-down db-local-reset db-status-local db-up-local diagram report-diagrams report report-watch report-clean report-deps-check report-visual-check
 
 API_DIR := apps/api
 GOOSE_VERSION := v3.27.0
@@ -47,6 +47,10 @@ api-build:
 	go build -o ./apps/api/bin/server ./apps/api/cmd/server
 
 api-test:
+	@test -n "$(TEST_DATABASE_URL)" || (printf "TEST_DATABASE_URL is required for make api-test so DB lifecycle tests do not skip silently. Use make api-test-unit for non-DB tests.\n" && exit 1)
+	cd apps/api && TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test ./...
+
+api-test-unit:
 	cd apps/api && go test ./...
 
 db-create:

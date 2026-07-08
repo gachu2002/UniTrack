@@ -44,6 +44,9 @@ func main() {
 		logger.Error("bootstrap failed", slog.Any("error", err))
 		os.Exit(1)
 	}
+	if err := api.ProcessPendingStoredFileCleanups(ctx, 100); err != nil {
+		logger.Warn("stored file cleanup reconciliation failed", slog.Any("error", err))
+	}
 
 	server := &http.Server{
 		Addr:         net.JoinHostPort(cfg.HTTPHost, cfg.HTTPPort),

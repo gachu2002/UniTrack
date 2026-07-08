@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Search, X } from 'lucide-react'
-import { useDeferredValue, useId, useState, type ReactNode } from 'react'
+import { useDeferredValue, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -58,7 +58,7 @@ export function ClassDetailPage() {
   const classQuery = useQuery({ queryKey: queryKeys.class(resolvedClassId), queryFn: () => getClass(resolvedClassId), enabled: resolvedClassId.length > 0 })
   const projectsQuery = useQuery({
     queryKey: [...queryKeys.classProjectCandidates(resolvedClassId), candidateQuery],
-    queryFn: () => getProjects({ limit: 25, unassigned: true, search: candidateQuery || undefined, excludeArchived: true }),
+    queryFn: () => getProjects({ limit: 25, unassigned: true, search: candidateQuery || undefined, excludeArchived: true, supervisorId: classQuery.data?.classFolder.ownerTeacherId }),
     placeholderData: (previousData) => previousData,
     enabled: resolvedClassId.length > 0 && classQuery.data?.classFolder.status === 'active',
   })
@@ -231,20 +231,59 @@ function EditClassForm({ item, onUpdated }: { item: ClassFolder; onUpdated: () =
 
 function AttachProjectControl({ projects, search, onSearchChange, isLoading, isRefreshing, isStaleResults, isError, isSubmitting, onRetry, onSubmit }: { projects: Project[]; search: string; onSearchChange: (value: string) => void; isLoading: boolean; isRefreshing: boolean; isStaleResults: boolean; isError: boolean; isSubmitting: boolean; onRetry: () => void; onSubmit: (projectId: string) => void }) {
   const listId = useId()
+  const [activeOptionIndex, setActiveOptionIndex] = useState(-1)
   const hasQuery = search.trim().length > 0
   const visibleProjects = hasQuery && !isStaleResults ? filterProjectCandidates(projects, search).slice(0, 6) : []
+  const activeIndex = visibleProjects.length > 0 ? Math.min(activeOptionIndex, visibleProjects.length - 1) : -1
+  const activeProject = activeIndex >= 0 ? visibleProjects[activeIndex] : undefined
   const disabled = isLoading || isSubmitting
   const placeholder = isLoading ? 'Loading projects' : 'Search standalone projects'
+  const clearSearch = () => {
+    setActiveOptionIndex(-1)
+    onSearchChange('')
+  }
+  const submitProject = (projectId: string) => {
+    setActiveOptionIndex(-1)
+    onSubmit(projectId)
+    onSearchChange('')
+  }
+
+  const onInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      if (hasQuery) {
+        event.preventDefault()
+        clearSearch()
+      }
+      return
+    }
+    if (visibleProjects.length === 0) {
+      return
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveOptionIndex((current) => (current + 1) % visibleProjects.length)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveOptionIndex((current) => (current <= 0 ? visibleProjects.length - 1 : current - 1))
+      return
+    }
+    if (event.key === 'Enter' && activeProject) {
+      event.preventDefault()
+      submitProject(activeProject.id)
+    }
+  }
 
   return (
     <div className="relative w-full sm:w-72">
       <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input role="combobox" aria-autocomplete="list" aria-expanded={hasQuery && !isError} aria-controls={listId} aria-label="Search standalone projects" className="h-9 rounded-full bg-white pl-9 pr-9 text-sm shadow-sm" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder={placeholder} disabled={disabled || isError} />
+      <Input role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded={hasQuery && !isError} aria-controls={listId} aria-activedescendant={activeProject ? projectOptionId(listId, activeProject.id) : undefined} aria-label="Search standalone projects" className="h-9 rounded-full bg-white pl-9 pr-9 text-sm shadow-sm" value={search} onChange={(event) => onSearchChange(event.target.value)} onKeyDown={onInputKeyDown} placeholder={placeholder} disabled={disabled || isError} />
       {isError ? (
         <Button type="button" variant="ghost" size="sm" className="absolute right-1 top-1/2 h-7 -translate-y-1/2 rounded-full px-3 text-xs" onClick={onRetry}>Retry</Button>
       ) : null}
       {hasQuery && !isError ? (
-        <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 size-7 -translate-y-1/2 rounded-full text-muted-foreground" aria-label="Clear project search" onClick={() => onSearchChange('')}>
+        <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 size-7 -translate-y-1/2 rounded-full text-muted-foreground" aria-label="Clear project search" onClick={clearSearch}>
           <X className="size-3.5" />
         </Button>
       ) : null}
@@ -252,7 +291,7 @@ function AttachProjectControl({ projects, search, onSearchChange, isLoading, isR
         <div id={listId} role="listbox" aria-label="Standalone project matches" className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 overflow-hidden rounded-xl border border-border bg-white shadow-panel">
           {isRefreshing || isStaleResults ? <p className="border-b border-border px-3 py-2 text-xs font-semibold text-muted-foreground">Searching...</p> : null}
           {!isStaleResults && visibleProjects.length > 0 ? (
-            visibleProjects.map((project) => <ProjectCandidateOption key={project.id} project={project} isSubmitting={isSubmitting} onSubmit={() => { onSubmit(project.id); onSearchChange('') }} />)
+            visibleProjects.map((project, index) => <ProjectCandidateOption key={project.id} id={projectOptionId(listId, project.id)} project={project} isActive={index === activeIndex} isSubmitting={isSubmitting} onActive={() => setActiveOptionIndex(index)} onSubmit={() => submitProject(project.id)} />)
           ) : !isStaleResults ? (
             <p className="px-3 py-2 text-sm text-muted-foreground">No matching standalone projects.</p>
           ) : null}
@@ -263,14 +302,18 @@ function AttachProjectControl({ projects, search, onSearchChange, isLoading, isR
   )
 }
 
-function ProjectCandidateOption({ project, isSubmitting, onSubmit }: { project: Project; isSubmitting: boolean; onSubmit: () => void }) {
+function ProjectCandidateOption({ id, project, isActive, isSubmitting, onActive, onSubmit }: { id: string; project: Project; isActive: boolean; isSubmitting: boolean; onActive: () => void; onSubmit: () => void }) {
   return (
-    <button type="button" role="option" aria-selected="false" className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-ink transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50" title={`Add ${project.name}`} disabled={isSubmitting} onMouseDown={(event) => event.preventDefault()} onClick={onSubmit}>
+    <button type="button" id={id} role="option" aria-selected={isActive} className={cn('flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-ink transition disabled:cursor-not-allowed disabled:opacity-50', isActive ? 'bg-accent' : 'hover:bg-accent')} title={`Add ${project.name}`} disabled={isSubmitting} onMouseEnter={onActive} onMouseDown={(event) => event.preventDefault()} onClick={onSubmit}>
       <Plus className="size-3.5 shrink-0 text-primary" />
       <span className="min-w-0 flex-1 truncate">{project.name}</span>
       <span className="text-xs font-medium text-muted-foreground">Add</span>
     </button>
   )
+}
+
+function projectOptionId(listId: string, projectId: string) {
+  return `${listId}-option-${projectId}`
 }
 
 function ProjectGroupCards({ projects, canUnlinkProjects, unlinkingProjectId, onUnlink }: { projects: Project[]; canUnlinkProjects: boolean; unlinkingProjectId?: string; onUnlink: (project: Project) => void }) {
@@ -356,6 +399,34 @@ function projectAttentionScore(project: Project) {
 
 function ColorPicker({ value, onChange }: { value: ClassFolderColor; onChange: (value: ClassFolderColor) => void }) {
   const labelId = useId()
+  const optionRefs = useRef<Record<ClassFolderColor, HTMLButtonElement | null>>({ blue: null, teal: null, amber: null, rose: null, violet: null, slate: null })
+  const selectColor = (color: ClassFolderColor) => {
+    onChange(color)
+    optionRefs.current[color]?.focus()
+  }
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, color: ClassFolderColor) => {
+    const currentIndex = folderColors.indexOf(color)
+    let nextColor: ClassFolderColor | undefined
+
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextColor = folderColors[(currentIndex + 1) % folderColors.length]
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextColor = folderColors[(currentIndex - 1 + folderColors.length) % folderColors.length]
+    }
+    if (event.key === 'Home') {
+      nextColor = folderColors[0]
+    }
+    if (event.key === 'End') {
+      nextColor = folderColors[folderColors.length - 1]
+    }
+    if (!nextColor) {
+      return
+    }
+
+    event.preventDefault()
+    selectColor(nextColor)
+  }
   return (
     <BaseField>
       <FieldLabel id={labelId}>Folder color</FieldLabel>
@@ -363,7 +434,7 @@ function ColorPicker({ value, onChange }: { value: ClassFolderColor; onChange: (
         {folderColors.map((color) => {
           const palette = folderPalette(color)
           return (
-            <button key={color} type="button" role="radio" aria-checked={value === color} className={cn('rounded-xl border px-3 py-2 text-left text-xs font-bold capitalize transition', palette.swatch, value === color ? 'ring-2 ring-primary ring-offset-2' : 'opacity-80 hover:opacity-100')} onClick={() => onChange(color)}>
+            <button key={color} ref={(element) => { optionRefs.current[color] = element }} type="button" role="radio" aria-checked={value === color} tabIndex={value === color ? 0 : -1} className={cn('rounded-xl border px-3 py-2 text-left text-xs font-bold capitalize transition', palette.swatch, value === color ? 'ring-2 ring-primary ring-offset-2' : 'opacity-80 hover:opacity-100')} onClick={() => onChange(color)} onKeyDown={(event) => handleKeyDown(event, color)}>
               {color}
             </button>
           )

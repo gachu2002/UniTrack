@@ -17,7 +17,10 @@ Admins need controlled account setup and correction without public signup, while
 - Bootstrap admin env vars must be provided as a valid email/password pair; bootstrap fails if the email belongs to a non-active-admin account.
 - Admins can list/search paginated accounts with exact totals, create accounts, update role/status/name, and reset passwords.
 - The account directory shows 10 accounts per page to keep the table readable on large account sets.
+- Account table headers sort the currently loaded server page by account, role, status, or creation time; API search/filter/pagination remain authoritative for the account set.
+- If account totals shrink below the requested page, the client refetches the last valid page instead of leaving an empty stale page.
 - Role/status changes preserve the last active admin with serialized checks.
+- Admin create/update/password mutations re-lock and revalidate the acting admin as active inside the mutation transaction.
 - Teacher/admin demotion or deactivation with open work requires a replacement teacher/admin.
 - Student deactivation or role change with active work requires cleanup confirmation; historical submissions remain readable.
 - Password create/reset rejects leading/trailing spaces and revokes target sessions; self-reset signs the admin out.

@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 			protected.Delete("/projects/{projectId}/files/{fileId}", s.handleDeleteUploadedFile)
 			protected.Get("/projects/{projectId}/tasks/{taskId}", s.handleGetTask)
 			protected.Patch("/projects/{projectId}/tasks/{taskId}", s.handleUpdateTask)
+			protected.Post("/projects/{projectId}/tasks/{taskId}/status-adjustments", s.handleAdjustTaskStatus)
 			protected.Post("/projects/{projectId}/tasks/{taskId}/progress-updates", s.handleCreateProgressUpdate)
 			protected.Post("/projects/{projectId}/progress-updates/{updateId}/files", s.handleUploadProgressFile)
 			protected.Post("/projects/{projectId}/progress-updates/{updateId}/reviews", s.handleReviewProgressUpdate)

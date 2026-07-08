@@ -1,11 +1,15 @@
 import { ArrowUpRight } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { EmptyState } from '@/components/shared/empty-state'
 import { StatusBadge } from '@/components/shared/status-badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { SortableTableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getLastApprovedLabel, getProjectAttentionReason } from '@/features/projects/attention'
+import { sortItems, toggleSort, type SortState } from '@/lib/sort'
 import type { Project } from '@/types/api'
+
+type ProjectSortKey = 'project' | 'context' | 'members' | 'tasks' | 'status' | 'progress'
 
 interface ProjectTableProps {
   projects?: Project[] | null
@@ -17,6 +21,16 @@ interface ProjectTableProps {
 
 export function ProjectTable({ projects, emptyTitle, emptyMessage, mode = 'default', showSupervisor = true }: ProjectTableProps) {
   const items = projects ?? []
+  const [sort, setSort] = useState<SortState<ProjectSortKey> | null>(null)
+  const sortedItems = sortItems(items, sort, {
+    project: (project) => project.name,
+    context: (project) => showSupervisor ? project.supervisorName : project.topic || '',
+    members: (project) => project.memberCount,
+    tasks: (project) => project.taskCount,
+    status: (project) => project.status,
+    progress: (project) => mode === 'attention' ? getProjectAttentionReason(project) : project.plannedProgressPercent,
+  })
+  const onSort = (key: ProjectSortKey) => setSort((current) => toggleSort(current, key))
 
   if (items.length === 0) {
     return <EmptyState title={emptyTitle} message={emptyMessage} />
@@ -26,18 +40,18 @@ export function ProjectTable({ projects, emptyTitle, emptyMessage, mode = 'defau
     <div className="overflow-hidden bg-card">
       <Table>
         <TableHeader>
-            <TableRow>
-              <TableHead>Project</TableHead>
-              <TableHead>{showSupervisor ? 'Supervisor' : 'Topic'}</TableHead>
-              <TableHead className="hidden md:table-cell">Members</TableHead>
-            <TableHead className="hidden md:table-cell">Tasks</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>{mode === 'attention' ? 'Attention' : 'Progress'}</TableHead>
+          <TableRow>
+            <SortableTableHead sortKey="project" sort={sort} onSort={onSort}>Project</SortableTableHead>
+            <SortableTableHead sortKey="context" sort={sort} onSort={onSort}>{showSupervisor ? 'Supervisor' : 'Topic'}</SortableTableHead>
+            <SortableTableHead sortKey="members" sort={sort} onSort={onSort} className="hidden md:table-cell">Members</SortableTableHead>
+            <SortableTableHead sortKey="tasks" sort={sort} onSort={onSort} className="hidden md:table-cell">Tasks</SortableTableHead>
+            <SortableTableHead sortKey="status" sort={sort} onSort={onSort}>Status</SortableTableHead>
+            <SortableTableHead sortKey="progress" sort={sort} onSort={onSort}>{mode === 'attention' ? 'Attention' : 'Progress'}</SortableTableHead>
             <TableHead className="w-20 text-right">Open</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((project) => (
+          {sortedItems.map((project) => (
             <TableRow key={project.id} className={mode === 'attention' ? 'bg-red-50/70 hover:bg-red-50' : undefined}>
               <TableCell>
                 <Link className="font-heading font-semibold text-ink underline-offset-4 hover:underline" to={`/workspace/projects/${project.id}`}>

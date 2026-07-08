@@ -1,5 +1,8 @@
 import { apiClient } from '@/lib/axios'
-import type { UploadedFile } from '@/types/api'
+import { fetchAllPaginated } from '@/lib/pagination'
+import type { PaginatedResponse, UploadedFile } from '@/types/api'
+
+const PROJECT_FILE_PAGE_LIMIT = 500
 
 export interface UploadProjectFileInput {
   projectId: string
@@ -14,8 +17,7 @@ export interface UploadedFileInput {
 }
 
 export async function getProjectFiles(projectId: string) {
-  const { data } = await apiClient.get<UploadedFile[]>(`/projects/${projectId}/files`)
-  return data
+  return fetchAllPaginated((page) => fetchProjectFilesPage(projectId, page))
 }
 
 export async function uploadProjectFile({ projectId, targetId, file }: UploadProjectFileInput) {
@@ -34,4 +36,9 @@ export async function downloadUploadedFile({ projectId, fileId }: UploadedFileIn
 
 export async function deleteUploadedFile({ projectId, fileId }: UploadedFileInput) {
   await apiClient.delete(`/projects/${projectId}/files/${fileId}`)
+}
+
+async function fetchProjectFilesPage(projectId: string, page: number) {
+  const { data } = await apiClient.get<PaginatedResponse<UploadedFile>>(`/projects/${projectId}/files`, { params: { limit: PROJECT_FILE_PAGE_LIMIT, page } })
+  return data
 }

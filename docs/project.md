@@ -72,8 +72,9 @@ Legacy `/projects*` and `/classes*` paths redirect into `Workspace` routes for c
 - Backend/database are authoritative for auth, permissions, lifecycle, and integrity; frontend guards are UX only.
 - Project-scoped writes must preserve transaction-scoped manager and lifecycle rechecks under project-row locks.
 - Resource/evidence targets are polymorphic but backed by deferred project-match and reviewed-support immutability triggers.
-- Evidence uses local files for development/tests and private R2 for production; hosted hardening still needs retention, MIME policy, malware scanning, quotas, backups, repair jobs, and cost monitoring.
-- In-memory login rate limits and raw SQL are acceptable for first launch but need review before horizontal scale or larger deployments.
+- Evidence uses local files for development/tests and private R2 for production; hosted hardening still needs retention, MIME policy, malware scanning, quotas, backups, and cost monitoring.
+- In-memory login rate limits and raw SQL are acceptable for first launch but need review before horizontal scale or larger deployments; keep `TRUSTED_PROXY_CIDRS` aligned with hosted proxy topology.
+- Production bootstrap admin credentials are env-driven and must be strong; production startup requires either bootstrap credentials or an existing active admin.
 - Preserve focused accessibility conventions: skip link, dialog semantics, keyboardable controls, labels, readable empty/error/forbidden states.
 
 ## Baseline
@@ -83,7 +84,7 @@ Frontend: React, TypeScript, Vite, Tailwind, shadcn/Radix, React Router, TanStac
 ## Commands
 
 - Web: `pnpm --filter @unitrack/web build`, `pnpm --filter @unitrack/web lint`, `pnpm --filter @unitrack/web test:e2e`
-- API: `make api-build`, `make api-test`; DB lifecycle coverage requires `TEST_DATABASE_URL='<postgres-url>' make api-test`
+- API: `make api-build`, `TEST_DATABASE_URL='<postgres-url>' make api-test`, `make api-test-unit` for non-DB tests
 - DB: `make db-validate`
 - Demo seed local DB: `cd apps/api && DATABASE_URL='<local-postgres-url>' go run ./cmd/seed`
 - Demo seed non-local DB: set `DEMO_SEED_PASSWORD='<strong-demo-password>'`, add `-allow-non-local`; replace demo rows with `-reset -confirm-reset=demo.unitrack.local`
@@ -94,7 +95,7 @@ Use `docs/engineering-guide.md` and `docs/testing.md` to choose targeted verific
 
 1. Continue data-safety audits for remaining API transaction boundaries and direct-write constraints.
 2. Continue admin basics: all-project management, admin dashboard, activity-log UI.
-3. Harden production evidence storage: retention, MIME allowlist, malware scanning, backup, quotas, repair jobs, cost policy.
+3. Harden production evidence storage: retention, MIME allowlist, malware scanning, backup, quotas, cost policy.
 4. Expand frontend tests for project/task forms, team flows, resources/evidence, redirects, archived affordances, empty/error states.
 5. Polish submission/review status copy and derived assignment state.
 6. Add milestone templates or richer reorder behavior only after core supervision flows stay stable.

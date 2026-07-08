@@ -9,7 +9,7 @@ interface ErrorStateProps {
 
 export function ErrorState({ title = 'Something went wrong', message, onRetry }: ErrorStateProps) {
   return (
-    <Alert variant="destructive">
+    <Alert variant="destructive" role="alert">
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
       {onRetry ? (

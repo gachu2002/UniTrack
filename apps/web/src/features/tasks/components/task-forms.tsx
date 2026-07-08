@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { createTask, reviewProgress, submitProgress, updateTask } from '@/features/tasks/api'
+import { adjustTaskStatus, createTask, reviewProgress, submitProgress, updateTask } from '@/features/tasks/api'
 import { getErrorMessage, isForbiddenOrConflictError } from '@/lib/axios'
 import { invalidateAssignmentWorkflowData, refreshProjectDataOnStaleError } from '@/lib/query-invalidation'
 import { queryKeys } from '@/lib/query-keys'
@@ -130,7 +130,11 @@ type ProgressValues = z.infer<typeof progressSchema>
 
 export function SubmitProgressForm({ projectId, taskId, onSubmitted }: { projectId: string; taskId: string; onSubmitted?: () => void }) {
   const queryClient = useQueryClient()
+  const formId = useId()
   const form = useForm<ProgressValues>({ resolver: zodResolver(progressSchema), defaultValues: { title: '', description: '', blockers: '' } })
+  const titleId = `${formId}-title`
+  const descriptionId = `${formId}-description`
+  const blockersId = `${formId}-blockers`
   const mutation = useMutation({
     mutationFn: submitProgress,
     onSuccess: () => {
@@ -149,14 +153,14 @@ export function SubmitProgressForm({ projectId, taskId, onSubmitted }: { project
 
   return (
     <form className="space-y-4 pb-5" onSubmit={form.handleSubmit((values) => mutation.mutate({ projectId, taskId, ...values }))}>
-      <Field label="Submission title">
-        <Input placeholder="Prototype evidence ready" {...form.register('title')} />
+      <Field id={titleId} label="Submission title">
+        <Input id={titleId} placeholder="Prototype evidence ready" {...form.register('title')} />
       </Field>
-      <Field label="What did you complete?" error={form.formState.errors.description?.message}>
-        <Textarea placeholder="What changed, what evidence exists, and what should the teacher review?" {...form.register('description')} />
+      <Field id={descriptionId} label="What did you complete?" error={form.formState.errors.description?.message}>
+        <Textarea id={descriptionId} placeholder="What changed, what evidence exists, and what should the teacher review?" {...form.register('description')} />
       </Field>
-      <Field label="Blockers or issues">
-        <Textarea placeholder="Anything blocking the work?" {...form.register('blockers')} />
+      <Field id={blockersId} label="Blockers or issues">
+        <Textarea id={blockersId} placeholder="Anything blocking the work?" {...form.register('blockers')} />
       </Field>
       <Button type="submit" disabled={mutation.isPending}>
         {mutation.isPending ? 'Submitting...' : 'Submit work'}
@@ -175,9 +179,22 @@ const reviewSchema = z.object({
 })
 
 type ReviewValues = z.infer<typeof reviewSchema>
+type ManualOfficialProgressState = Extract<Task['officialProgressState'], 'in_progress' | 'needs_changes' | 'completed'>
+
+interface StatusAdjustmentValues {
+  officialProgressState: ManualOfficialProgressState
+  reason: string
+}
+
+const statusAdjustmentChoices: Array<{ value: ManualOfficialProgressState; label: string; description: string }> = [
+  { value: 'in_progress', label: 'Mark in progress', description: 'Use when work has started or a completed assignment needs another pass.' },
+  { value: 'needs_changes', label: 'Return for revision', description: 'Use when the student needs clear changes before this can move forward.' },
+  { value: 'completed', label: 'Mark complete', description: 'Use when the assignment is finished outside the submission flow.' },
+]
 
 export function ReviewProgressForm({ projectId, update, compact = false, disabledReason }: { projectId: string; update: ProgressUpdate; compact?: boolean; disabledReason?: string }) {
   const queryClient = useQueryClient()
+  const formId = useId()
   const form = useForm<ReviewValues>({
     resolver: zodResolver(reviewSchema),
     defaultValues: { decision: 'accept_progress', reviewComment: '' },
@@ -185,6 +202,7 @@ export function ReviewProgressForm({ projectId, update, compact = false, disable
   const decisionGroupName = useId()
   const decision = useWatch({ control: form.control, name: 'decision' })
   const requiresComment = decision === 'return_revision'
+  const reviewCommentId = `${formId}-review-comment`
   const mutation = useMutation({
     mutationFn: reviewProgress,
     onSuccess: () => {
@@ -209,11 +227,65 @@ export function ReviewProgressForm({ projectId, update, compact = false, disable
         <ReviewChoice name={decisionGroupName} value="complete_assignment" label="Approve and complete" description="This finishes the assignment." form={form} compact={compact} />
         <ReviewChoice name={decisionGroupName} value="return_revision" label="Return for revision" description="Student needs changes." form={form} compact={compact} />
       </div>
-      <Field label={requiresComment ? 'Revision guidance' : 'Review comment'} description={requiresComment ? 'Tell the student exactly what must change before resubmitting.' : 'Optional note for the submission timeline.'} error={form.formState.errors.reviewComment?.message}>
-        <Textarea className={compact ? 'min-h-28' : undefined} placeholder={requiresComment ? 'What should the student revise?' : 'Teacher review comment'} {...form.register('reviewComment')} />
+      <Field id={reviewCommentId} label={requiresComment ? 'Revision guidance' : 'Review comment'} description={requiresComment ? 'Tell the student exactly what must change before resubmitting.' : 'Optional note for the submission timeline.'} error={form.formState.errors.reviewComment?.message}>
+        <Textarea id={reviewCommentId} className={compact ? 'min-h-24' : undefined} placeholder={requiresComment ? 'What should the student revise?' : 'Teacher review comment'} {...form.register('reviewComment')} />
       </Field>
       {disabledReason ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-950">{disabledReason}</p> : null}
       <Button type="submit" className={compact ? 'w-full' : undefined} disabled={mutation.isPending || Boolean(disabledReason)}>{mutation.isPending ? 'Saving...' : 'Save review'}</Button>
+    </form>
+  )
+}
+
+export function AdjustTaskStatusForm({ projectId, task, disabledReason, onAdjusted }: { projectId: string; task: Task; disabledReason?: string; onAdjusted?: () => void }) {
+  const queryClient = useQueryClient()
+  const formId = useId()
+  const choices = statusAdjustmentChoices.filter((choice) => choice.value !== task.officialProgressState)
+  const defaultTargetState = defaultStatusAdjustmentTarget(task.officialProgressState)
+  const form = useForm<StatusAdjustmentValues>({ defaultValues: { officialProgressState: defaultTargetState, reason: '' } })
+  useEffect(() => {
+    form.reset({ officialProgressState: defaultTargetState, reason: '' })
+  }, [defaultTargetState, form, task.id])
+  const targetState = useWatch({ control: form.control, name: 'officialProgressState' })
+  const requiresReason = statusAdjustmentRequiresReason(task, targetState)
+  const reasonId = `${formId}-reason`
+  const mutation = useMutation({
+    mutationFn: adjustTaskStatus,
+    onSuccess: () => {
+      toast.success('Assignment status adjusted')
+      invalidateAssignmentWorkflowData(queryClient, projectId, task.id)
+      onAdjusted?.()
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+      if (isForbiddenOrConflictError(error)) {
+        refreshAssignmentWorkflow(queryClient, projectId, task.id)
+      }
+    },
+  })
+
+  return (
+    <form
+      className="space-y-4 pb-5"
+      onSubmit={form.handleSubmit((values) => {
+        const reason = values.reason.trim()
+        if (statusAdjustmentRequiresReason(task, values.officialProgressState) && !reason) {
+          form.setError('reason', { type: 'manual', message: 'Add a reason for this status change.' })
+          return
+        }
+        mutation.mutate({ projectId, taskId: task.id, officialProgressState: values.officialProgressState, reason })
+      })}
+    >
+      <p className="rounded-xl border border-dashed border-border bg-paper/70 px-4 py-3 text-sm leading-6 text-muted-foreground">
+        Current assignment state: <span className="font-semibold text-ink">{statusAdjustmentLabel(task.officialProgressState)}</span>. This does not edit submission, review, or evidence history.
+      </p>
+      <div className="grid gap-2" role="radiogroup" aria-label="New assignment status">
+        {choices.map((choice) => <StatusAdjustmentChoice key={choice.value} choice={choice} form={form} disabled={mutation.isPending || Boolean(disabledReason)} />)}
+      </div>
+      <Field id={reasonId} label="Reason" description={requiresReason ? 'Required for completion, revision, or reopening a completed assignment.' : 'Optional context saved to the activity history.'} error={form.formState.errors.reason?.message}>
+        <Textarea id={reasonId} placeholder={statusAdjustmentReasonPlaceholder(targetState)} {...form.register('reason')} />
+      </Field>
+      {disabledReason ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-950">{disabledReason}</p> : null}
+      <Button type="submit" disabled={mutation.isPending || Boolean(disabledReason)}>{mutation.isPending ? 'Saving...' : 'Save status'}</Button>
     </form>
   )
 }
@@ -243,9 +315,56 @@ function ReviewChoice({ name, value, label, description, form, compact = false }
         onChange={() => form.setValue('decision', value, { shouldDirty: true, shouldValidate: true })}
       />
       <span className="block">{label}</span>
-      <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">{description}</span>
+      {compact ? null : <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">{description}</span>}
     </label>
   )
+}
+
+function StatusAdjustmentChoice({ choice, form, disabled }: { choice: { value: ManualOfficialProgressState; label: string; description: string }; form: UseFormReturn<StatusAdjustmentValues>; disabled: boolean }) {
+  const selected = useWatch({ control: form.control, name: 'officialProgressState' })
+  const isSelected = selected === choice.value
+  return (
+    <label className={isSelected ? 'block cursor-pointer rounded-xl border border-primary bg-primary/10 px-3 py-2 text-left text-sm font-semibold text-primary focus-within:ring-2 focus-within:ring-primary/20' : 'block cursor-pointer rounded-xl border border-border bg-card px-3 py-2 text-left text-sm font-semibold text-ink transition focus-within:ring-2 focus-within:ring-primary/20 hover:border-primary/40 hover:bg-accent'}>
+      <input type="radio" className="sr-only" value={choice.value} disabled={disabled} {...form.register('officialProgressState')} />
+      <span className="block">{choice.label}</span>
+      <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">{choice.description}</span>
+    </label>
+  )
+}
+
+function defaultStatusAdjustmentTarget(officialProgressState: Task['officialProgressState']): ManualOfficialProgressState {
+  if (officialProgressState === 'no_progress' || officialProgressState === 'completed' || officialProgressState === 'needs_changes') {
+    return 'in_progress'
+  }
+  return 'completed'
+}
+
+function statusAdjustmentRequiresReason(task: Task, targetState: ManualOfficialProgressState) {
+  return task.officialProgressState === 'completed' || task.status === 'done' || targetState === 'completed' || targetState === 'needs_changes'
+}
+
+function statusAdjustmentLabel(state: Task['officialProgressState']) {
+  switch (state) {
+    case 'completed':
+      return 'Complete'
+    case 'needs_changes':
+      return 'Needs revision'
+    case 'in_progress':
+      return 'In progress'
+    default:
+      return 'Not started'
+  }
+}
+
+function statusAdjustmentReasonPlaceholder(state: ManualOfficialProgressState) {
+  switch (state) {
+    case 'completed':
+      return 'Why is this assignment complete?'
+    case 'needs_changes':
+      return 'What should the student revise?'
+    default:
+      return 'What changed outside the submission flow?'
+  }
 }
 
 function useTaskForm(milestoneId = '') {
@@ -275,6 +394,7 @@ function TaskForm({
 }) {
   const assignAll = useWatch({ control: form.control, name: 'assignAll' })
   const selectedAssignees = useWatch({ control: form.control, name: 'assigneeIds' }) || []
+  const formId = useId()
   const priority = useWatch({ control: form.control, name: 'priority' })
   const selectedMilestoneId = useWatch({ control: form.control, name: 'milestoneId' }) || ''
   const deadline = useWatch({ control: form.control, name: 'deadline' }) || ''
@@ -284,19 +404,25 @@ function TaskForm({
   const filteredMembers = assignableMembers.filter((member) => `${member.fullName} ${member.email}`.toLowerCase().includes(memberSearch.toLowerCase()))
   const visibleMembers = filteredMembers.slice(0, ASSIGNEE_OPTION_VISIBLE_COUNT)
   const selectedAssignableCount = selectedAssignees.filter((assigneeId) => assignableMemberIDs.has(assigneeId)).length
+  const titleId = `${formId}-title`
+  const descriptionId = `${formId}-description`
+  const milestoneId = `${formId}-milestone`
+  const priorityId = `${formId}-priority`
+  const deadlineId = `${formId}-deadline`
+  const memberSearchId = `${formId}-member-search`
   return (
     <form className="flex min-h-0 flex-col" onSubmit={form.handleSubmit(onSubmit)}>
       <div className={compact ? 'space-y-3 pb-4' : 'space-y-4 pb-5'}>
-        <Field label="Title" error={form.formState.errors.title?.message}>
-          <Input placeholder="Define the assignment students should complete" {...form.register('title')} />
+        <Field id={titleId} label="Title" error={form.formState.errors.title?.message}>
+          <Input id={titleId} placeholder="Define the assignment students should complete" {...form.register('title')} />
         </Field>
-        <Field label="Description">
-          <Textarea className={compact ? 'min-h-24' : undefined} placeholder="Expected outcome, evidence, and review notes for students" {...form.register('description')} />
+        <Field id={descriptionId} label="Description">
+          <Textarea id={descriptionId} className={compact ? 'min-h-24' : undefined} placeholder="Expected outcome, evidence, and review notes for students" {...form.register('description')} />
         </Field>
         {milestones.length > 0 ? (
-          <Field label="Checkpoint" description="Required checkpoint this assignment belongs under." error={form.formState.errors.milestoneId?.message}>
+          <Field id={milestoneId} label="Checkpoint" description="Required checkpoint this assignment belongs under." error={form.formState.errors.milestoneId?.message}>
             <Select value={selectedMilestoneId} onValueChange={(value) => form.setValue('milestoneId', value, { shouldDirty: true, shouldValidate: true })}>
-              <SelectTrigger>
+              <SelectTrigger id={milestoneId}>
                 <SelectValue placeholder="Choose checkpoint" />
               </SelectTrigger>
               <SelectContent>
@@ -306,9 +432,9 @@ function TaskForm({
           </Field>
         ) : <p className="rounded-xl border border-dashed border-border bg-paper px-3 py-2 text-sm text-muted-foreground">Create a checkpoint before adding assignments.</p>}
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Priority" description="Used for scanning the supervision plan.">
+          <Field id={priorityId} label="Priority" description="Used for scanning the supervision plan.">
             <Select value={priority} onValueChange={(value) => form.setValue('priority', value as TaskValues['priority'], { shouldDirty: true, shouldValidate: true })}>
-              <SelectTrigger>
+              <SelectTrigger id={priorityId}>
                 <SelectValue placeholder="Priority" />
               </SelectTrigger>
               <SelectContent>
@@ -318,8 +444,8 @@ function TaskForm({
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Deadline" description="Date-only deadline used for overdue alerts.">
-            <DatePicker value={deadline} onValueChange={(value) => form.setValue('deadline', value, { shouldDirty: true, shouldValidate: true })} />
+          <Field id={deadlineId} label="Deadline" description="Date-only deadline used for overdue alerts.">
+            <DatePicker id={deadlineId} value={deadline} onValueChange={(value) => form.setValue('deadline', value, { shouldDirty: true, shouldValidate: true })} />
           </Field>
         </div>
         <div className={compact ? 'rounded-md border bg-paper p-3' : 'rounded-md border bg-paper p-4'}>
@@ -339,7 +465,7 @@ function TaskForm({
           {!assignAll && assignableMembers.length > 0 ? (
             <div className="mt-4 space-y-3">
               <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-                <Input placeholder="Search students" value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} />
+                <Input id={memberSearchId} aria-label="Search students" placeholder="Search students" value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} />
                 <span className="text-sm font-semibold text-muted-foreground">{selectedAssignableCount} selected</span>
               </div>
               <div className={compact ? 'grid max-h-40 gap-2 overflow-y-auto' : 'grid max-h-64 gap-2 overflow-y-auto sm:grid-cols-2'}>
@@ -382,10 +508,10 @@ function refreshAssignmentWorkflow(queryClient: QueryClient, projectId: string, 
   invalidateAssignmentWorkflowData(queryClient, projectId, taskId)
 }
 
-function Field({ label, description, error, children }: { label: string; description?: string; error?: string; children: ReactNode }) {
+function Field({ id, label, description, error, children }: { id?: string; label: string; description?: string; error?: string; children: ReactNode }) {
   return (
     <BaseField>
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
       {description ? <p className="text-xs leading-5 text-muted-foreground">{description}</p> : null}
       {children}
       <FieldError message={error} />

@@ -106,7 +106,14 @@ func TestValidateRejectsProductionHTTPOrigins(t *testing.T) {
 }
 
 func TestValidateAcceptsProductionHTTPSOrigin(t *testing.T) {
-	cfg := Config{
+	cfg := validProductionConfig()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate rejected production HTTPS config: %v", err)
+	}
+}
+
+func validProductionConfig() Config {
+	return Config{
 		AppEnv:               "production",
 		DatabaseURL:          "postgres://example",
 		SessionSameSite:      "none",
@@ -117,9 +124,6 @@ func TestValidateAcceptsProductionHTTPSOrigin(t *testing.T) {
 		R2Endpoint:           "https://account.r2.cloudflarestorage.com",
 		R2AccessKeyID:        "access-key",
 		R2SecretAccessKey:    "secret-key",
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate rejected production HTTPS config: %v", err)
 	}
 }
 
@@ -169,5 +173,37 @@ func TestValidateRejectsWeakBootstrapAdminPassword(t *testing.T) {
 	cfg := Config{SessionSameSite: "lax", CORSAllowedOrigins: []string{"https://app.example.test"}, BootstrapAdminEmail: "admin@example.test", BootstrapAdminPassword: "short"}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate accepted weak bootstrap admin password")
+	}
+}
+
+func TestValidateRejectsWeakProductionBootstrapAdminPassword(t *testing.T) {
+	cfg := validProductionConfig()
+	cfg.BootstrapAdminEmail = "admin@example.test"
+	cfg.BootstrapAdminPassword = "admin12345"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate accepted weak production bootstrap admin password")
+	}
+}
+
+func TestValidateAcceptsStrongProductionBootstrapAdminPassword(t *testing.T) {
+	cfg := validProductionConfig()
+	cfg.BootstrapAdminEmail = "admin@example.test"
+	cfg.BootstrapAdminPassword = "Strong-bootstrap-admin-2026!"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate rejected strong production bootstrap admin password: %v", err)
+	}
+}
+
+func TestValidateRejectsInvalidTrustedProxyCIDR(t *testing.T) {
+	cfg := Config{SessionSameSite: "lax", CORSAllowedOrigins: []string{"https://app.example.test"}, TrustedProxyCIDRs: []string{"not a cidr"}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate accepted invalid trusted proxy CIDR")
+	}
+}
+
+func TestValidateAcceptsTrustedProxyCIDRsAndIPs(t *testing.T) {
+	cfg := Config{SessionSameSite: "lax", CORSAllowedOrigins: []string{"https://app.example.test"}, TrustedProxyCIDRs: []string{"10.0.0.0/8", "127.0.0.1"}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate rejected trusted proxy CIDRs/IPs: %v", err)
 	}
 }

@@ -35,10 +35,11 @@ interface ResourceLinkDialogProps {
   resources: ResourceLink[]
   canCreate: boolean
   canManageAll: boolean
+  readOnlyMessage?: string
   onClose: () => void
 }
 
-export function ResourceLinkDialog({ projectId, target, resources, canCreate, canManageAll, onClose }: ResourceLinkDialogProps) {
+export function ResourceLinkDialog({ projectId, target, resources, canCreate, canManageAll, readOnlyMessage, onClose }: ResourceLinkDialogProps) {
   const user = useAuthStore((state) => state.user)
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
@@ -87,9 +88,11 @@ export function ResourceLinkDialog({ projectId, target, resources, canCreate, ca
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-border bg-paper/70 py-8 text-center">
-              <EmptyState title="No resources yet" message="Add a useful reference for this item." />
+              <EmptyState title="No resources yet" message={readOnlyMessage ? 'No resource links were added before this item became read-only.' : 'Add a useful reference for this item.'} />
             </div>
           )}
+
+          {readOnlyMessage ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950">{readOnlyMessage}</p> : null}
 
           {canCreate ? <div className="sticky bottom-0 -mx-5 border-t border-border bg-card/95 px-5 py-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
             {editing ? (

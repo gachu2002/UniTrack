@@ -3,7 +3,9 @@ package app
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -84,6 +86,79 @@ func (s *Server) enforceRateLimit(w http.ResponseWriter, key string, limit int, 
 	}
 	writeError(w, http.StatusTooManyRequests, message)
 	return false
+}
+
+func (s *Server) clientIP(r *http.Request) string {
+	remoteIP := remoteAddrIP(r.RemoteAddr)
+	if remoteIP == "" {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	remoteAddr, err := netip.ParseAddr(remoteIP)
+	if err != nil {
+		return remoteIP
+	}
+	if !s.isTrustedProxy(remoteAddr) {
+		return remoteAddr.String()
+	}
+	if forwarded := forwardedClientIP(strings.Join(r.Header.Values("X-Forwarded-For"), ","), func(addr netip.Addr) bool {
+		return s.isTrustedProxy(addr)
+	}); forwarded != "" {
+		return forwarded
+	}
+	return remoteAddr.String()
+}
+
+func remoteAddrIP(remoteAddr string) string {
+	remoteAddr = strings.TrimSpace(remoteAddr)
+	if remoteAddr == "" {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err == nil {
+		return strings.Trim(host, "[]")
+	}
+	return strings.Trim(remoteAddr, "[]")
+}
+
+func (s *Server) isTrustedProxy(addr netip.Addr) bool {
+	for _, value := range s.cfg.TrustedProxyCIDRs {
+		prefix, err := parseProxyPrefix(value)
+		if err == nil && prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseProxyPrefix(value string) (netip.Prefix, error) {
+	value = strings.TrimSpace(value)
+	if prefix, err := netip.ParsePrefix(value); err == nil {
+		return prefix.Masked(), nil
+	}
+	addr, err := netip.ParseAddr(value)
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	return netip.PrefixFrom(addr, addr.BitLen()), nil
+}
+
+func forwardedClientIP(header string, isTrustedProxy func(netip.Addr) bool) string {
+	parts := strings.Split(header, ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		value := strings.Trim(strings.TrimSpace(parts[i]), "\"")
+		if value == "" {
+			continue
+		}
+		addr, err := netip.ParseAddr(strings.Trim(value, "[]"))
+		if err != nil {
+			continue
+		}
+		if isTrustedProxy(addr) {
+			continue
+		}
+		return addr.String()
+	}
+	return ""
 }
 
 func (s *Server) requireTrustedOrigin(next http.Handler) http.Handler {

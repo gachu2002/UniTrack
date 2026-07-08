@@ -28,7 +28,7 @@ import { CreateProjectDialog } from '@/features/projects/components/create-proje
 import { ProjectCardGrid } from '@/features/projects/components/project-card'
 import { getErrorMessage } from '@/lib/axios'
 import { canCreateProjects } from '@/lib/permissions'
-import { refreshClassDataOnStaleError } from '@/lib/query-invalidation'
+import { refreshClassDataOnStaleError, refreshWorkspaceDataOnStaleError } from '@/lib/query-invalidation'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -104,11 +104,11 @@ export function WorkspacePage() {
   const totalFolders = activeFolderTotal + archivedFolderTotal
   const visibleStandaloneProjects = sortByAttention(projects)
   const hasFolderSearch = folderSearchQuery.length > 0
-  const currentActiveFolderPage = Math.min(activeFolderPage, Math.max(1, Math.ceil(activeFolderTotal / FOLDER_PAGE_SIZE)))
-  const currentArchivedFolderPage = Math.min(archivedFolderPage, Math.max(1, Math.ceil(archivedFolderTotal / FOLDER_PAGE_SIZE)))
+  const currentActiveFolderPage = Math.min(activeClassesPage?.page || activeFolderPage, Math.max(1, Math.ceil(activeFolderTotal / FOLDER_PAGE_SIZE)))
+  const currentArchivedFolderPage = Math.min(archivedClassesPage?.page || archivedFolderPage, Math.max(1, Math.ceil(archivedFolderTotal / FOLDER_PAGE_SIZE)))
   const foldersRefreshing = canCreate && ((activeClassesQuery.isFetching && Boolean(activeClassesQuery.data)) || (archivedClassesQuery.isFetching && Boolean(archivedClassesQuery.data)))
   const totalProjectPages = Math.max(1, Math.ceil(totalProjects / PROJECT_PAGE_SIZE))
-  const currentProjectPage = Math.min(projectPage, totalProjectPages)
+  const currentProjectPage = Math.min(projectsPage?.page || projectPage, totalProjectPages)
   const projectsRefreshing = projectsQuery.isFetching && Boolean(projectsQuery.data)
 
   return (
@@ -256,6 +256,7 @@ function ClassFolderCard({ item }: { item: ClassFolder }) {
 }
 
 function ClassForm({ currentUser, onCreated }: { currentUser?: User | null; onCreated: (item: ClassFolder) => void }) {
+  const queryClient = useQueryClient()
   const formId = useId()
   const isAdmin = currentUser?.role === 'admin'
   const form = useForm<ClassValues>({ resolver: zodResolver(classSchema), defaultValues: { title: '', color: 'blue', description: '', status: 'active', ownerTeacherId: currentUser?.id || '' } })
@@ -278,7 +279,10 @@ function ClassForm({ currentUser, onCreated }: { currentUser?: User | null; onCr
       toast.success('Folder created')
       onCreated(item)
     },
-    onError: (error) => toast.error(getErrorMessage(error)),
+    onError: (error) => {
+      refreshWorkspaceDataOnStaleError(queryClient, error)
+      toast.error(getErrorMessage(error))
+    },
   })
 
   return (

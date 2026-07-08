@@ -64,6 +64,7 @@ Do not add new project-scoped write routes without preserving lifecycle locks an
 - All app routes live under `/api/v1`.
 - Shared response helpers in `response.go` own JSON responses, strict 1 MB single-value decoding, status errors, and UUID route params.
 - Route IDs should be validated before SQL unless a relationship helper deliberately returns stable `400` for malformed UUIDs.
+- Paginated list endpoints reject invalid or overflow-sized page/limit values before calculating SQL offsets. Project-scoped nested collections keep legacy no-query array responses, and return `paginatedResponse<T>` when `page` or `limit` is supplied; folder detail adds `projectsPage` metadata for its embedded project list.
 - Frontend API types in `apps/web/src/types/api.ts` and feature `api.ts` files are manual contracts; keep them aligned when DTOs change.
 
 ## Database Integrity
@@ -80,9 +81,10 @@ Do not add new project-scoped write routes without preserving lifecycle locks an
 ## Frontend State
 
 - TanStack Query owns server state.
+- Frontend queries use a short default freshness window (`staleTime` 30 seconds) and keep inactive query data for 10 minutes; mutations still explicitly invalidate affected query keys after writes.
 - Zustand only mirrors current user for layout/affordances.
 - Use `queryKeys` and shared invalidation helpers for cross-feature mutations.
-- Stale `403`/`409` mutation failures should refresh affected workspace/folder/project/assignment/support/evidence/dashboard/account queries.
+- Stale `403`/`409` mutation failures should refresh affected workspace/folder/project/assignment/support/evidence/dashboard/account/current-user queries.
 - Local forms must reset when entity/context changes, especially resource/evidence dialogs.
 
 ## Review Checklist
