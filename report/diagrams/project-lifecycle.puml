@@ -1,31 +1,31 @@
-@startuml
-skinparam defaultFontName "DejaVu Sans"
-skinparam backgroundColor white
-skinparam shadowing false
-top to bottom direction
-skinparam state {
-  BorderColor #111111
-  FontColor #111111
-  FontSize 16
-  AttributeFontSize 14
-  BackgroundColor #FFFFFF
+@startdot
+digraph G {
+  graph [rankdir=TB, bgcolor="white", margin=0.02, pad=0.08, nodesep=0.32, ranksep=0.34, splines=ortho, outputorder=edgesfirst, dpi=170];
+  node [shape=box, style="rounded,filled", color="#CBD5E1", penwidth=1.2, fontname="DejaVu Sans", fontsize=14, fontcolor="#0F172A", margin="0.18,0.11"];
+  edge [color="#94A3B8", penwidth=1.0, arrowsize=0.55, fontname="DejaVu Sans", fontsize=10, fontcolor="#334155"];
+
+  title [fillcolor="#1E3A8A", color="#1E3A8A", fontcolor="white", fontsize=17, label="Ma trận vòng đời dự án và tác động tới thao tác ghi"];
+  transitions [fillcolor="#EFF6FF", color="#93C5FD", fontsize=12, label="Chuyển trạng thái chính\nactive <-> on_hold   |   active/on_hold -> completed -> archived\ncompleted/archived -> active khi mở lại có kiểm soát\nKý hiệu: ✓ cho phép ghi   △ ghi có điều kiện   ✕ chặn ghi   Guard: backend + PostgreSQL"];
+
+  active [fillcolor="#DCFCE7", color="#22C55E", label="active - Đang triển khai\n✓ Hồ sơ, nhóm, mốc kế hoạch\n✓ Assignment và bài nộp mới\n△ Review pending; support chưa duyệt\n✕ Sửa/xóa support đã nằm trong review\nGuard: lock projects row + tx recheck\nGuard: FK + trigger kiểm tra target"];
+
+  hold [fillcolor="#FEF3C7", color="#F59E0B", label="on_hold - Tạm dừng\n✓ Xử lý review đã pending\n✓ Ghi audit/status cần thiết\n△ Resume hoặc complete có quyền\n✕ Assignment, bài nộp mới\n✕ Team/plan làm phát sinh việc\nGuard: lifecycle recheck trong tx\nGuard: trigger giữ project-match support"];
+
+  completed [fillcolor="#EDE9FE", color="#8B5CF6", label="completed - Hoàn thành\n✓ Đọc lịch sử và minh chứng\n✓ Xử lý review tồn đọng\n△ Reactivate có chủ đích\n△ Update official state qua review\n✕ Assignment hoặc nộp bài mới\n✕ Sửa/xóa minh chứng đã duyệt\nGuard: review-state lock\nGuard: reviewed-support immutable"];
+
+  archived [fillcolor="#FFE4E6", color="#F43F5E", label="archived - Lưu trữ\n✓ Chỉ đọc lịch sử, audit, minh chứng\n△ Reactivate có kiểm soát\n△ Mở lại qua permission + lifecycle check\n✕ Assignment, phân công, nộp bài\n✕ Resource/support/file mới\nGuard: backend deny write\nGuard: FK/trigger là lớp cuối"];
+
+  rule [fillcolor="#F1F5F9", color="#CBD5E1", fontsize=12, label="Quy tắc chung cho mọi write project-scoped\nXác định project -> khóa dòng projects -> recheck quyền + vòng đời trong transaction\nCommit dưới ràng buộc FK/trigger để chống request đồng thời hoặc ghi trực tiếp"];
+
+  { rank=same; active; hold }
+  { rank=same; completed; archived }
+
+  title -> transitions [style=invis, weight=8];
+  transitions -> active [style=invis, weight=8];
+  active -> hold [style=invis, weight=8];
+  completed -> archived [style=invis, weight=8];
+  active -> completed [style=invis, weight=8];
+  hold -> archived [style=invis, weight=8];
+  completed -> rule [style=invis, weight=8];
 }
-skinparam ArrowColor #111111
-skinparam ArrowFontSize 13
-
-title State machine vòng đời dự án và quyền ghi
-
-state "active\n--\nGhi mới: nhiệm vụ, phân công,\nbài nộp, tài nguyên, minh chứng\nBảo trì: metadata, nhóm,\nkế hoạch, duyệt bài" as active #D9EAD3
-state "on_hold\n--\nCho phép: metadata, nhóm,\nsắp xếp kế hoạch, duyệt pending\nChặn: nhiệm vụ mới, bài nộp mới,\nsupport write của sinh viên" as on_hold #FFF2CC
-state "completed\n--\nCho phép: metadata, đổi trạng thái,\nduyệt bài còn pending\nChặn: công việc mới, thành viên mới,\ntài nguyên/file mới" as completed #D9EAF7
-state "archived\n--\nChỉ đọc: hồ sơ, lịch sử duyệt,\ntài nguyên và minh chứng\nChặn: mọi ghi nghiệp vụ\nCó thể kích hoạt lại" as archived #E7E6E6
-
-[*] --> active : create
-active --> on_hold : pause
-on_hold --> active : resume
-active --> completed : finish
-on_hold --> completed : finish
-completed --> archived : archive
-completed --> active : reopen
-archived --> active : reactivate
-@enduml
+@enddot

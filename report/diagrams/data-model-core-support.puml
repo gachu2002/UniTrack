@@ -1,0 +1,125 @@
+@startdot
+digraph G {
+  graph [rankdir=TB, bgcolor="white", margin=0.02, pad=0.10, nodesep=0.72, ranksep=0.78, splines=ortho, outputorder=edgesfirst, newrank=true, dpi=170];
+  node [shape=plain, fontname="DejaVu Sans", fontsize=11, margin=0];
+  edge [dir=none, color="#94A3B8", penwidth=1.0, arrowsize=0.55, fontname="DejaVu Sans", fontsize=9, fontcolor="#475569"];
+
+  users [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>users</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">full_name</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">email</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">password_hash</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">role</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">status</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">avatar_url</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">updated_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  projects [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>projects</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">name</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">description</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">topic</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> supervisor_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">start_date</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">date</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">end_date</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">date</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">status</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">official_progress_state</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">progress_summary</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> created_by</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">updated_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  tasks [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>tasks</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> project_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> parent_task_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">title</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">description</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">status</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">priority</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">deadline</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">date</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">official_progress_state</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> created_by</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> updated_by</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">updated_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> milestone_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  task_assignees [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>task_assignees</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> task_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> student_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">assigned_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> project_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  progress_updates [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>progress_updates</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> project_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> task_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> submitted_by</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">title</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">description</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">blockers</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">review_status</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">updated_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  progress_reviews [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>progress_reviews</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> progress_update_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> reviewed_by</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">review_status</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">review_comment</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">official_progress_state</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">reviewed_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  legend [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#D1D5DB">
+      <TR><TD BGCOLOR="#F1F5F9" ALIGN="LEFT"><B>Phần 2</B></TD></TR>
+      <TR><TD BGCOLOR="#F8FAFC" ALIGN="LEFT">Assignment, phân công, bài nộp và review.</TD></TR>
+    </TABLE>
+  >];
+
+  { rank=same; users; projects; }
+  { rank=same; tasks; task_assignees; }
+  { rank=same; progress_updates; progress_reviews; }
+  { rank=same; legend; }
+
+  users -> projects [style=dashed];
+  projects -> tasks;
+  tasks -> task_assignees;
+  projects -> task_assignees;
+  users -> task_assignees [style=dashed, constraint=false];
+  tasks -> progress_updates;
+  projects -> progress_updates;
+  users -> progress_updates [style=dashed, constraint=false];
+  progress_updates -> progress_reviews;
+  users -> progress_reviews [style=dashed, constraint=false];
+  progress_reviews -> legend [style=invis, weight=8];
+}
+@enddot

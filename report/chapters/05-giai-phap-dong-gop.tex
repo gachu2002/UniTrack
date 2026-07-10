@@ -1,6 +1,6 @@
 \chapter{CÁC GIẢI PHÁP VÀ ĐÓNG GÓP NỔI BẬT}
 
-Chương này trình bày các giải pháp kỹ thuật có vai trò nổi bật trong đồ án. Trọng tâm không nằm ở các thao tác tạo, đọc, cập nhật và xóa đơn lẻ mà ở những ràng buộc bảo vệ phía sau: kiểm soát quyền theo dự án, kiểm tra lại quyền và vòng đời khi ghi dữ liệu, bảo toàn minh chứng sau khi duyệt và chuẩn hóa cấu hình session khi triển khai. Mỗi mục được trình bày theo ba phần: vấn đề, giải pháp và kết quả đạt được.
+Chương 4 đã trình bày hệ thống gồm những phần nào và được triển khai ra sao. Chương này tập trung trả lời câu hỏi khác: trong quá trình làm đồ án, những vấn đề nào dễ gây sai dữ liệu hoặc sai quyền nếu chỉ làm theo CRUD thông thường, và UniTrack đã xử lý chúng như thế nào. Vì vậy, mỗi đóng góp được trình bày theo ba ý: vấn đề cần tránh, giải pháp đã chọn và kết quả kiểm chứng được.
 
 \tableintro{tab:contribution-overview}{tổng hợp các đóng góp nổi bật và kết quả tương ứng trong UniTrack}
 \begin{table}[H]
@@ -15,7 +15,7 @@ Chương này trình bày các giải pháp kỹ thuật có vai trò nổi bậ
   hlines={0.35pt,black!24},
 }
 Đóng góp & Vấn đề giải quyết & Kết quả trong UniTrack \\
-Cookie session an toàn & Giao diện/API khác host, cookie dễ cấu hình sai, session cũ có thể còn sau khi tài khoản thay đổi & Kiểm tra origin, parse cấu hình nghiêm ngặt lúc khởi động, thu hồi session và đồng bộ đăng nhập với thao tác tài khoản \\
+Cookie session an toàn & Giao diện/API khác host, cookie/proxy dễ cấu hình sai, session cũ có thể còn sau khi tài khoản thay đổi & Kiểm tra origin, trusted proxy IP khi cấu hình, parse cấu hình nghiêm ngặt lúc khởi động, bootstrap admin an toàn và thu hồi session \\
 Phân quyền theo dự án & Vai trò thôi chưa đủ; giảng viên/sinh viên chỉ được thao tác trong dự án liên quan & Helper phân quyền, guard ở giao diện, recheck trong transaction và trạng thái bị từ chối rõ ràng \\
 Khóa vòng đời dự án & Trạng thái hoặc giảng viên phụ trách có thể đổi trong lúc form đang mở & Handler khóa dự án và kiểm tra lại quyền quản lý/vòng đời bằng \code{SELECT ... FOR UPDATE} trước khi ghi \\
 Toàn vẹn dữ liệu & Ghi trực tiếp hoặc request đồng thời có thể tạo dữ liệu lệch dự án & Khóa ngoại tổng hợp, một bài chờ duyệt và trigger deferred \\
@@ -28,14 +28,15 @@ Giao diện sổ học thuật & Layout thiếu ngữ cảnh hành động làm 
 
 \subsection{Vấn đề}
 
-UniTrack dùng cookie-based session vì phù hợp với ứng dụng Web và tránh lưu token trong local storage. Tuy nhiên, cookie có nhiều rủi ro khi giao diện và API chạy trên hai host khác nhau: cấu hình \code{SameSite=None} nhưng không bật \code{Secure}, CORS dùng wildcard cho request có credential, hoặc write request không có origin tin cậy. Một rủi ro khác là tài khoản có thể bị vô hiệu hóa hoặc đặt lại mật khẩu trong khi session cũ vẫn còn hiệu lực.
+UniTrack dùng cookie-based session vì phù hợp với ứng dụng Web và tránh lưu token trong local storage. Tuy nhiên, cookie có nhiều rủi ro khi giao diện và API chạy trên hai host khác nhau: cấu hình \code{SameSite=None} nhưng không bật \code{Secure}, CORS dùng wildcard cho request có credential, hoặc yêu cầu ghi dữ liệu có session cookie nhưng không có origin tin cậy. Khi API chạy sau reverse proxy, IP dùng cho rate limit cũng có thể bị sai nếu tin header \code{X-Forwarded-For} từ nguồn không đáng tin. Một rủi ro khác là tài khoản có thể bị vô hiệu hóa hoặc đặt lại mật khẩu trong khi session cũ vẫn còn hiệu lực.
 
 \subsection{Giải pháp}
 
-Backend tạo session bằng token ngẫu nhiên và chỉ lưu token hash trong cơ sở dữ liệu. Khi đăng nhập, hệ thống khóa dòng tài khoản, kiểm tra mật khẩu và tạo session trong cùng transaction. Đăng xuất thu hồi session nếu có và luôn làm hết hạn cookie. Khi vô hiệu hóa tài khoản hoặc đặt lại mật khẩu, các session đang hoạt động bị thu hồi. Lớp kiểm tra origin chặn write request từ origin không tin cậy, còn kiểm tra lúc khởi động parse nghiêm ngặt biến môi trường và từ chối các cấu hình cookie/CORS nguy hiểm. Cách tiếp cận này phù hợp với nguyên tắc bảo vệ theo nhiều lớp và giảm quyền mặc định trong thiết kế hệ thống an toàn \cite{saltzer1975protection}.
+Server tạo session bằng token ngẫu nhiên và chỉ lưu token hash trong cơ sở dữ liệu. Khi đăng nhập, hệ thống khóa dòng tài khoản, kiểm tra mật khẩu và tạo session trong cùng transaction. Đăng xuất thu hồi session nếu có và luôn làm hết hạn cookie. Khi vô hiệu hóa tài khoản hoặc đặt lại mật khẩu, các session đang hoạt động bị thu hồi. Lớp kiểm tra origin chặn yêu cầu ghi dữ liệu có session cookie hoặc route ghi session cookie khi origin không tin cậy. Phần xác định IP chỉ dùng \code{X-Forwarded-For} khi remote address thuộc \code{TRUSTED\_PROXY\_CIDRS}, sau đó đọc chuỗi proxy từ phải sang trái để bỏ qua prefix do client tự chèn. Kiểm tra lúc khởi động từ chối cấu hình cookie/CORS/proxy/bootstrap nguy hiểm, đặc biệt production không được chạy với mật khẩu bootstrap yếu hoặc database trống mà không có đường tạo admin an toàn. Cách tiếp cận này phù hợp với nguyên tắc bảo vệ theo nhiều lớp và giảm quyền mặc định trong thiết kế hệ thống an toàn \cite{saltzer1975protection}.
 
 \figurelead{fig:account-control-lock.png}{cho thấy thao tác tạo session được đồng bộ với các thay đổi tài khoản để tránh tạo phiên đăng nhập từ trạng thái tài khoản đã lỗi thời}
 \figAccountControlLock
+\clearpage
 
 \tableintro{tab:auth-session-contribution-evidence}{tổng hợp rủi ro xác thực/session và dấu vết triển khai hoặc kiểm thử tương ứng}
 \begin{table}[H]
@@ -50,7 +51,7 @@ Backend tạo session bằng token ngẫu nhiên và chỉ lưu token hash trong
   hlines={0.35pt,black!24},
 }
 Rủi ro & Cách xử lý & Bằng chứng trong hệ thống \\
-Cookie cross-site cấu hình sai & Khởi động từ chối bool/duration/\code{SameSite} sai định dạng, \code{SameSite=None} thiếu \code{Secure}, CORS wildcard hoặc origin HTTP trong production & Kiểm thử cấu hình khởi động và origin guard \\
+Cookie/proxy cấu hình sai & Khởi động từ chối bool/duration/\code{SameSite} sai định dạng, \code{SameSite=None} thiếu \code{Secure}, CORS wildcard, origin HTTP trong production hoặc \code{TRUSTED\_PROXY\_CIDRS} sai khi được khai báo & Kiểm thử cấu hình khởi động, trusted proxy và origin guard \\
 Session còn sau đặt lại mật khẩu & Đặt mật khẩu thu hồi session và tự đăng xuất nếu người dùng tự đặt lại & Luồng quản lý tài khoản và kiểm thử vòng đời session \\
 Đăng nhập đua với vô hiệu hóa & Đăng nhập và thao tác tài khoản được serialize trên dòng tài khoản & Kiểm thử account-control lock \\
 Write request thiếu origin & Origin guard chặn request ghi session cookie hoặc request unsafe có session cookie nhưng thiếu origin tin cậy & Kiểm thử origin guard \\
@@ -60,7 +61,7 @@ Write request thiếu origin & Origin guard chặn request ghi session cookie ho
 
 \subsection{Kết quả}
 
-Nhóm test xác thực/session, khóa thao tác tài khoản, đặt lại mật khẩu, kiểm tra origin và parse cấu hình xác nhận các ràng buộc chính. Hệ thống chấp nhận triển khai giao diện/API khác host, đồng thời buộc production dùng HTTPS, CORS origin chính xác, cookie secure và giá trị cấu hình hợp lệ.
+Nhóm test xác thực/session, khóa thao tác tài khoản, đặt lại mật khẩu, kiểm tra origin, trusted proxy và parse cấu hình xác nhận các ràng buộc chính. Hệ thống chấp nhận triển khai giao diện/API khác host, đồng thời buộc production dùng HTTPS, CORS origin chính xác, cookie secure và bootstrap admin đủ mạnh hoặc admin active sẵn; trusted proxy chỉ được tin khi cấu hình hợp lệ.
 
 \section{Kiểm soát truy cập theo vai trò và quan hệ dự án}
 
@@ -175,18 +176,18 @@ Nhóm test toàn vẹn dữ liệu xác nhận cơ sở dữ liệu từ chối 
 
 \subsection{Vấn đề}
 
-File minh chứng và resource link là cơ sở để giảng viên duyệt bài. Nếu sau khi duyệt, sinh viên vẫn có thể xóa hoặc thay đổi minh chứng, lịch sử đánh giá không còn tin cậy. Tuy nhiên, hệ thống vẫn phải cho phép đọc và tải minh chứng ở dự án completed/archived để lưu hồ sơ.
+File minh chứng và đường dẫn tài nguyên là cơ sở để giảng viên duyệt bài. Nếu sau khi duyệt, sinh viên vẫn có thể xóa hoặc thay đổi minh chứng, lịch sử đánh giá không còn tin cậy. Tuy nhiên, hệ thống vẫn phải cho phép đọc và tải minh chứng ở dự án completed/archived để lưu hồ sơ.
 
 \subsection{Giải pháp}
 
-UniTrack phân biệt rõ đọc và ghi. Người có quyền xem dự án có thể đọc tài nguyên/minh chứng khi còn quyền. Thao tác ghi bị chặn theo hai lớp: vòng đời dự án và trạng thái duyệt của bài nộp. Nếu bài nộp đã có quyết định duyệt cuối cùng, mọi thao tác thêm/sửa/xóa tài nguyên hoặc tải lên/xóa minh chứng đều bị chặn ở API và cơ sở dữ liệu. Với file, upload tiền kiểm metadata trước khi ghi object, còn delete gỡ object trước metadata để lỗi storage còn có thể thử lại.
+UniTrack phân biệt rõ đọc và ghi. Người có quyền xem dự án có thể đọc tài nguyên/minh chứng khi còn quyền. Thao tác ghi bị chặn theo hai lớp: vòng đời dự án và trạng thái duyệt của bài nộp. Nếu bài nộp đã có quyết định duyệt cuối cùng, mọi thao tác thêm/sửa/xóa tài nguyên hoặc tải lên/xóa minh chứng đều bị chặn ở API và cơ sở dữ liệu. Với file, upload tạo job dọn lỗi trước khi ghi file và chỉ đánh dấu job hoàn tất sau khi bản ghi file được commit; delete xóa bản ghi file và đưa job dọn lỗi vào hàng đợi trong cùng transaction, sau đó thử xóa file thật. Nếu kho lưu trữ lỗi, job còn pending và được thử lại khi API khởi động; hệ thống chưa có tiến trình định kỳ cho hàng đợi này.
 
 \figurelead{fig:support-lifecycle.png}{mô tả sự chuyển đổi của tài nguyên và minh chứng từ trạng thái có thể cập nhật sang trạng thái chỉ đọc sau khi bài nộp được duyệt}
 \figSupportLifecycle
 
 \subsection{Kết quả}
 
-Các test backend về vòng đời/khóa minh chứng và Playwright cho trạng thái chỉ đọc xác nhận bản ghi completed/archived vẫn đọc/tải xuống được, còn nút tải lên/xóa bị ẩn và backend vẫn chặn nếu request được gửi thủ công.
+Các test backend về vòng đời/khóa minh chứng, dọn file lỗi và Playwright cho trạng thái chỉ đọc xác nhận bản ghi completed/archived vẫn đọc/tải xuống được, còn nút tải lên/xóa bị ẩn và server vẫn chặn nếu request được gửi thủ công. Các test dọn file xác nhận file mồ côi sau lỗi lưu bản ghi và file còn lại sau lỗi xóa được đưa vào hàng đợi; lượt xử lý dọn file có thể thử lại các job này.
 
 \section{Đóng góp về UI và khả năng sử dụng}
 
@@ -204,6 +205,6 @@ Người dùng có đường đi rõ ràng từ dashboard tới trang duyệt b�
 
 \section{Đánh giá đóng góp}
 
-Các giải pháp trên giúp UniTrack có nền tảng dữ liệu và bảo mật tốt hơn một ứng dụng CRUD thông thường. Phần đáng chú ý nhất là sự phối hợp giữa giao diện, backend và cơ sở dữ liệu: giao diện hướng dẫn người dùng; backend quyết định quyền và vòng đời; cơ sở dữ liệu chặn ràng buộc bị phá. Cách tiếp cận này phù hợp với bài toán giám sát dự án sinh viên, trong đó lịch sử duyệt bài và minh chứng cần có độ tin cậy, còn nhiều người có thể thao tác đồng thời trên cùng một dự án.
+Các giải pháp trên giúp UniTrack không chỉ là một tập hợp màn hình tạo/sửa/xóa dữ liệu. Điểm đáng chú ý là hệ thống chia trách nhiệm rõ ràng: giao diện hướng dẫn người dùng làm đúng việc, server quyết định quyền và trạng thái được phép ghi, còn cơ sở dữ liệu chặn các ràng buộc quan trọng nếu có request đồng thời hoặc ghi sai. Cách tiếp cận này phù hợp với bài toán giám sát dự án sinh viên, nơi lịch sử duyệt bài và minh chứng cần đáng tin cậy trong suốt vòng đời dự án.
 
 Các đóng góp trên đã được phân tích theo cấu trúc vấn đề, giải pháp và kết quả. Chương 6 tổng kết mức độ hoàn thành mục tiêu, hạn chế còn lại và hướng phát triển tiếp theo của hệ thống.

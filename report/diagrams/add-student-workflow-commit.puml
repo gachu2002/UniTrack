@@ -1,0 +1,38 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam dpi 130
+skinparam sequenceArrowThickness 1
+skinparam ParticipantPadding 72
+skinparam BoxPadding 7
+skinparam maxMessageSize 86
+hide footbox
+
+actor "Giảng viên /\nquản trị viên" as Manager
+participant "React\nteam panel" as Web
+participant "Project member\nroute" as Route
+database "PostgreSQL\ntransaction" as DB
+
+group Account + membership decision
+  alt Invalid account or duplicate
+    Route -> DB : ROLLBACK
+    Route --> Web : Keep team cache unchanged
+  else Active student
+    Route -> DB : INSERT project_members\n(project_id, student_id)
+    Route -> DB : INSERT activity_logs; COMMIT\naction=project.member_added
+    Route --> Web : 201 + member snapshot
+  end
+end
+
+group Cache synchronization
+  Web -> Web : Invalidate projectMembers\nand project data
+  Web -> Route : GET /projects/{id}/members
+  Route -> DB : SELECT members JOIN users
+  DB --> Route : current team list
+  Route --> Web : Render new student\nin team popover
+  Web --> Manager : Show success toast\nor precise validation message
+end
+@enduml

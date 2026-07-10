@@ -1,82 +1,49 @@
 @startdot
 digraph G {
-  graph [rankdir=TB, bgcolor="white", splines=ortho, nodesep=0.45, ranksep=0.62, pad=0.16, margin=0.05];
-  node [shape=plain, fontname="DejaVu Sans", fontsize=15, margin=0];
-  edge [fontname="DejaVu Sans", fontsize=11, color="#111111", fontcolor="#111111", arrowsize=0.68, penwidth=1.05];
+  graph [rankdir=TB, bgcolor="white", margin=0.03, pad=0.08, nodesep=0.46, ranksep=0.64, splines=ortho, outputorder=edgesfirst];
+  node [shape=plain, fontname="DejaVu Sans", fontsize=12, margin=0];
+  edge [color="#111111", penwidth=0.95, arrowsize=0.62, fontname="DejaVu Sans", fontsize=10, fontcolor="#111111"];
 
-  router [label=<
-    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
-      <TR><TD BGCOLOR="#FFF7C7"><B>apps/web/src/app</B></TD></TR>
-      <TR><TD ALIGN="LEFT">router.tsx</TD></TR>
-      <TR><TD ALIGN="LEFT">public login route</TD></TR>
-      <TR><TD ALIGN="LEFT">protected shell + role guards</TD></TR>
-    </TABLE>
-  >];
-
-  pages [label=<
-    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
-      <TR><TD BGCOLOR="#FFF7C7"><B>features/* pages</B></TD></TR>
-      <TR><TD ALIGN="LEFT">dashboard, workspace, classes</TD></TR>
-      <TR><TD ALIGN="LEFT">projects, tasks, admin users</TD></TR>
-    </TABLE>
-  >];
-  workflows [label=<
-    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
-      <TR><TD BGCOLOR="#FFF7C7"><B>feature workflows</B></TD></TR>
-      <TR><TD ALIGN="LEFT">forms and dialogs</TD></TR>
-      <TR><TD ALIGN="LEFT">team, resources, evidence</TD></TR>
-      <TR><TD ALIGN="LEFT">assignment review/submit states</TD></TR>
-    </TABLE>
-  >];
-  hooks [label=<
-    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
-      <TR><TD BGCOLOR="#FFF7C7"><B>hooks and mutations</B></TD></TR>
-      <TR><TD ALIGN="LEFT">auth/project/task hooks</TD></TR>
-      <TR><TD ALIGN="LEFT">admin/support/file mutations</TD></TR>
+  app [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#111111">
+      <TR><TD BGCOLOR="#F2F2F2"><B>App shell</B></TD></TR>
+      <TR><TD ALIGN="LEFT">Router</TD></TR>
+      <TR><TD ALIGN="LEFT">Protected layout</TD></TR>
+      <TR><TD ALIGN="LEFT">Redirects and guards</TD></TR>
     </TABLE>
   >];
 
-  components [label=<
-    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
-      <TR><TD BGCOLOR="#FFF7C7"><B>components/</B></TD></TR>
-      <TR><TD ALIGN="LEFT">shadcn/Radix primitives</TD></TR>
-      <TR><TD ALIGN="LEFT">shared loading/error/dialog states</TD></TR>
-    </TABLE>
-  >];
-  lib [label=<
-    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
-      <TR><TD BGCOLOR="#FFF7C7"><B>lib/</B></TD></TR>
-      <TR><TD ALIGN="LEFT">Axios API client</TD></TR>
-      <TR><TD ALIGN="LEFT">query keys</TD></TR>
-      <TR><TD ALIGN="LEFT">invalidation helpers</TD></TR>
-    </TABLE>
-  >];
-  state [label=<
-    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="7">
-      <TR><TD BGCOLOR="#FFF7C7"><B>stores + types</B></TD></TR>
-      <TR><TD ALIGN="LEFT">auth-store</TD></TR>
-      <TR><TD ALIGN="LEFT">API DTO types</TD></TR>
-    </TABLE>
-  >];
-  api [label=<
-    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="8">
-      <TR><TD BGCOLOR="#D9EAF7"><B>Go API /api/v1</B></TD></TR>
-      <TR><TD ALIGN="LEFT">REST JSON</TD></TR>
-      <TR><TD ALIGN="LEFT">cookie session</TD></TR>
+  features [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#111111">
+      <TR><TD BGCOLOR="#F2F2F2"><B>Feature pages</B></TD></TR>
+      <TR><TD ALIGN="LEFT">Auth and dashboard</TD></TR>
+      <TR><TD ALIGN="LEFT">Workspace and project pages</TD></TR>
+      <TR><TD ALIGN="LEFT">Assignment and admin pages</TD></TR>
     </TABLE>
   >];
 
-  { rank=same; pages; workflows; hooks; }
-  { rank=same; components; lib; state; }
+  presentation [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#111111">
+      <TR><TD BGCOLOR="#F2F2F2"><B>Shared presentation</B></TD></TR>
+      <TR><TD ALIGN="LEFT">Layout components</TD></TR>
+      <TR><TD ALIGN="LEFT">Forms, dialogs, empty/error states</TD></TR>
+    </TABLE>
+  >];
 
-  router -> pages;
-  pages -> workflows;
-  workflows -> hooks;
-  pages -> components;
-  workflows -> components;
-  hooks -> lib;
-  hooks -> state;
-  lib -> state;
-  lib -> api;
+  data [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" COLOR="#111111">
+      <TR><TD BGCOLOR="#F2F2F2"><B>State and data access</B></TD></TR>
+      <TR><TD ALIGN="LEFT">TanStack Query hooks</TD></TR>
+      <TR><TD ALIGN="LEFT">API client and query keys</TD></TR>
+      <TR><TD ALIGN="LEFT">Auth store and API types</TD></TR>
+    </TABLE>
+  >];
+
+  api [shape=cylinder, label="Go API\n/api/v1"];
+
+  app -> features [label="route render"];
+  features -> presentation [label="compose UI"];
+  features -> data [label="load / mutate"];
+  data -> api [label="REST JSON + cookie"];
 }
 @enddot

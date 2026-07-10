@@ -1,58 +1,109 @@
 @startuml
-skinparam defaultFontName "DejaVu Sans"
 skinparam backgroundColor white
+skinparam monochrome false
 skinparam shadowing false
-skinparam componentStyle rectangle
-skinparam ArrowColor #1A2B3C
-skinparam ArrowFontSize 13
-skinparam rectangle {
-  BorderColor #AAB7C2
-  FontColor #111111
-}
-skinparam actor {
-  BorderColor #111111
-  FontColor #111111
-  BackgroundColor white
+skinparam dpi 170
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam defaultFontColor #0F172A
+skinparam componentStyle uml2
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam ArrowColor #334155
+skinparam ArrowThickness 1.2
+skinparam RoundCorner 12
+skinparam Padding 4
+skinparam Nodesep 32
+skinparam Ranksep 38
+skinparam package {
+  BorderColor #94A3B8
+  FontColor #0F172A
+  FontStyle bold
 }
 skinparam component {
-  BorderColor #AAB7C2
-  FontColor #111111
-  FontSize 16
+  BorderColor #475569
+  FontColor #0F172A
 }
 skinparam database {
-  BorderColor #AAB7C2
-  FontColor #111111
-  FontSize 16
+  BorderColor #6D28D9
+  BackgroundColor #F5F3FF
+  FontColor #2E1065
 }
 skinparam cloud {
-  BorderColor #AAB7C2
-  FontColor #111111
-  FontSize 16
+  BorderColor #2563EB
+  BackgroundColor #EFF6FF
+  FontColor #1E3A8A
+}
+skinparam node {
+  BorderColor #2563EB
+  BackgroundColor #DBEAFE
+  FontColor #1E3A8A
+}
+skinparam actor {
+  BorderColor #2563EB
+  BackgroundColor #EFF6FF
+  FontColor #0F172A
+}
+skinparam note {
+  BorderColor #CBD5E1
+  BackgroundColor #F8FAFC
+  FontColor #334155
+}
+top to bottom direction
+
+actor "Quản trị viên" as Admin #DBEAFE
+actor "Giảng viên" as Teacher #D1FAE5
+actor "Sinh viên" as Student #FEF3C7
+component "Cổng Web UniTrack\nđăng nhập + điều hướng Workspace" as Entry #E0F2FE
+
+rectangle "Biên hệ thống UniTrack" as UniTrack #F8FAFC {
+  package "Luồng nghiệp vụ chính" as Product #FFFBEB {
+    component "Workspace\nThư mục + hồ sơ dự án" as Workspace #FEF3C7
+    component "Work Plan\nMốc + assignment" as Plan #FDE68A
+    component "Bài nộp\nTiến độ + minh chứng" as Submit #FDBA74
+    component "Duyệt bài\nQuyết định cuối + khóa support" as Review #FCA5A5
+  }
+
+  package "Tầng trình diễn" as Presentation #EFF6FF {
+    node "React SPA\nroute guard + layout" as Spa #DBEAFE
+    component "Feature UI\nDashboard / Workspace\nProject / Assignment / Admin" as FeatureUi #BFDBFE
+    component "Client state\nTanStack Query + Zustand" as ClientState #DBEAFE
+  }
+
+  package "Tầng ứng dụng" as Application #ECFDF5 {
+    component "Go API\nchi router /api/v1" as Api #BBF7D0
+    component "Request boundary\nCORS + session + strict JSON" as Boundary #A7F3D0
+    component "Phân quyền\nrole + quan hệ dự án" as Authz #99F6E4
+    component "Transaction guard\nrow lock + lifecycle recheck" as Tx #CCFBF1
+    component "File service\nlocal hoặc R2 adapter" as FileSvc #D1FAE5
+  }
+
+  package "Tầng dữ liệu và toàn vẹn" as Data #F5F3FF {
+    database "PostgreSQL\nnghiệp vụ + session" as Db #DDD6FE
+    component "Ràng buộc DB\nFK + unique + trigger" as Integrity #EDE9FE
+    cloud "Private evidence store\nCloudflare R2 hoặc local files" as ObjectStore #DBEAFE
+  }
 }
 
-title Kiến trúc container tổng quan của UniTrack
+Admin --> Entry
+Teacher --> Entry
+Student --> Entry
 
-rectangle "Người dùng\nAdmin / Teacher / Student" as User #F8FBFC
+Entry --> FeatureUi : HTTPS UI
+FeatureUi --> Workspace : màn hình nghiệp vụ
+Workspace --> Plan
+Plan --> Submit
+Submit --> Review
 
-rectangle "Browser" #F8FBFC {
-  component "React Web SPA\n- Protected routes\n- Role-aware pages\n- Query cache refresh" as Web #D9EAF7
-}
-
-rectangle "Go API /api/v1" #FFFDF6 {
-  component "Middleware\n- Origin guard\n- Session cookie" as Middleware #FFF2CC
-  component "Handlers\n- Strict JSON\n- Permission checks\n- Lifecycle transactions" as Handlers #FFF2CC
-}
-
-database "PostgreSQL\nProjects, tasks, submissions\nFK, unique index, triggers" as DB #D9EAD3
-cloud "Private file storage\nLocal dev filesystem\nCloudflare R2 production" as Files #F4CCCC
-rectangle "Runtime policy\nExact CORS origins\nSecure cookie settings\nPayload / upload limits" as Policy #E7E6E6
-
-User --> Web : browser actions
-Web --> Middleware : HTTPS JSON\nHttpOnly cookie
-Middleware --> Handlers : authenticated request
-Handlers --> DB : SQL transactions
-Handlers --> Files : private upload / download
-Policy ..> Web : session policy
-Policy ..> Middleware : request policy
-Policy ..> Files : upload limit
+FeatureUi --> Spa : route + component
+Spa --> ClientState : cache + auth state
+Spa --> Api : REST JSON\nHttpOnly cookie
+Api --> Boundary
+Boundary --> Authz
+Authz --> Tx
+Tx --> Db : SQL transaction
+Db --> Integrity : enforce invariant
+Api --> FileSvc
+FileSvc --> ObjectStore : upload / download
+Review ..> Integrity : khóa support sau duyệt
 @enduml

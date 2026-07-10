@@ -1,0 +1,471 @@
+\documentclass{article}
+\usepackage{fontspec}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{pdfpages}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
+\usepackage{xcolor}
+
+\input{../report-info.tex}
+
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\definecolor{hustred}{HTML}{C41230}
+\definecolor{hustgold}{HTML}{E6A000}
+\definecolor{textdark}{HTML}{1F2937}
+\definecolor{textmuted}{HTML}{64748B}
+\definecolor{softred}{HTML}{FCECEF}
+\definecolor{softgold}{HTML}{FFF7E0}
+\definecolor{linegray}{HTML}{E5E7EB}
+
+\pagestyle{empty}
+
+\newcommand{\husttemplate}{hust-red-template-source.pdf}
+\newcommand{\guidetemplate}{Huong-dan-trinh-bay-do-an-Bao-ve-tot-nghiep-TS.-Trinh-Van-Chien-1.pdf}
+\newcommand{\bodytemplatepage}{6}
+
+\newcommand{\slidefooter}[1]{%
+  \fill[white] ([xshift=-0.55in,yshift=0.04in]current page.south east) rectangle ([xshift=-0.08in,yshift=0.45in]current page.south east);
+  \node[anchor=south east,inner sep=0pt,text=hustred] at ([xshift=-0.35in,yshift=0.14in]current page.south east) {%
+    {\sffamily\fontsize{11}{13}\selectfont\bfseries #1}};
+}
+
+\newcommand{\slideheader}[1]{%
+  \fill[white] ([xshift=0in,yshift=-0.64in]current page.north west) rectangle ([xshift=10in,yshift=-1.02in]current page.north west);
+  \node[anchor=west,inner sep=0pt,text=white] at ([xshift=0.72in,yshift=-0.34in]current page.north west) {%
+    {\sffamily\fontsize{24}{28}\selectfont\bfseries #1}};
+}
+
+\newcommand{\goldrule}{%
+}
+
+\newcommand{\mainbullet}[2]{%
+  \fill[hustred] ([xshift=1.20in,yshift=#1]current page.north west) circle (3pt);
+  \node[anchor=west,inner sep=0pt,text=textdark,text width=7.05in,align=left] at ([xshift=1.55in,yshift=#1]current page.north west) {%
+    {\sffamily\fontsize{16}{20}\selectfont #2}};
+}
+
+\newcommand{\sidebullet}[2]{%
+  \fill[hustred] ([xshift=5.65in,yshift=#1]current page.north west) circle (2.8pt);
+  \node[anchor=west,inner sep=0pt,text=textdark,text width=3.15in,align=left] at ([xshift=5.92in,yshift=#1]current page.north west) {%
+    {\sffamily\fontsize{14.5}{18}\selectfont #2}};
+}
+
+\newcommand{\tablecell}[5]{%
+  \draw[linegray,line width=0.55pt,fill=white] ([xshift=#1,yshift=#2]current page.north west) rectangle ([xshift=#3,yshift=#4]current page.north west);
+  \node[anchor=west,inner sep=0pt,text=textdark,text width=#5,align=left] at ([xshift=#1+0.12in,yshift={(#2+#4)/2}]current page.north west) {\sffamily\fontsize{11}{13.5}\selectfont};
+}
+
+\newcommand{\titlepageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{01}
+    \fill[white] ([xshift=0.40in,yshift=-1.78in]current page.north west) rectangle ([xshift=8.55in,yshift=-5.82in]current page.north west);
+    \node[anchor=north,inner sep=0pt] at ([yshift=-2.22in]current page.north) {%
+      \begin{minipage}{8.10in}\centering\rmfamily\color{hustred}
+        {\fontsize{24}{29}\selectfont\bfseries\ReportType}\par
+        \vspace{0.22in}
+        {\fontsize{20}{25}\selectfont\bfseries XÂY DỰNG NỀN TẢNG WEB UNITRACK\\
+        HỖ TRỢ GIẢNG VIÊN GIÁM SÁT\\
+        TIẾN ĐỘ DỰ ÁN SINH VIÊN}\par
+        \vspace{0.46in}
+        \makebox[8.10in][l]{\hspace{0.86in}%
+          \begin{minipage}{4.65in}\raggedright\color{textdark}
+            {\fontsize{15}{22}\selectfont Sinh viên: \StudentName\\
+            Chương trình: \TrainingProgram\\
+            GV hướng dẫn: \SupervisorName}
+          \end{minipage}}
+      \end{minipage}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\agendapageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{02}
+    \slideheader{Nội dung trình bày}
+    \goldrule
+
+    \foreach \num/\y/\title in {
+      1/-1.88/{Mục tiêu của đồ án},
+      2/-2.66/{Phân tích bài toán},
+      3/-3.44/{Thiết kế hệ thống},
+      4/-4.22/{Kết quả thử nghiệm},
+      5/-5.00/{Kết luận}
+    }{
+      \node[circle,fill=hustred,text=white,minimum size=0.42in,inner sep=0pt] at ([xshift=1.23in,yshift=\y in]current page.north west) {%
+        {\sffamily\fontsize{14}{17}\selectfont\bfseries \num}};
+      \node[anchor=west,inner sep=0pt,text=textdark] at ([xshift=1.82in,yshift=\y in]current page.north west) {%
+        {\sffamily\fontsize{23}{27}\selectfont\bfseries \title}};
+    }
+  \end{tikzpicture}%
+}
+
+\newcommand{\goalpageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{03}
+    \slideheader{Mục tiêu của đồ án}
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=7.70in,align=left] at ([xshift=1.05in,yshift=-1.48in]current page.north west) {%
+      {\sffamily\fontsize{22}{27}\selectfont\bfseries Xây dựng nền tảng Web giúp giảng viên giám sát tiến độ dự án sinh viên.}};
+    \mainbullet{-3.05in}{Tập trung dự án, nhóm, nhiệm vụ, bài nộp và minh chứng vào một nơi.}
+    \mainbullet{-3.86in}{Giúp giảng viên thấy nhanh việc cần xử lý và phản hồi đúng bài.}
+    \mainbullet{-4.67in}{Giúp sinh viên theo dõi nhiệm vụ và nộp tiến độ rõ ràng.}
+    \mainbullet{-5.48in}{Giữ minh chứng và lịch sử duyệt bài đáng tin cậy.}
+  \end{tikzpicture}%
+}
+
+\newcommand{\problempageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{04}
+    \slideheader{Phân tích bài toán}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=7.80in,align=left] at ([xshift=1.05in,yshift=-1.45in]current page.north west) {%
+      {\sffamily\fontsize{18}{22}\selectfont\bfseries Bài toán cần giải quyết: gom trạng thái dự án đang bị phân tán.}};
+
+    \tikzset{problemcol/.style={rounded corners=6pt,draw=linegray,line width=0.75pt,fill=white,minimum width=2.15in,minimum height=0.55in,align=center,text=textdark,font=\sffamily\fontsize{12.5}{15}\selectfont}}
+    \tikzset{problemhead/.style={text=hustred,font=\sffamily\fontsize{14}{17}\selectfont\bfseries,align=center}}
+
+    \node[problemhead] at ([xshift=1.82in,yshift=-2.18in]current page.north west) {Công cụ rời rạc};
+    \node[problemcol] (email) at ([xshift=1.82in,yshift=-2.82in]current page.north west) {Email};
+    \node[problemcol] (chat) at ([xshift=1.82in,yshift=-3.47in]current page.north west) {Nhóm chat};
+    \node[problemcol] (sheet) at ([xshift=1.82in,yshift=-4.12in]current page.north west) {Bảng tính};
+    \node[problemcol] (files) at ([xshift=1.82in,yshift=-4.77in]current page.north west) {Thư mục file};
+
+    \draw[-Latex,hustred,line width=1.0pt] ([xshift=2.98in,yshift=-3.80in]current page.north west) -- ([xshift=3.72in,yshift=-3.80in]current page.north west);
+    \draw[rounded corners=8pt,draw=hustred,line width=1.0pt,fill=softred] ([xshift=3.82in,yshift=-2.82in]current page.north west) rectangle ([xshift=5.95in,yshift=-4.76in]current page.north west);
+    \node[anchor=center,inner sep=0pt,text=hustred,text width=1.82in,align=center] at ([xshift=4.88in,yshift=-3.79in]current page.north west) {%
+      {\sffamily\fontsize{16.5}{20}\selectfont\bfseries Mất trạng thái chung}};
+    \draw[-Latex,hustred,line width=1.0pt] ([xshift=6.05in,yshift=-3.80in]current page.north west) -- ([xshift=6.78in,yshift=-3.80in]current page.north west);
+
+    \node[problemhead] at ([xshift=7.82in,yshift=-2.18in]current page.north west) {Yêu cầu UniTrack};
+    \node[problemcol,minimum width=2.25in] at ([xshift=7.82in,yshift=-2.82in]current page.north west) {Dự án là ngữ cảnh chính};
+    \node[problemcol,minimum width=2.25in] at ([xshift=7.82in,yshift=-3.47in]current page.north west) {Nhiệm vụ có trạng thái};
+    \node[problemcol,minimum width=2.25in] at ([xshift=7.82in,yshift=-4.12in]current page.north west) {Bài nộp có review};
+    \node[problemcol,minimum width=2.25in] at ([xshift=7.82in,yshift=-4.77in]current page.north west) {Minh chứng khóa sau duyệt};
+
+    \node[anchor=north west,inner sep=0pt,text=textdark,text width=7.85in,align=center] at ([xshift=1.05in,yshift=-5.42in]current page.north west) {%
+      {\sffamily\fontsize{13}{16}\selectfont Trọng tâm không phải thay thế mọi kênh trao đổi, mà là quản lý dữ liệu có trạng thái.}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\solutionpageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{05}
+    \slideheader{Định hướng giải pháp}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt] at ([xshift=0.95in,yshift=-1.56in]current page.north west) {%
+      \includegraphics[width=4.25in,height=4.35in,keepaspectratio]{../assets/diagrams/solution-overview.png}};
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=3.35in,align=left] at ([xshift=5.55in,yshift=-1.52in]current page.north west) {%
+      {\sffamily\fontsize{17}{21}\selectfont\bfseries Luồng sản phẩm được giữ gọn}};
+    \sidebullet{-2.70in}{Lấy dự án làm trung tâm thay vì mở rộng thành nhiều module rời.}
+    \sidebullet{-3.46in}{Workspace gom thư mục, dự án, nhóm và kế hoạch công việc.}
+    \sidebullet{-4.22in}{Assignment là điểm nối giữa giao việc, bài nộp và duyệt bài.}
+    \sidebullet{-4.98in}{Minh chứng được lưu riêng tư và đọc qua API có kiểm tra quyền.}
+  \end{tikzpicture}%
+}
+
+\newcommand{\actorspageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{06}
+    \slideheader{Tác nhân và nghiệp vụ chính}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=3.70in,align=left] at ([xshift=0.92in,yshift=-1.62in]current page.north west) {%
+      {\sffamily\fontsize{18}{22}\selectfont\bfseries Ba vai trò chính}};
+
+    \foreach \y/\txt in {
+      -2.42/{Quản trị viên: tài khoản, vai trò},
+      -3.18/{Giảng viên: dự án, nhiệm vụ, duyệt bài},
+      -3.94/{Sinh viên: nhiệm vụ, nộp bài, phản hồi}
+    }{
+      \fill[hustred] ([xshift=1.14in,yshift=\y in]current page.north west) circle (3pt);
+      \node[anchor=west,inner sep=0pt,text=textdark,text width=3.25in,align=left] at ([xshift=1.42in,yshift=\y in]current page.north west) {%
+        {\sffamily\fontsize{14.5}{18}\selectfont \txt}};
+    }
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=3.70in,align=left] at ([xshift=0.92in,yshift=-4.82in]current page.north west) {%
+      {\sffamily\fontsize{14.5}{18}\selectfont\bfseries Luồng trọng tâm: dự án → nhiệm vụ → bài nộp → duyệt bài}};
+
+    \node[anchor=north east,inner sep=0pt] at ([xshift=-0.55in,yshift=-1.40in]current page.north east) {%
+      \includegraphics[height=5.08in]{../assets/diagrams/use-case-overview.png}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\architecturepageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{07}
+    \slideheader{Kiến trúc tổng quan}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt] at ([xshift=0.92in,yshift=-1.44in]current page.north west) {%
+      \includegraphics[height=4.62in]{../assets/diagrams/system-context.png}};
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=3.45in,align=left] at ([xshift=5.35in,yshift=-1.62in]current page.north west) {%
+      {\sffamily\fontsize{17}{21}\selectfont\bfseries Thành phần chính}};
+    \sidebullet{-2.30in}{React SPA gọi REST API bằng session cookie.}
+    \sidebullet{-3.12in}{Go API kiểm tra request, phân quyền, transaction và storage.}
+    \sidebullet{-3.94in}{PostgreSQL giữ dữ liệu nghiệp vụ và ràng buộc toàn vẹn.}
+    \sidebullet{-4.76in}{Local filesystem hoặc R2 private bucket lưu minh chứng.}
+  \end{tikzpicture}%
+}
+
+\newcommand{\requestboundarypageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{08}
+    \slideheader{Kiểm soát request}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt] at ([xshift=1.05in,yshift=-1.44in]current page.north west) {%
+      \includegraphics[height=4.62in]{../assets/diagrams/request-boundary.png}};
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=3.55in,align=left] at ([xshift=5.34in,yshift=-1.64in]current page.north west) {%
+      {\sffamily\fontsize{17}{21}\selectfont\bfseries Các lớp bảo vệ}};
+    \sidebullet{-2.36in}{Origin, session và trạng thái tài khoản.}
+    \sidebullet{-3.18in}{UUID, strict JSON decoder và validation.}
+    \sidebullet{-4.00in}{Role, quan hệ với dự án và lifecycle.}
+    \sidebullet{-4.82in}{Khóa transaction và ràng buộc database.}
+  \end{tikzpicture}%
+}
+
+\newcommand{\datamodelpageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{09}
+    \slideheader{Thiết kế CSDL}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=7.80in,align=left] at ([xshift=1.05in,yshift=-1.30in]current page.north west) {%
+      {\sffamily\fontsize{17}{21}\selectfont\bfseries ERD tổng quan: tài khoản, Workspace, dự án và kế hoạch}};
+    \node[anchor=north,inner sep=0pt] at ([xshift=0.00in,yshift=-1.78in]current page.north) {%
+      \includegraphics[height=4.70in]{../assets/diagrams/data-model-core.png}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\integritypageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{10}
+    \slideheader{CSDL bài nộp và minh chứng}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt] at ([xshift=0.70in,yshift=-1.44in]current page.north west) {%
+      \includegraphics[height=3.78in]{../assets/diagrams/data-model-core-support.png}};
+    \node[anchor=north west,inner sep=0pt] at ([xshift=3.58in,yshift=-1.44in]current page.north west) {%
+      \includegraphics[height=3.78in]{../assets/diagrams/data-model-core-support-ops.png}};
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=7.80in,align=center] at ([xshift=0.95in,yshift=-5.38in]current page.north west) {%
+      {\sffamily\fontsize{12.5}{15.5}\selectfont\bfseries Assignment, bài nộp, review, tài nguyên và file đều liên kết về cùng dự án.}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\lifecyclepageoverlay}{%
+  \begin{tikzpicture}[
+    remember picture,overlay,
+    statecard/.style={rectangle, rounded corners=8pt, line width=1.15pt, align=left, text width=6.95in, minimum height=0.72in, inner xsep=10pt, inner ysep=5pt},
+    activeState/.style={statecard, draw=green!55!black, fill=green!9},
+    holdState/.style={statecard, draw=hustgold!90!black, fill=yellow!16},
+    completedState/.style={statecard, draw=violet!65!black, fill=violet!9},
+    archivedState/.style={statecard, draw=red!62!black, fill=red!7},
+    statearrow/.style={-{Latex[length=2.3mm]}, line width=1.1pt, draw=hustred},
+    arrowlabel/.style={font=\sffamily\fontsize{11}{13}\selectfont\bfseries, fill=white, inner sep=2pt, text=hustred}
+  ]
+    \slidefooter{11}
+    \slideheader{Vòng đời dự án}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=8.00in,align=left] at ([xshift=1.02in,yshift=-1.22in]current page.north west) {%
+      {\sffamily\fontsize{16}{19}\selectfont\bfseries Hình 4.6: Vòng đời dự án và tác động tới thao tác ghi}};
+
+    \node[activeState,anchor=north west] (active) at ([xshift=1.18in,yshift=-1.72in]current page.north west) {%
+      {\sffamily\fontsize{14.2}{17}\selectfont\textbf{\texttt{active}\enspace--\enspace Đang triển khai}\\[-1pt]
+      \textbf{Ghi mở:} nhóm, kế hoạch, nhiệm vụ, tài nguyên, bài nộp.}};
+
+    \node[holdState,anchor=north west] (hold) at ([xshift=1.18in,yshift=-2.74in]current page.north west) {%
+      {\sffamily\fontsize{14.2}{17}\selectfont\textbf{\texttt{on\_hold}\enspace--\enspace Tạm dừng}\\[-1pt]
+      \textbf{Ghi hạn chế:} duyệt bài chờ; tiếp tục thì quay về \texttt{active}.}};
+
+    \node[completedState,anchor=north west] (completed) at ([xshift=1.18in,yshift=-3.76in]current page.north west) {%
+      {\sffamily\fontsize{14.2}{17}\selectfont\textbf{\texttt{completed}\enspace--\enspace Hoàn thành}\\[-1pt]
+      \textbf{Đóng việc mới:} đọc lịch sử và xử lý bài chờ duyệt cũ.}};
+
+    \node[archivedState,anchor=north west] (archived) at ([xshift=1.18in,yshift=-4.78in]current page.north west) {%
+      {\sffamily\fontsize{14.2}{17}\selectfont\textbf{\texttt{archived}\enspace--\enspace Lưu trữ}\\[-1pt]
+      \textbf{Read-only:} muốn làm tiếp phải mở lại về \texttt{active}.}};
+
+    \draw[statearrow] (active.south) -- node[arrowlabel,right]{tạm dừng} (hold.north);
+    \draw[statearrow] (hold.south) -- node[arrowlabel,right]{hoàn thành} (completed.north);
+    \draw[statearrow] (completed.south) -- node[arrowlabel,right]{lưu trữ} (archived.north);
+
+    \node[anchor=north west,inner sep=0pt,text=textdark,text width=7.95in,align=center] at ([xshift=1.02in,yshift=-6.08in]current page.north west) {%
+      {\sffamily\fontsize{11.5}{14}\selectfont Server và PostgreSQL kiểm tra lại quyền, trạng thái và ràng buộc trước khi ghi.}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\reviewflowpageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{12}
+    \slideheader{Nộp bài và duyệt bài}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=4.30in,align=center] at ([xshift=0.50in,yshift=-1.25in]current page.north west) {%
+      {\sffamily\fontsize{12.5}{15}\selectfont\bfseries 1. Tạo bài chờ duyệt}};
+    \node[anchor=north west,inner sep=1pt,draw=linegray,line width=0.45pt,fill=white] at ([xshift=0.50in,yshift=-1.48in]current page.north west) {%
+      \includegraphics[width=4.30in,trim=0 884bp 0 0,clip]{../assets/diagrams/review-workflow.png}};
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=4.30in,align=center] at ([xshift=5.20in,yshift=-1.25in]current page.north west) {%
+      {\sffamily\fontsize{12.5}{15}\selectfont\bfseries 2. Gắn minh chứng khi pending}};
+    \node[anchor=north west,inner sep=1pt,draw=linegray,line width=0.45pt,fill=white] at ([xshift=5.20in,yshift=-1.48in]current page.north west) {%
+      \includegraphics[width=4.30in,trim=0 0 0 1780bp,clip]{../assets/diagrams/review-workflow.png}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\evidencepageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{13}
+    \slideheader{Trình tự xử lý minh chứng}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=4.45in,align=center] at ([xshift=0.45in,yshift=-1.25in]current page.north west) {%
+      {\sffamily\fontsize{12.5}{15}\selectfont\bfseries 1. Submit và khóa transaction}};
+    \node[anchor=north west,inner sep=1pt,draw=linegray,line width=0.45pt,fill=white] at ([xshift=0.45in,yshift=-1.58in]current page.north west) {%
+      \includegraphics[width=4.45in,trim=0 1380bp 0 0,clip]{../assets/diagrams/evidence-sequence.png}};
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=4.45in,align=center] at ([xshift=5.10in,yshift=-1.25in]current page.north west) {%
+      {\sffamily\fontsize{12.5}{15}\selectfont\bfseries 2. Upload minh chứng và dọn lỗi}};
+    \node[anchor=north west,inner sep=1pt,draw=linegray,line width=0.45pt,fill=white] at ([xshift=5.10in,yshift=-1.58in]current page.north west) {%
+      \includegraphics[width=4.45in,trim=0 0 0 1040bp,clip]{../assets/diagrams/evidence-sequence.png}};
+
+    \node[anchor=north west,inner sep=0pt,text=textdark,text width=8.40in,align=center] at ([xshift=0.80in,yshift=-6.02in]current page.north west) {%
+      {\sffamily\fontsize{11.5}{14}\selectfont Metadata và file riêng tư được ghi theo transaction; nếu metadata bị từ chối, cleanup worker xử lý file mồ côi.}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\softwarepageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{14}
+    \slideheader{Kiến trúc phần mềm}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=3.75in,align=center] at ([xshift=0.95in,yshift=-1.48in]current page.north west) {%
+      {\sffamily\fontsize{14}{17}\selectfont\bfseries Frontend package map}};
+    \node[anchor=north west,inner sep=0pt] at ([xshift=1.02in,yshift=-1.88in]current page.north west) {%
+      \includegraphics[width=3.50in,height=3.62in,keepaspectratio]{../assets/diagrams/frontend-package-map.png}};
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=3.75in,align=center] at ([xshift=5.00in,yshift=-1.48in]current page.north west) {%
+      {\sffamily\fontsize{14}{17}\selectfont\bfseries Backend package map}};
+    \node[anchor=north west,inner sep=0pt] at ([xshift=5.00in,yshift=-1.88in]current page.north west) {%
+      \includegraphics[width=3.65in,height=3.62in,keepaspectratio]{../assets/diagrams/backend-package-map.png}};
+
+    \node[anchor=north west,inner sep=0pt,text=textdark,text width=7.90in,align=center] at ([xshift=1.05in,yshift=-5.56in]current page.north west) {%
+      {\sffamily\fontsize{12}{15}\selectfont Go và React không dùng class truyền thống; package map thể hiện component, handler, helper, storage và data access.}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\resultspageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{15}
+    \slideheader{Kết quả chức năng}
+    \goldrule
+
+    \node[anchor=north west,inner sep=2pt,draw=linegray,line width=0.6pt,fill=white] at ([xshift=0.82in,yshift=-1.48in]current page.north west) {%
+      \includegraphics[width=3.95in,height=3.05in,keepaspectratio]{../assets/screenshots/project-detail.png}};
+    \node[anchor=north west,inner sep=2pt,draw=linegray,line width=0.6pt,fill=white] at ([xshift=5.00in,yshift=-1.48in]current page.north west) {%
+      \includegraphics[width=3.95in,height=3.05in,keepaspectratio]{../assets/screenshots/assignment-review-desk.png}};
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=3.95in,align=center] at ([xshift=0.92in,yshift=-4.58in]current page.north west) {%
+      {\sffamily\fontsize{11.5}{14}\selectfont\bfseries Hồ sơ dự án và kế hoạch công việc}};
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=3.95in,align=center] at ([xshift=5.10in,yshift=-4.58in]current page.north west) {%
+      {\sffamily\fontsize{11.5}{14}\selectfont\bfseries Trang duyệt bài với minh chứng}};
+
+    \mainbullet{-5.22in}{Luồng chính đã có: Workspace → dự án → nhiệm vụ → bài nộp → duyệt bài.}
+    \mainbullet{-5.78in}{Giao diện ưu tiên việc cần xử lý theo vai trò và trạng thái mới nhất từ API.}
+  \end{tikzpicture}%
+}
+
+\newcommand{\testingpageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{16}
+    \slideheader{Kết quả thử nghiệm}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=7.70in,align=left] at ([xshift=1.05in,yshift=-1.50in]current page.north west) {%
+      {\sffamily\fontsize{18}{22}\selectfont\bfseries Kiểm thử tập trung vào các luồng dễ sai quyền, trạng thái và dữ liệu.}};
+
+    \fill[hustred,rounded corners=5pt] ([xshift=0.82in,yshift=-2.14in]current page.north west) rectangle ([xshift=9.18in,yshift=-2.64in]current page.north west);
+    \draw[linegray,line width=0.55pt,fill=white] ([xshift=0.82in,yshift=-2.64in]current page.north west) rectangle ([xshift=9.18in,yshift=-5.56in]current page.north west);
+    \draw[linegray,line width=0.55pt] ([xshift=3.35in,yshift=-2.14in]current page.north west) -- ([xshift=3.35in,yshift=-5.56in]current page.north west);
+    \draw[linegray,line width=0.55pt] ([xshift=6.62in,yshift=-2.14in]current page.north west) -- ([xshift=6.62in,yshift=-5.56in]current page.north west);
+    \foreach \y in {-3.37,-4.10,-4.83}{
+      \draw[linegray,line width=0.55pt] ([xshift=0.82in,yshift=\y in]current page.north west) -- ([xshift=9.18in,yshift=\y in]current page.north west);
+    }
+    \node[anchor=west,text=white,inner sep=0pt] at ([xshift=1.02in,yshift=-2.41in]current page.north west) {\sffamily\fontsize{11.5}{14}\selectfont\bfseries Nhóm kiểm thử};
+    \node[anchor=west,text=white,inner sep=0pt] at ([xshift=3.55in,yshift=-2.41in]current page.north west) {\sffamily\fontsize{11.5}{14}\selectfont\bfseries Nội dung chính};
+    \node[anchor=west,text=white,inner sep=0pt] at ([xshift=6.82in,yshift=-2.41in]current page.north west) {\sffamily\fontsize{11.5}{14}\selectfont\bfseries Giá trị};
+
+    \foreach \y/\a/\b/\c in {
+      -3.00/{Backend Go test}/{Auth, phân quyền, lifecycle, bài nộp, minh chứng}/{Chặn lỗi nghiệp vụ},
+      -3.73/{Database validate}/{Migration, FK, unique index, trigger}/{Giữ toàn vẹn dữ liệu},
+      -4.46/{Playwright}/{Đăng nhập, dashboard, access control, stale refresh}/{Kiểm tra như người dùng},
+      -5.19/{Build và lint}/{TypeScript, bundling, cấu trúc frontend}/{Giảm lỗi tích hợp}
+    }{
+      \node[anchor=west,inner sep=0pt,text=hustred,text width=2.10in,align=left] at ([xshift=1.02in,yshift=\y in]current page.north west) {\sffamily\fontsize{11.2}{13.5}\selectfont\bfseries \a};
+      \node[anchor=west,inner sep=0pt,text=textdark,text width=2.78in,align=left] at ([xshift=3.55in,yshift=\y in]current page.north west) {\sffamily\fontsize{11.2}{13.5}\selectfont \b};
+      \node[anchor=west,inner sep=0pt,text=textdark,text width=2.05in,align=left] at ([xshift=6.82in,yshift=\y in]current page.north west) {\sffamily\fontsize{11.2}{13.5}\selectfont \c};
+    }
+  \end{tikzpicture}%
+}
+
+\newcommand{\conclusionpageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{17}
+    \slideheader{Kết luận}
+    \goldrule
+
+    \node[anchor=north west,inner sep=0pt,text=hustred,text width=7.80in,align=left] at ([xshift=1.05in,yshift=-1.52in]current page.north west) {%
+      {\sffamily\fontsize{20}{24}\selectfont\bfseries UniTrack đã hoàn thành nền tảng project-first cho giám sát đồ án sinh viên.}};
+    \mainbullet{-2.56in}{Đã triển khai quản lý tài khoản, Workspace, dự án, nhóm, mốc, nhiệm vụ và bài nộp.}
+    \mainbullet{-3.28in}{Đã có duyệt bài, tài nguyên, minh chứng riêng tư và khóa dữ liệu sau duyệt.}
+    \mainbullet{-4.00in}{Điểm trọng tâm là kiểm tra quyền, vòng đời và toàn vẹn dữ liệu qua nhiều lớp.}
+    \mainbullet{-4.72in}{Hạn chế còn lại: audit UI, quản trị toàn bộ dự án, hardening kho minh chứng và độ phủ frontend.}
+    \mainbullet{-5.44in}{Hướng tiếp theo là mở rộng từng lát nhỏ, vẫn giữ luồng dự án → nhiệm vụ → bài nộp → duyệt bài.}
+  \end{tikzpicture}%
+}
+
+\newcommand{\thankspageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{18}
+    \slideheader{Cảm ơn}
+
+    \node[anchor=center,inner sep=0pt,text=hustred,text width=7.40in,align=center] at ([yshift=-2.72in]current page.north) {%
+      {\sffamily\fontsize{28}{34}\selectfont\bfseries Trân trọng cảm ơn quý thầy cô đã lắng nghe}};
+    \node[anchor=center,inner sep=0pt,text=textdark,text width=6.20in,align=center] at ([yshift=-3.85in]current page.north) {%
+      {\sffamily\fontsize{18}{23}\selectfont Em xin tiếp thu ý kiến phản biện và trả lời câu hỏi của Hội đồng.}};
+    \node[anchor=center,inner sep=0pt,text=textmuted] at ([yshift=-5.12in]current page.north) {%
+      {\sffamily\fontsize{12.5}{15}\selectfont UniTrack - nền tảng Web hỗ trợ giám sát tiến độ dự án sinh viên}};
+  \end{tikzpicture}%
+}
+
+\newcommand{\guidethankspageoverlay}{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \slidefooter{18}
+  \end{tikzpicture}%
+}
+
+\begin{document}
+\includepdf[pages=1-2,fitpaper=true]{\husttemplate}
+\includepdf[pages=3,fitpaper=true,pagecommand={\titlepageoverlay}]{\husttemplate}
+\includepdf[pages=4,fitpaper=true,pagecommand={\agendapageoverlay}]{\husttemplate}
+\includepdf[pages=5,fitpaper=true,pagecommand={\goalpageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\problempageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\solutionpageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\actorspageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\architecturepageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\requestboundarypageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\datamodelpageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\integritypageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\lifecyclepageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\reviewflowpageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\evidencepageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\softwarepageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\resultspageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\testingpageoverlay}]{\husttemplate}
+\includepdf[pages=\bodytemplatepage,fitpaper=true,pagecommand={\conclusionpageoverlay}]{\husttemplate}
+\includepdf[pages=19,fitpaper=true,pagecommand={\guidethankspageoverlay}]{\guidetemplate}
+\end{document}

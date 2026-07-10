@@ -11,15 +11,53 @@
 \newcommand{\figAssignmentPlanUseCases}{\diagrampagefigure{1.08}{assignment-plan-use-cases.png}{Use case lập kế hoạch và giao nhiệm vụ}}
 \newcommand{\figSubmissionReviewUseCases}{\diagrampagefigure{1.08}{submission-review-use-cases.png}{Use case bài nộp, minh chứng và duyệt bài}}
 
-\newcommand{\figAddStudentWorkflow}{\diagrampagefigure{1.0}{add-student-workflow.png}{Quy trình nghiệp vụ thêm sinh viên vào dự án}}
+\newcommand{\figAddStudentWorkflow}{%
+\diagrampagefigure{1.04}{add-student-workflow.png}{Quy trình nghiệp vụ thêm sinh viên vào dự án - kiểm tra yêu cầu}%
+\diagramcontinuedpagefigure{1.04}{add-student-workflow-commit.png}{Quy trình nghiệp vụ thêm sinh viên vào dự án - ghi thành viên và đồng bộ giao diện}%
+}
 
-\newcommand{\figReviewWorkflow}{\diagrampagefigure{1.0}{review-workflow.png}{Quy trình nghiệp vụ nộp bài, gắn minh chứng và duyệt bài}}
+\newcommand{\figReviewWorkflow}{%
+\diagrampagefigure{1.04}{review-workflow.png}{Quy trình nghiệp vụ nộp bài, gắn minh chứng và duyệt bài - sinh viên nộp và gắn minh chứng}%
+\diagramcontinuedpagefigure{1.04}{review-workflow-decision.png}{Quy trình nghiệp vụ nộp bài, gắn minh chứng và duyệt bài - người quản lý duyệt và khóa support}%
+}
 
 \newcommand{\figProjectLifecycleWorkflow}{\diagrampagefigure{1.06}{project-lifecycle-workflow.png}{Quy trình chuyển trạng thái vòng đời dự án}}
 \newcommand{\figProjectLifecycle}[1]{\diagrampagefigure{0.92}{project-lifecycle.png}{#1}}
-\newcommand{\figProjectLifecycleFull}[1]{\diagramfullpagefigurealias{1.18}{project-lifecycle.png}{project-lifecycle-full}{#1}}
+\newcommand{\figProjectLifecycleFull}[1]{%
+\begin{figure}[!htbp]
+  \centering
+  \begingroup
+  \small
+  \begin{tikzpicture}[
+    card/.style={rectangle, rounded corners=6pt, thick, align=left, text width=0.82\textwidth, minimum height=0.92cm, inner xsep=8pt, inner ysep=4pt},
+    activeState/.style={card, draw=green!55!black, fill=green!9},
+    holdState/.style={card, draw=yellow!55!black, fill=yellow!14},
+    completedState/.style={card, draw=violet!65!black, fill=violet!9},
+    archivedState/.style={card, draw=red!55!black, fill=red!7},
+    arrow/.style={-{Latex[length=2.4mm]}, thick, draw=unitrackblue},
+    arrowlabel/.style={font=\footnotesize\bfseries, fill=white, inner sep=2pt, text=unitrackink},
+  ]
+    \node[activeState] (active) {\textbf{\texttt{active} -- Đang triển khai}\\[-1pt]
+      \textbf{Ghi mở:} nhóm, kế hoạch, nhiệm vụ, tài nguyên, bài nộp.};
+    \node[holdState, below=0.52cm of active] (hold) {\textbf{\texttt{on\_hold} -- Tạm dừng}\\[-1pt]
+      \textbf{Ghi hạn chế:} duyệt bài chờ; tiếp tục thì quay về \texttt{active}.};
+    \node[completedState, below=0.52cm of hold] (completed) {\textbf{\texttt{completed} -- Hoàn thành}\\[-1pt]
+      \textbf{Đóng việc mới:} đọc lịch sử và xử lý bài chờ duyệt cũ.};
+    \node[archivedState, below=0.52cm of completed] (archived) {\textbf{\texttt{archived} -- Lưu trữ}\\[-1pt]
+      \textbf{Read-only:} muốn làm tiếp phải mở lại về \texttt{active}.};
 
-\newcommand{\figSystemContext}{\diagramfullpagewidefigure{1.16}{system-context.png}{Kiến trúc tổng quan của UniTrack}}
+    \draw[arrow] (active.south) -- node[arrowlabel, right]{tạm dừng} (hold.north);
+    \draw[arrow] (hold.south) -- node[arrowlabel, right]{hoàn thành} (completed.north);
+    \draw[arrow] (completed.south) -- node[arrowlabel, right]{lưu trữ} (archived.north);
+  \end{tikzpicture}%
+  \endgroup
+  \caption{#1}
+  \label{fig:project-lifecycle-full}
+  \figuredesc{project-lifecycle-full}{#1}%
+\end{figure}
+}
+
+\newcommand{\figSystemContext}{\diagramportraitfullpagefigure{1.0}{system-context.png}{Kiến trúc tổng quan của UniTrack}}
 
 \newcommand{\figRequestBoundary}{\diagrampagefigure{1.08}{request-boundary.png}{Luồng xử lý request phía backend}}
 
@@ -27,16 +65,22 @@
 
 \newcommand{\figBackendPackageMap}{\diagramfullpagewidefigure{1.08}{backend-package-map.png}{Biểu đồ phụ thuộc gói backend}}
 
-\newcommand{\figDataModelCore}{\diagrampagefigure{1.16}{data-model-core.png}{ERD tổng quan các bảng ứng dụng và quan hệ chính của UniTrack}}
+\newcommand{\figDataModelCore}{\diagrampagefigure{1.16}{data-model-core.png}{ERD tổng quan schema dữ liệu và quan hệ chính của UniTrack}}
 \newcommand{\figDataModelIdentityWorkspace}{\diagrampagefigure{1.04}{data-model-identity-workspace.png}{ERD vùng tài khoản, Workspace và thành viên dự án}}
 \newcommand{\figDataModelAssignment}{\diagrampagefigure{1.04}{data-model-assignment.png}{ERD vùng mốc kế hoạch, nhiệm vụ, bài nộp và duyệt bài}}
 \newcommand{\figDataModelSupport}{\diagrampagefigure{1.04}{data-model-support.png}{ERD vùng tài nguyên, minh chứng và ràng buộc đích hỗ trợ}}
 
-\newcommand{\figEvidenceSequence}{\diagrampagefigure{1.0}{evidence-sequence.png}{Biểu đồ trình tự nộp bài, tải minh chứng và duyệt bài}}
+\newcommand{\figEvidenceSequence}{%
+\diagrampagefigure{1.04}{evidence-sequence.png}{Biểu đồ trình tự nộp bài, tải minh chứng và duyệt bài - ghi submission và minh chứng}%
+\diagramcontinuedpagefigure{1.04}{evidence-sequence-review.png}{Biểu đồ trình tự nộp bài, tải minh chứng và duyệt bài - duyệt, khóa support và tải file}%
+}
 
-\newcommand{\figDeployment}{\diagramshortpagefigure{1.14}{deployment.png}{Kiến trúc triển khai đề xuất của UniTrack}}
+\newcommand{\figDeployment}{\diagramportraitfullpagefigure{1.0}{deployment.png}{Kiến trúc triển khai đề xuất của UniTrack}}
 
-\newcommand{\figAccountControlLock}{\diagrampagefigure{1.0}{account-control-lock.png}{Luồng tạo session có khóa account-control}}
+\newcommand{\figAccountControlLock}{%
+\diagrampagefigure{1.04}{account-control-lock.png}{Luồng tạo session có khóa account-control - admin mutation và login đồng thời}%
+\diagramcontinuedpagefigure{1.04}{account-control-lock-login.png}{Luồng tạo session có khóa account-control - login đọc trạng thái sau commit}%
+}
 
 \newcommand{\figAccessControlLayers}{\diagrampagefigure{1.08}{access-control-layers.png}{Mô hình kiểm soát truy cập nhiều lớp}}
 

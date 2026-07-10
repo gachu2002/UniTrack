@@ -3,30 +3,50 @@
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam dpi 130
 skinparam sequenceArrowThickness 1
+skinparam ParticipantPadding 66
+skinparam BoxPadding 7
+skinparam maxMessageSize 84
 hide footbox
 
 actor "Sinh viên" as Student
-participant "React task page" as Web
-participant "Go API" as API
-database "PostgreSQL" as DB
-database "Object storage" as Store
-actor "Giảng viên / quản trị" as Teacher
+participant "React\ntask page" as Web
+participant "Progress API\nroute" as Progress
+participant "File API\nroute" as FileAPI
+database "PostgreSQL\ntx + triggers" as DB
+database "Private object\nstorage" as Store
+participant "Cleanup\nworker" as Cleanup
 
-Student -> Web : Submit work
-Web -> API : Create submission
-API -> DB : Lock project; validate; insert pending
+group Submission transaction
+  Student -> Web : Submit report draft
+  Web -> Progress : POST submit progress
+  Progress -> DB : BEGIN; lock project; recheck task,\nmember, assignee and lifecycle
+  alt Invalid submit window
+    DB --> Progress : rollback + reason
+    Progress --> Web : Keep draft and show error
+  else Pending row created
+    Progress -> DB : INSERT progress_update;\nset task=submitted; COMMIT
+    Progress --> Web : progress_update_id
+  end
+end
 
-Student -> Web : Attach evidence
-Web -> API : Upload support
-API -> DB : Prevalidate lifecycle, access, target
-API -> Store : Store private object
-API -> DB : Recheck and insert metadata
-DB -> API : Trigger checks target
-
-Teacher -> Web : Review decision
-Web -> API : POST review
-API -> DB : Lock pending; write final review
-DB -> API : Freeze support
-API -> Web : Read-only history + evidence
+group Evidence upload with cleanup fallback
+  Student -> Web : Attach evidence file/link
+  Web -> FileAPI : POST file/link evidence
+  FileAPI -> DB : Precheck pending target + access
+  FileAPI -> DB : Enqueue cleanup job if file
+  FileAPI -> Store : Put private object if file
+  FileAPI -> DB : BEGIN; recheck target;\ninsert metadata; trigger validates
+  alt Metadata rejected by FK/trigger
+    DB --> FileAPI : rollback
+    FileAPI -> DB : keep queued cleanup job
+    Cleanup -> Store : retry delete orphan object
+    FileAPI --> Web : Safe failure response
+  else Metadata accepted
+    FileAPI -> DB : complete cleanup job if file; COMMIT
+    FileAPI --> Web : Evidence listed as pending support
+  end
+end
 @enduml

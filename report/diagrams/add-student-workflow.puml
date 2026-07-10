@@ -3,22 +3,35 @@
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam dpi 130
 skinparam sequenceArrowThickness 1
+skinparam ParticipantPadding 72
+skinparam BoxPadding 7
+skinparam maxMessageSize 86
 hide footbox
 
-actor "Giảng viên / quản trị viên" as Manager
-participant "Go API" as API
-database "Project row" as Project
-database "User row" as Account
-database "Membership + audit" as DB
+actor "Giảng viên /\nquản trị viên" as Manager
+participant "React\nteam panel" as Web
+participant "Project member\nroute" as Route
+database "PostgreSQL\ntransaction" as DB
 
-Manager -> API : Add student by email
-API -> API : Check manage-project permission
-API -> Project : BEGIN; lock project lifecycle
-Project -> API : Current status
-API -> Account : Lock student account row
-Account -> API : role/status and membership state
-API -> DB : Insert member; enforce constraints
-DB -> API : Write activity log and commit
-API -> Manager : Return refreshed team or 400/403/409
+Manager -> Web : Nhập email sinh viên
+Web -> Route : POST add member\n/projects/{id}/members
+Route -> Route : Resolve session/project;\nvalidate email
+
+group Lifecycle + manager lock
+  Route -> DB : BEGIN; lock project;\nrecheck lifecycle + manager
+  DB --> Route : project status + supervisor
+end
+
+alt Blocked
+  Route -> DB : ROLLBACK
+  Route --> Web : Show business error
+else Allowed
+  Route -> DB : SELECT user by email FOR UPDATE
+  DB --> Route : candidate id, role, status
+end
+
+Web --> Manager : Form keeps context\nfor success or specific error
 @enduml

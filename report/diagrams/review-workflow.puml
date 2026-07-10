@@ -3,25 +3,51 @@
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam dpi 130
 skinparam sequenceArrowThickness 1
+skinparam ParticipantPadding 70
+skinparam BoxPadding 7
+skinparam maxMessageSize 84
 hide footbox
 
 actor "Sinh viên" as Student
-participant "Go API" as API
-database "PostgreSQL" as DB
-database "Object storage" as Storage
-actor "Giảng viên / quản trị viên" as Manager
+participant "React\ntask page" as Web
+participant "Task / progress\nroute" as Progress
+participant "Resource / file\nroute" as FileRoute
+database "PostgreSQL\ntransaction" as Tx
+database "Object\nstorage" as Store
 
-Student -> API : Submit report
-API -> DB : Lock project; validate; insert pending
+Student -> Web : Mở assignment page
+Web -> Progress : GET task detail
+Progress -> Tx : Check viewer; load task,\nassignees and history
+Progress --> Web : Task + history
+Web -> FileRoute : GET files/resources
+FileRoute -> Tx : Load support records
+FileRoute --> Web : Support records
+Web --> Student : Render task + submit affordance
 
-Student -> API : Upload links/files
-API -> Storage : Store private object
-API -> DB : Insert metadata; recheck target
+group Create pending submission
+  Student -> Web : Gửi báo cáo tiến độ
+  Web -> Progress : POST submit progress
+  Progress -> Tx : BEGIN; lock project + task;\nrecheck assignee/lifecycle;\nensure no pending
+  alt Student cannot submit
+    Tx --> Progress : rollback + error reason
+    Progress --> Web : Show validation error
+  else Pending submission accepted
+    Progress -> Tx : INSERT progress_update;\nset task=submitted; COMMIT
+    Progress --> Web : pending id
+  end
+end
 
-Manager -> API : Open review desk
-API -> DB : Load submission + support
-Manager -> API : Approve / revise / reject
-API -> DB : Lock pending; decide; freeze support
-API -> Student : Show read-only result
+group Attach support while pending
+  Student -> Web : Attach link/file evidence
+  Web -> FileRoute : POST file/link evidence
+  FileRoute -> Tx : Verify pending target + access
+  opt File evidence
+    FileRoute -> Store : Put private object
+  end
+  FileRoute -> Tx : Recheck; insert metadata;\nFK/trigger validate target
+  FileRoute --> Web : Evidence visible while pending
+end
 @enduml

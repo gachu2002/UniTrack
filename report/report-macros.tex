@@ -115,6 +115,20 @@
   \endgroup
 }
 \newcommand{\dbrow}[4]{\texttt{#1} & #2 & #3 & #4 \\ \hline}
+\newcommand{\dbcardcontent}[4]{%
+  \begingroup
+  \setlength{\fboxsep}{5pt}%
+  \fcolorbox{black!18}{unitrackcyan}{%
+    \begin{minipage}{0.36\textwidth}
+      \scriptsize\raggedright\sloppy
+      \textbf{#1}\par\vspace{0.18em}
+      {\scriptsize\textbf{Vai trò:} #2\par}
+      {\scriptsize\textbf{Liên kết chính:} #3\par}
+      {\scriptsize\textbf{Ràng buộc:} #4\par}
+    \end{minipage}%
+  }%
+  \endgroup
+}
 \newcommand{\assetfigure}[3]{%
   \begin{figure}[!htbp]
     \centering
@@ -162,6 +176,16 @@
     \figuredesc{#2}{#3}%
   \end{figure}
 }
+\newcommand{\diagramcontinuedpagefigure}[3]{%
+  \begin{figure}[!htbp]
+    \ContinuedFloat
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=#1\textwidth,height=0.70\textheight,keepaspectratio]{#2}}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+}
 \newcommand{\diagramfullpagefigure}[3]{%
   \begin{figure}[!htbp]
     \centering
@@ -189,6 +213,28 @@
     \figuredesc{#2}{#3}%
   \end{figure}
 }
+\newcommand{\diagramportraitfullpagefigure}[3]{%
+  \clearpage
+  \begin{figure}[p]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=#1\textwidth,height=0.78\textheight,keepaspectratio]{#2}}
+    \caption{#3}
+    \label{fig:#2}
+    \figuredesc{#2}{#3}%
+  \end{figure}
+  \clearpage
+}
+\newcommand{\diagramportraitfullpagefigurealias}[4]{%
+  \clearpage
+  \begin{figure}[p]
+    \centering
+    \makebox[\textwidth][c]{\includegraphics[width=#1\textwidth,height=0.78\textheight,keepaspectratio]{#2}}
+    \caption{#4}
+    \label{fig:#3}
+    \figuredesc{#3}{#4}%
+  \end{figure}
+  \clearpage
+}
 \newcommand{\diagramlandscapefullpagefigure}[3]{%
   \begin{landscape}
   \begin{figure}[p]
@@ -197,6 +243,18 @@
     \caption{#3}
     \label{fig:#2}
     \figuredesc{#2}{#3}%
+  \end{figure}
+  \end{landscape}
+  \clearpage
+}
+\newcommand{\diagramlandscapefullpagefigurealias}[4]{%
+  \begin{landscape}
+  \begin{figure}[p]
+    \centering
+    \includegraphics[width=#1\linewidth,height=0.84\textheight,keepaspectratio]{#2}
+    \caption{#4}
+    \label{fig:#3}
+    \figuredesc{#3}{#4}%
   \end{figure}
   \end{landscape}
   \clearpage

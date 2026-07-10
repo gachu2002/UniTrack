@@ -35,7 +35,7 @@ Tổng hợp tiến độ & Giảng viên rà từng dự án bằng tay & Dễ 
 
 Mục tiêu của đồ án là xây dựng một nền tảng Web hỗ trợ giảng viên giám sát tiến độ dự án sinh viên theo một luồng thống nhất: \textit{Giảng viên -- Dự án -- Nhiệm vụ -- Bài nộp -- Duyệt bài}. Phạm vi hệ thống tập trung vào những thao tác quan trọng nhất để quản lý dự án và phản hồi tiến độ, chưa mở rộng sang toàn bộ hoạt động đào tạo.
 
-Các mục tiêu cụ thể gồm: (i) xây dựng cơ chế đăng nhập bằng tài khoản do quản trị viên tạo, sử dụng cookie-based session thay cho token lưu trong browser; (ii) cho phép quản trị viên tạo tài khoản, đổi vai trò, đổi trạng thái, đặt lại mật khẩu và thu hồi session khi cần thiết; (iii) cung cấp dashboard theo vai trò, ưu tiên bài đang chờ duyệt, nhiệm vụ quá hạn và công việc cần xử lý; (iv) tổ chức \textit{Workspace} gồm thư mục lớp nhẹ và thẻ dự án để giảng viên quản lý nhiều dự án cùng lúc; (v) cho phép giảng viên tạo dự án, quản lý thành viên, đặt trạng thái vòng đời, tạo mốc kế hoạch và nhiệm vụ chính thức; (vi) cho phép sinh viên xem nhiệm vụ được giao, nộp báo cáo tiến độ, thêm resource link và tải file minh chứng cho bài đang chờ duyệt; (vii) cho phép giảng viên duyệt bài nộp bằng các quyết định chấp nhận, yêu cầu sửa hoặc từ chối, đồng thời lưu lịch sử phản hồi; (viii) bảo đảm phân quyền theo vai trò, quan hệ với dự án và trạng thái vòng đời của dự án; (ix) bảo vệ toàn vẹn dữ liệu bằng kiểm tra ở backend trong transaction và ràng buộc ở PostgreSQL; và (x) cung cấp kiểm thử backend cùng Playwright cho những luồng rủi ro cao.
+Về chức năng, hệ thống cần cho phép quản trị viên quản lý tài khoản; giảng viên tổ chức Workspace, tạo dự án, quản lý nhóm, lập mốc kế hoạch và giao nhiệm vụ; sinh viên xem việc được giao và nộp báo cáo tiến độ kèm minh chứng; giảng viên duyệt bài nộp và lưu lại phản hồi. Về dữ liệu, các đối tượng quan trọng như dự án, nhiệm vụ, bài nộp, tài nguyên và minh chứng phải được đặt trong cùng một ngữ cảnh để người dùng biết trạng thái mới nhất của công việc. Về an toàn, hệ thống phải kiểm tra quyền theo vai trò, quan hệ với dự án và trạng thái vòng đời của dự án thay vì chỉ dựa vào các nút hiển thị trên giao diện. Về chất lượng, đồ án cần có kiểm thử cho các luồng rủi ro cao như đăng nhập, phân quyền, nộp bài, duyệt bài và bảo toàn minh chứng.
 
 \section{Phạm vi đề tài}
 
@@ -54,12 +54,12 @@ UniTrack hiện tập trung vào quản lý dự án học tập được giản
   hlines={0.35pt,black!24},
 }
 Nhóm chức năng & Phạm vi trong phiên bản hiện tại & Trạng thái \\
-Xác thực/session & Đăng nhập/đăng xuất/current user, session cookie, kiểm tra origin, giới hạn đăng nhập và thu hồi session & \okbadge \\
+Xác thực/session & Đăng nhập, đăng xuất, xem người dùng hiện tại, session cookie, giới hạn đăng nhập và thu hồi session khi tài khoản thay đổi & \okbadge \\
 Quản lý tài khoản & Tạo tài khoản, tìm kiếm, đổi vai trò/trạng thái, đặt mật khẩu và hướng dẫn chuyển trạng thái khi tài khoản còn công việc mở & \okbadge \\
 Workspace/thư mục & Thư mục lớp nhẹ, danh sách dự án, chi tiết thư mục, thêm dự án có sẵn và khớp chủ thư mục/giảng viên phụ trách & \okbadge \\
 Dự án/nhóm & Tạo/sửa/xem dự án, trạng thái vòng đời, tổng hợp tiến độ, nhóm, thêm sinh viên active và vai trò leader/member & \okbadge \\
 \stackcell{Nhiệm vụ\\bài nộp} & Mốc kế hoạch, nhiệm vụ, người được giao, bài nộp, trang duyệt bài và trạng thái nhiệm vụ suy ra & \okbadge \\
-Tài nguyên/minh chứng & Resource link, tải lên/tải xuống/xóa file minh chứng, R2 private trong production và khóa dữ liệu sau duyệt & \okbadge \\
+Tài nguyên/minh chứng & Đường dẫn tài nguyên, tải lên/tải xuống/xóa file minh chứng, lưu trữ riêng tư và khóa dữ liệu sau duyệt & \okbadge \\
 Nhật ký hoạt động & Ghi log cho quản lý tài khoản và thao tác thành viên dự án; chưa có giao diện audit log & \partialbadge \\
 Phân tích quản trị & Chưa có màn hình quản trị toàn bộ dự án hoặc phân tích nâng cao & \futurebadge \\
 \end{tblr}
@@ -69,15 +69,15 @@ Các chức năng không thuộc phạm vi chính gồm: đăng ký công khai, 
 
 \section{Định hướng giải pháp}
 
-Hệ thống gồm bốn thành phần chính. Giao diện React hiển thị màn hình, quản lý dữ liệu tạm trên trình duyệt và gọi API. Backend Go cung cấp REST API dưới tiền tố \route{/api/v1}, kiểm tra session, quyền truy cập, dữ liệu đầu vào và trạng thái vòng đời. PostgreSQL lưu dữ liệu nghiệp vụ cùng các ràng buộc toàn vẹn. Lớp storage dùng thư mục cục bộ khi phát triển và Cloudflare R2 private bucket khi triển khai production.
+Hệ thống gồm bốn thành phần chính. Giao diện React hiển thị màn hình, quản lý dữ liệu tạm trên trình duyệt và gọi API. Server Go cung cấp REST API dưới tiền tố \route{/api/v1}, kiểm tra session, quyền truy cập, dữ liệu đầu vào và trạng thái vòng đời. PostgreSQL lưu dữ liệu nghiệp vụ cùng các ràng buộc toàn vẹn. Lớp lưu trữ dùng thư mục cục bộ khi phát triển và Cloudflare R2 private bucket khi triển khai production.
 
 \figurelead{fig:solution-overview.png}{khái quát cách giao diện, API, cơ sở dữ liệu và kho minh chứng phối hợp để tạo thành luồng xử lý thống nhất cho hệ thống}
 \figSolutionOverview
 
-Một write request không mặc nhiên hợp lệ chỉ vì giao diện đang hiển thị nút thao tác. Giao diện có trách nhiệm ẩn hoặc vô hiệu hóa thao tác không hợp lệ; backend vẫn là lớp quyết định cuối cùng. Các xử lý quan trọng khóa dòng dự án trong transaction để kiểm tra lại quyền quản lý, trạng thái vòng đời và trạng thái đối tượng mới nhất trước khi ghi dữ liệu. Với những ràng buộc có thể bị phá bởi thao tác đồng thời hoặc ghi trực tiếp vào cơ sở dữ liệu, PostgreSQL tiếp tục bảo vệ bằng khóa ngoại, chỉ mục duy nhất và trigger.
+Một yêu cầu ghi dữ liệu không mặc nhiên hợp lệ chỉ vì giao diện đang hiển thị nút thao tác. Giao diện có trách nhiệm ẩn hoặc vô hiệu hóa thao tác không hợp lệ; server vẫn là lớp quyết định cuối cùng. Các xử lý quan trọng khóa dòng dự án trong transaction để kiểm tra lại quyền quản lý, trạng thái vòng đời và trạng thái đối tượng mới nhất trước khi ghi dữ liệu. Với những ràng buộc có thể bị phá bởi thao tác đồng thời hoặc ghi trực tiếp vào cơ sở dữ liệu, PostgreSQL tiếp tục bảo vệ bằng khóa ngoại, chỉ mục duy nhất và trigger.
 
 \begin{artifactnote}{Nguyên tắc thiết kế xuyên suốt}
-UniTrack kiểm tra đồng thời ba yếu tố: \textit{người dùng là ai}, \textit{người dùng liên quan thế nào với dự án}, và \textit{dự án đang ở trạng thái nào}. Với dữ liệu phụ như nhiệm vụ, bài nộp, resource link hoặc file minh chứng, hệ thống còn xác nhận đối tượng đó thật sự thuộc cùng dự án. Đây là điểm khác biệt quan trọng giữa một ứng dụng CRUD đơn giản và một hệ thống quản lý tiến độ có nhiều trạng thái nghiệp vụ.
+UniTrack kiểm tra đồng thời ba yếu tố: \textit{người dùng là ai}, \textit{người dùng liên quan thế nào với dự án}, và \textit{dự án đang ở trạng thái nào}. Với dữ liệu phụ như nhiệm vụ, bài nộp, đường dẫn tài nguyên hoặc file minh chứng, hệ thống còn xác nhận đối tượng đó thật sự thuộc cùng dự án. Đây là điểm khác biệt quan trọng giữa một ứng dụng chỉ tạo/sửa/xóa dữ liệu đơn giản và một hệ thống quản lý tiến độ có nhiều trạng thái nghiệp vụ.
 \end{artifactnote}
 
 \section{Bố cục báo cáo}

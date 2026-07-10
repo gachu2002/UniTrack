@@ -9,7 +9,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173'
 
 mkdirSync(outputDir, { recursive: true })
 
-const now = '2026-06-22T08:00:00Z'
+const now = '2026-07-08T08:00:00Z'
 const teacher = user('u-teacher-01', 'Dr. An Nguyen', 'teacher01@demo.unitrack.local', 'teacher')
 const admin = user('u-admin-01', 'Demo Administrator', 'demo.admin@demo.unitrack.local', 'admin')
 const studentA = user('u-student-01', 'An Nguyen 001', 'student001@demo.unitrack.local', 'student')
@@ -20,7 +20,7 @@ const folder = {
   id: 'folder-ai-2026',
   title: 'AI Capstone 2026',
   color: 'teal',
-  description: 'Capstone projects that need weekly submission review and evidence tracking.',
+  description: 'Teacher-supervised project folder with assignment reviews and evidence tracking.',
   ownerTeacherId: teacher.id,
   ownerTeacherName: teacher.fullName,
   status: 'active',
@@ -126,52 +126,59 @@ await page.route('**/api/v1/**', async (route) => {
   if (path === '/auth/me') return json(route, currentUser)
   if (path === '/auth/login') return json(route, currentUser)
   if (path === '/dashboard') return json(route, dashboard())
-  if (path === '/classes') return json(route, [folder])
-  if (path === `/classes/${folder.id}`) return json(route, { classFolder: folder, projects: projects.slice(0, 3) })
-  if (path === '/admin/users') return json(route, adminUsers)
+  if (path === '/classes') return json(route, pageResponse([folder], url))
+  if (path === `/classes/${folder.id}`) return json(route, classDetailResponse(projects.slice(0, 3), url))
+  if (path === '/admin/users') return json(route, pageResponse(adminUsers, url))
   if (path === '/projects') {
     const unassigned = url.searchParams.get('unassigned') === 'true'
-    return json(route, unassigned ? projects.filter((item) => !item.classId) : projects)
+    return json(route, pageResponse(unassigned ? projects.filter((item) => !item.classId) : projects, url))
   }
   if (path === '/projects/project-01') return json(route, projects[0])
-  if (path === '/projects/project-01/members') return json(route, [
+  if (path === '/projects/project-01/members') return json(route, pageResponse([
     member(studentA, 'leader'),
     member(studentB, 'member'),
     member(studentC, 'member'),
-  ])
-  if (path === '/projects/project-01/milestones') return json(route, milestones)
-  if (path === '/projects/project-01/tasks') return json(route, tasks)
-  if (path === '/projects/project-01/progress-updates') return json(route, progressUpdates)
-  if (path === '/projects/project-01/resource-links') return json(route, resources)
-  if (path === '/projects/project-01/files') return json(route, files)
+  ], url))
+  if (path === '/projects/project-01/milestones') return json(route, pageResponse(milestones, url))
+  if (path === '/projects/project-01/tasks') return json(route, pageResponse(tasks, url))
+  if (path === '/projects/project-01/progress-updates') return json(route, pageResponse(progressUpdates, url))
+  if (path === '/projects/project-01/resource-links') return json(route, pageResponse(resources, url))
+  if (path === '/projects/project-01/files') return json(route, pageResponse(files, url))
   if (path === '/projects/project-01/tasks/task-01') return json(route, { task: tasks[0], progressUpdates })
   if (path === '/projects/project-01/tasks/task-02') return json(route, { task: tasks[1], progressUpdates: [] })
 
-  return json(route, [])
+  return json(route, pageResponse([], url))
 })
 
 await capture('/login', 'login.png', 'Welcome back')
-await capture('/dashboard', 'dashboard-admin.png', 'Global review queue')
-await capture('/workspace', 'workspace.png', 'Workspace')
+await capture('/dashboard', 'dashboard-admin.png', 'Review work')
+await capture('/workspace', 'workspace.png', 'Workspace', { hideSidebar: true, fullPage: false })
 await capture(`/workspace/classes/${folder.id}`, 'folder-detail.png', folder.title)
-await capture('/workspace/projects/project-01', 'project-detail.png', projects[0].name)
+await capture('/workspace/projects/project-01', 'project-detail.png', projects[0].name, { hideSidebar: true, fullPage: false })
 await capture('/workspace/projects/project-01', 'project-team-popover.png', projects[0].name, {
+  hideSidebar: true,
+  fullPage: false,
   beforeScreenshot: async () => {
     await page.getByRole('button', { name: /Open project team/i }).click()
     await page.getByRole('region', { name: 'Project team' }).waitFor()
   },
 })
 await capture('/workspace/projects/project-01', 'project-manage-plan.png', projects[0].name, {
+  hideSidebar: true,
+  fullPage: false,
   beforeScreenshot: async () => {
-    await page.getByRole('button', { name: 'Manage plan' }).click()
-    await page.getByRole('button', { name: 'Done managing' }).waitFor()
+    await page.getByRole('button', { name: /Open checkpoint actions for Research framing/i }).click()
+    await page.getByRole('button', { name: 'Edit checkpoint' }).waitFor()
   },
 })
 await capture('/workspace/projects/project-01', 'project-resource-dialog.png', projects[0].name, {
+  hideSidebar: true,
+  fullPage: false,
   beforeScreenshot: async () => {
     await page.getByText('Research framing', { exact: false }).first().waitFor()
-    await page.getByRole('button', { name: /Resources/i }).first().click()
-    await page.getByText('Research framing', { exact: false }).first().waitFor()
+    await page.getByRole('button', { name: /Open checkpoint actions for Research framing/i }).click()
+    await page.getByRole('button', { name: 'Manage resources', exact: true }).click()
+    await page.getByText('Checkpoint resources', { exact: false }).first().waitFor()
   },
 })
 await capture('/workspace/projects/project-01/tasks/task-01', 'assignment-review-desk.png', 'Review outcome')
@@ -196,14 +203,41 @@ async function capture(path, fileName, visibleText, options = {}) {
   currentUser = options.user || admin
   await page.goto(`${baseURL}${path}`, { waitUntil: 'networkidle' })
   await page.getByText(visibleText, { exact: false }).first().waitFor({ timeout: 15_000 })
+  const screenshotStyle = options.hideSidebar ? await hideDesktopSidebar() : null
   if (options.beforeScreenshot) {
     await options.beforeScreenshot()
   }
-  await page.screenshot({ path: resolve(outputDir, fileName), fullPage: true })
+  await page.screenshot({ path: resolve(outputDir, fileName), fullPage: options.fullPage ?? true })
+  if (screenshotStyle) {
+    await screenshotStyle.evaluate((node) => node.remove())
+  }
+}
+
+async function hideDesktopSidebar() {
+  return page.addStyleTag({
+    content: `
+      @media (min-width: 1024px) {
+        aside.fixed.inset-y-0.left-0 { display: none !important; }
+        #main-content { padding-left: 0 !important; }
+      }
+    `,
+  })
 }
 
 function json(route, body) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+}
+
+function pageResponse(items, url) {
+  const page = Math.max(1, Number(url.searchParams.get('page') || 1))
+  const limit = Math.max(1, Number(url.searchParams.get('limit') || items.length || 1))
+  const start = (page - 1) * limit
+  return { items: items.slice(start, start + limit), page, limit, total: items.length }
+}
+
+function classDetailResponse(classProjects, url) {
+  const projectsPage = pageResponse(classProjects, url)
+  return { classFolder: folder, projects: projectsPage.items, projectsPage }
 }
 
 function user(id, fullName, email, role, status = 'active') {
@@ -225,8 +259,8 @@ function project(id, name, classTitle, classColor, memberCount, pendingReviewCou
     classColor,
     supervisorId: teacher.id,
     supervisorName: teacher.fullName,
-    startDate: '2026-06-01',
-    endDate: '2026-07-20',
+    startDate: '2026-07-01',
+    endDate: '2026-08-20',
     status: 'active',
     officialProgressState: pendingReviewCount > 0 ? 'in_progress' : 'needs_changes',
     progressSummary: 'Prototype implemented; review queue and evidence workflow need final pass.',
@@ -240,8 +274,8 @@ function project(id, name, classTitle, classColor, memberCount, pendingReviewCou
     plannedProgressPercent: 54,
     overdueTaskCount,
     pendingReviewCount,
-    lastApprovedUpdateAt: '2026-06-15T09:00:00Z',
-    createdAt: '2026-05-25T09:00:00Z',
+    lastApprovedUpdateAt: '2026-07-05T09:00:00Z',
+    createdAt: '2026-06-25T09:00:00Z',
     updatedAt: now,
   }
 }
@@ -252,7 +286,7 @@ function milestone(id, title, sortOrder, state, taskCount, completedTaskCount, i
     projectId: 'project-01',
     title,
     description: `${title} checkpoint for supervised progress tracking.`,
-    targetDate: sortOrder === 1 ? '2026-06-12' : sortOrder === 2 ? '2026-06-28' : '2026-07-15',
+    targetDate: sortOrder === 1 ? '2026-07-12' : sortOrder === 2 ? '2026-07-28' : '2026-08-15',
     sortOrder,
     state,
     taskCount,
@@ -264,7 +298,7 @@ function milestone(id, title, sortOrder, state, taskCount, completedTaskCount, i
     completionPercent,
     createdBy: teacher.id,
     createdByName: teacher.fullName,
-    createdAt: '2026-06-01T08:00:00Z',
+    createdAt: '2026-07-01T08:00:00Z',
     updatedAt: now,
   }
 }
@@ -284,7 +318,7 @@ function task(id, title, milestoneId, milestoneTitle, status, priority, deadline
     officialProgressState: status === 'needs_changes' ? 'needs_changes' : status === 'done' ? 'completed' : 'in_progress',
     createdBy: teacher.id,
     createdByName: teacher.fullName,
-    createdAt: '2026-06-02T08:00:00Z',
+    createdAt: '2026-07-02T08:00:00Z',
     updatedAt: now,
     assignees,
     progressUpdateCount,
@@ -307,7 +341,7 @@ function progress(id, title, taskId, taskTitle, submittedBy, reviewStatus, descr
     blockers,
     reviewStatus,
     latestReview,
-    createdAt: id === 'progress-01' ? '2026-06-21T14:30:00Z' : '2026-06-18T09:30:00Z',
+    createdAt: id === 'progress-01' ? '2026-07-07T14:30:00Z' : '2026-07-04T09:30:00Z',
     updatedAt: now,
   }
 }
@@ -325,7 +359,7 @@ function resource(id, relatedType, relatedId, relatedLabel, title, url, type) {
     description: 'Report evidence artifact used by the review workflow.',
     addedBy: teacher.id,
     addedByName: teacher.fullName,
-    createdAt: '2026-06-16T08:00:00Z',
+    createdAt: '2026-07-06T08:00:00Z',
     updatedAt: now,
   }
 }

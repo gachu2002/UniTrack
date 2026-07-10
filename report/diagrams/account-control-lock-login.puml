@@ -1,0 +1,36 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam dpi 130
+skinparam sequenceArrowThickness 1
+skinparam ParticipantPadding 76
+skinparam BoxPadding 7
+skinparam maxMessageSize 86
+hide footbox
+
+participant "Auth/login\nroute" as LoginRoute
+participant "Security\nchecks" as Security
+database "PostgreSQL\nusers + sessions" as DB
+actor "Concurrent\nlogin" as Concurrent
+participant "Admin UI" as AdminUI
+participant "Account admin\nroute" as AccountRoute
+
+DB --> LoginRoute : Current account after admin commit
+alt Inactive or password no longer matches
+  LoginRoute -> DB : ROLLBACK; no new session
+  LoginRoute --> Concurrent : 401/403 login rejected
+else Active and password valid
+  LoginRoute -> Security : Verify current password;\ngenerate random token
+  LoginRoute -> DB : INSERT sessions token_hash; COMMIT
+  LoginRoute --> Concurrent : Set HttpOnly cookie
+end
+
+group Admin UI refreshes account-control state
+  AdminUI -> AccountRoute : Refetch filtered users
+  AccountRoute -> DB : SELECT filtered users
+  AccountRoute --> AdminUI : Render final account status
+end
+@enduml

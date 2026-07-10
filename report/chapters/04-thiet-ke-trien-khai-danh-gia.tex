@@ -6,16 +6,16 @@ Chương này trình bày cách UniTrack được tổ chức và triển khai, 
 
 UniTrack sử dụng kiến trúc Web tách giao diện, API, cơ sở dữ liệu và file storage. Giao diện React chạy trong trình duyệt và gọi API bằng session cookie. Backend Go xử lý routing, strict JSON decoding, phân quyền, kiểm tra vòng đời dự án, transaction và kết nối storage. PostgreSQL lưu dữ liệu nghiệp vụ và các ràng buộc toàn vẹn. Minh chứng được lưu qua một lớp trừu tượng để môi trường phát triển cục bộ và Cloudflare R2 trong production dùng cùng một API.
 
-\figurelead{fig:system-context.png}{đặt bốn thành phần chính của hệ thống vào cùng một bức tranh kiến trúc để làm rõ ranh giới trách nhiệm giữa giao diện, API, cơ sở dữ liệu và storage}
+\figurelead{fig:system-context.png}{đặt các lớp client, API, cơ sở dữ liệu, storage và các điểm kiểm soát request vào cùng một bức tranh kiến trúc để làm rõ ranh giới trách nhiệm}
 \figSystemContext
 
-Luồng request điển hình gồm: trình duyệt gửi request kèm cookie; backend kiểm tra origin với các phương thức ghi dữ liệu; middleware xác thực session; handler kiểm tra route ID và nội dung request; helper phân quyền kiểm tra vai trò và quan hệ với dự án; các thao tác ghi khóa dòng dự án để kiểm tra lại quyền quản lý, vòng đời và đối tượng đích; ràng buộc cơ sở dữ liệu là lớp bảo vệ cuối cùng; response trả JSON hoặc stream file.
+Luồng yêu cầu điển hình gồm: trình duyệt gửi request kèm cookie; backend kiểm tra origin với yêu cầu ghi dữ liệu có session cookie hoặc route ghi session cookie; middleware xác thực session; handler kiểm tra route ID và nội dung request; helper phân quyền kiểm tra vai trò và quan hệ với dự án; các thao tác ghi khóa dòng dự án để kiểm tra lại quyền quản lý, vòng đời và đối tượng đích; ràng buộc cơ sở dữ liệu là lớp bảo vệ cuối cùng; response trả JSON hoặc stream file.
 
 \figurelead{fig:request-boundary.png}{cụ thể hóa các lớp kiểm soát mà một request phải đi qua trước khi dữ liệu được đọc, ghi hoặc trả về cho người dùng}
 \figRequestBoundary
 
 \tableintro{tab:request-boundary-layers}{mô tả các lớp kiểm soát chính mà một request phải đi qua trước khi dữ liệu được ghi hoặc trả về}
-\begin{table}[H]
+\begin{table}[!htbp]
 \caption{Các lớp kiểm soát ở request boundary}
 \label{tab:request-boundary-layers}
 \centering
@@ -27,7 +27,7 @@ Luồng request điển hình gồm: trình duyệt gửi request kèm cookie; b
   hlines={0.35pt,black!24},
 }
 Lớp kiểm soát & Vai trò & Ví dụ áp dụng \\
-Kiểm tra origin & Chặn write request từ origin không tin cậy trước khi handler chạy & Đăng nhập, ghi session cookie và các route thay đổi dữ liệu \\
+Kiểm tra origin & Chặn yêu cầu ghi dữ liệu có session cookie hoặc route ghi session cookie khi origin không tin cậy & Đăng nhập, đăng xuất và các request ghi dữ liệu đã đăng nhập \\
 Kiểm tra session & Đọc cookie, băm token, kiểm tra tài khoản active và session bị thu hồi & \route{GET /auth/me}, các route dự án cần đăng nhập \\
 Strict JSON decoder & Giới hạn body, từ chối trường lạ và JSON nối tiếp & Tạo dự án, nhiệm vụ, duyệt bài, tài nguyên \\
 Kiểm tra quan hệ & Xác định người dùng có quyền xem/quản lý dự án hay không & Chi tiết dự án, chi tiết nhiệm vụ, tải minh chứng \\
@@ -40,7 +40,7 @@ Ràng buộc dữ liệu & Bảo vệ luật nghiệp vụ khi có request đồ
 
 \subsection{Route giao diện}
 
-Giao diện sử dụng React Router. Các route chính bám sát sản phẩm: đăng nhập, dashboard, Workspace, chi tiết thư mục, chi tiết dự án, chi tiết nhiệm vụ và quản trị tài khoản. Các route cũ \route{/projects} và \route{/classes} được chuyển về \route{/workspace} để giữ hướng điều hướng project-first.
+Giao diện sử dụng React Router. Các route chính bám sát sản phẩm: đăng nhập, dashboard, Workspace, chi tiết thư mục, chi tiết dự án, chi tiết nhiệm vụ và quản trị tài khoản. Các đường dẫn tương thích \route{/projects} và \route{/classes} được redirect về namespace \route{/workspace} để giữ hướng điều hướng project-first. Router tự guard đăng nhập, quản trị và chi tiết thư mục; quyền xem dự án/nhiệm vụ vẫn do API quyết định cuối cùng và giao diện hiển thị trạng thái bị từ chối khi API trả lỗi.
 
 \tableintro{tab:frontend-routes}{tổng hợp các route giao diện đang triển khai và điều kiện truy cập tương ứng}
 \begin{longtblr}[
@@ -66,38 +66,36 @@ Route giao diện & Điều kiện truy cập & Mục đích \\
 
 \subsection{Route API backend}
 
-Backend đăng ký các route nghiệp vụ dưới tiền tố \route{/api/v1}; phần lớn route được bảo vệ bởi \code{requireAuth}. Bảng dưới đây tóm tắt bề mặt API chính và điều kiện kiểm soát ở từng nhóm route.
+Backend đăng ký các route nghiệp vụ dưới tiền tố \route{/api/v1}; phần lớn route được bảo vệ bởi \code{requireAuth}. Thay vì liệt kê toàn bộ endpoint, Bảng~\ref{tab:api-routes} gom API theo mục đích nghiệp vụ để người đọc thấy được dữ liệu nào được đọc/ghi và lớp kiểm soát nào đi kèm.
 
-\tableintro{tab:api-routes}{tóm tắt các nhóm endpoint backend chính trong phạm vi \route{/api/v1}}
+\tableintro{tab:api-routes}{tóm tắt các nhóm API backend theo mục đích nghiệp vụ và điều kiện kiểm soát chính}
 \begin{longtblr}[
-  caption={Bảng route API backend đang triển khai},
+  caption={Các nhóm API backend chính của UniTrack},
   label={tab:api-routes},
 ]{
   width=\textwidth,
-  colspec={X[0.8,l]X[2.0,l]X[1.05,l]},
+  colspec={X[0.9,l]X[1.45,l]X[1.45,l]},
   rowhead=1,
   rows={valign=t},
   row{1}={font=\bfseries,bg=black!7},
   hlines={0.35pt,black!24},
 }
-Nhóm & Endpoint tiêu biểu & Vai trò \\
-Health & \route{GET /health}, \route{GET /ready} & Kiểm tra dịch vụ và cơ sở dữ liệu \\
-Auth & \route{POST /auth/login}, \route{POST /auth/logout}, \route{GET /auth/me} & Đăng nhập, đăng xuất, current user \\
-Admin users & \stackcell{\smallcode{GET/POST /admin/users}\\\smallcode{PATCH /admin/users/\{userId\}}\\\smallcode{POST /admin/users/}\\\smallcode{\{userId\}/password}} & Quản lý tài khoản \\
-Dashboard & \route{GET /dashboard} & Tóm tắt và hàng đợi theo vai trò \\
-Projects & \stackcell{\smallcode{GET/POST /projects}\\\smallcode{GET/PATCH /projects/\{projectId\}}} & Danh sách, tạo, xem, sửa dự án \\
-Members & \stackcell{\smallcode{GET/POST /projects/}\\\smallcode{\{projectId\}/members}\\\smallcode{PATCH/DELETE /projects/}\\\smallcode{\{projectId\}/members/\{memberId\}}} & Quản lý thành viên \\
-Milestones & \stackcell{\smallcode{GET/POST /projects/}\\\smallcode{\{projectId\}/milestones}\\\smallcode{PATCH /milestones/reorder}\\\smallcode{PATCH/DELETE /milestones/}\\\smallcode{\{milestoneId\}}} & Tạo, sửa, xóa và sắp xếp mốc kế hoạch \\
-Assignments & \stackcell{\smallcode{GET/POST /projects/}\\\smallcode{\{projectId\}/tasks}\\\smallcode{GET/PATCH /projects/}\\\smallcode{\{projectId\}/tasks/\{taskId\}}} & Danh sách, chi tiết và cập nhật nhiệm vụ \\
-\stackcell{Submissions\\reviews} & \stackcell{\smallcode{POST /tasks/\{taskId\}/}\\\smallcode{progress-updates}\\\smallcode{POST /progress-updates/}\\\smallcode{\{updateId\}/reviews}} & Sinh viên nộp bài và giảng viên duyệt bài \\
-Resources & \stackcell{\smallcode{GET/POST /resource-links}\\\smallcode{PATCH/DELETE /resource-links/}\\\smallcode{\{resourceLinkId\}}} & Đường dẫn tài nguyên theo đối tượng nghiệp vụ \\
-Files & \stackcell{\smallcode{GET /files}\\\smallcode{POST /progress-updates/}\\\smallcode{\{updateId\}/files}\\\smallcode{GET /files/\{fileId\}/download}\\\smallcode{DELETE /files/\{fileId\}}} & Metadata và vòng đời file minh chứng \\
-Classes/folders & \stackcell{\smallcode{GET/POST /classes}\\\smallcode{GET/PATCH /classes/\{classId\}}\\\smallcode{POST /classes/}\\\smallcode{\{classId\}/projects}} & Thư mục trong Workspace \\
+Nhóm API & Dữ liệu/thao tác chính & Điều kiện kiểm soát nổi bật \\
+Auth & Đăng nhập, đăng xuất và đọc người dùng hiện tại & Kiểm tra origin, giới hạn đăng nhập, tài khoản active và session bị thu hồi \\
+Quản trị tài khoản & Tạo tài khoản, tìm kiếm, đổi vai trò/trạng thái và đặt mật khẩu & Chỉ quản trị viên; không làm mất quản trị viên active cuối cùng; thu hồi session khi cần \\
+Dashboard & Hàng đợi công việc theo vai trò & Chỉ trả dữ liệu trong phạm vi vai trò và quan hệ dự án của người dùng \\
+Workspace và dự án & Danh sách thư mục, dự án, chi tiết dự án và gán dự án vào thư mục & Chủ thư mục phải khớp giảng viên phụ trách; dự án cũ phải được kiểm tra lại trước khi gán \\
+Nhóm dự án & Danh sách thành viên, thêm/xóa sinh viên và đổi leader/member & Chỉ sinh viên active; trạng thái dự án phải cho phép thay đổi nhóm \\
+Kế hoạch và nhiệm vụ & Mốc kế hoạch, thứ tự mốc, nhiệm vụ và người được giao & Dự án active khi tạo mới; mốc và sinh viên phải thuộc cùng dự án \\
+Bài nộp và duyệt bài & Sinh viên nộp tiến độ; giảng viên/quản trị viên ghi quyết định duyệt & Một bài chờ duyệt cho mỗi nhiệm vụ; người duyệt phải còn quyền quản lý dự án \\
+Tài nguyên và minh chứng & Đường dẫn tài nguyên, file minh chứng và tải xuống file riêng tư & Đích tài nguyên/minh chứng phải cùng dự án; dữ liệu của bài đã duyệt chuyển sang chỉ đọc \\
 \end{longtblr}
 
 \begin{artifactnote}{Request boundary}
 Các JSON handler dùng strict decoder: giới hạn body 1 MB, từ chối trường lạ và từ chối JSON nối tiếp. Route ID của nhiệm vụ, mốc kế hoạch, bài nộp, thành viên, tài nguyên và file được kiểm tra UUID trước khi truy vấn để tránh lộ lỗi ép kiểu từ cơ sở dữ liệu ra client. Các lỗi validation mong đợi dùng status error có kiểu để không biến lỗi hạ tầng thành lỗi \code{400}.
 \end{artifactnote}
+
+Các danh sách có thể dài như dự án, tài khoản, thư mục, thành viên, nhiệm vụ và tài nguyên dùng phân trang để giao diện không phải tải quá nhiều dữ liệu một lần. Một số route lồng vẫn trả dạng mảng khi không truyền tham số phân trang để không làm đứt các màn hình đã có; khi có \code{page} hoặc \code{limit}, response trả thêm \code{items}, \code{page}, \code{limit} và \code{total}.
 
 \section{Thiết kế gói mã nguồn}
 
@@ -149,106 +147,166 @@ Thiết kế dữ liệu đặt \code{projects} làm trục chính. Các bảng 
 
 \subsection{Sơ đồ thực thể liên kết}
 
-Sơ đồ thực thể liên kết tổng quan được đặt trên một trang riêng để phần thiết kế dữ liệu có đủ không gian đọc các nhóm quan hệ chính. Hình~\ref{fig:data-model-core.png} cần được đọc cùng phần mô tả bảng bên dưới vì các quan hệ đa hình và trigger được giải thích chi tiết bằng lời sau sơ đồ.
+Sơ đồ thực thể liên kết tổng quan được đặt trên các trang riêng theo chiều dọc để giữ cùng hướng đọc với toàn bộ báo cáo. Hình~\ref{fig:data-model-core.png} dùng dạng thẻ bảng tương tự sơ đồ ERD tham khảo: header xanh đậm, thân bảng xám nhạt, field căn trái và kiểu dữ liệu căn phải. Sơ đồ liệt kê đầy đủ các field hiện có sau khi chạy toàn bộ migration \code{Up} và được tách thành ba phần liên tục để các bảng đủ lớn khi in trên khổ giấy dọc. Phần từ điển dữ liệu ngay sau sơ đồ bổ sung vai trò, ràng buộc và ghi chú nghiệp vụ cho từng bảng.
 
 \clearpage
 \begin{figure}[p]
   \centering
-  \vspace*{-1.35cm}
-  \makebox[\textwidth][c]{\includegraphics[width=1.28\textwidth,height=0.66\textheight,keepaspectratio]{data-model-core.png}}
-  \caption{ERD tổng quan các bảng ứng dụng và quan hệ chính của UniTrack}
+  \makebox[\textwidth][c]{\includegraphics[width=1.18\textwidth,height=0.84\textheight,keepaspectratio]{data-model-core.png}}
+  \caption{ERD tổng quan schema dữ liệu và quan hệ chính của UniTrack}
   \label{fig:data-model-core.png}
-  \caption*{\small Sơ đồ đặt \code{projects} làm trục dữ liệu chính, đồng thời tách rõ vùng assignment/submission/review và vùng tài nguyên/minh chứng để thuận tiện đối chiếu với phần thiết kế bảng bên dưới.}
-  \vspace{0.6em}
-  \begin{minipage}{0.94\textwidth}
-    \small
-    \textbf{Cách đọc mô hình dữ liệu}\par\vspace{0.25em}
-    Ký hiệu \code{PK} là khóa chính, \code{FK} là khóa ngoại, \code{UQ} là khóa duy nhất. Đường liền thể hiện khóa ngoại trực tiếp giữa các bảng. Đường chấm thể hiện liên kết đa hình qua \code{target\_type}/\code{target\_id} hoặc \code{related\_entity\_type}/\code{related\_entity\_id}; các liên kết này được trigger PostgreSQL kiểm tra ở thời điểm commit. Các khóa ngoại audit như \code{created\_by}, \code{updated\_by}, \code{reviewed\_by} và bảng legacy được mô tả trong phần chi tiết bên dưới.
-  \end{minipage}
+  \caption*{\small Phần 1 trình bày nhóm tài khoản, phiên, Workspace, dự án và kế hoạch. Mỗi thẻ liệt kê field ở cột trái và kiểu dữ liệu ở cột phải; đường liền biểu diễn khóa ngoại chính, đường chấm biểu diễn quan hệ schema-only hoặc bổ trợ.}
+\end{figure}
+\clearpage
+\begin{figure}[p]
+  \ContinuedFloat
+  \centering
+  \makebox[\textwidth][c]{\includegraphics[width=1.18\textwidth,height=0.84\textheight,keepaspectratio]{data-model-core-support.png}}
+  \caption[]{ERD tổng quan schema dữ liệu và quan hệ chính của UniTrack (tiếp theo)}
+  \caption*{\small Phần 2 trình bày assignment, phân công, bài nộp và review. Các bảng ngữ cảnh như \code{users}, \code{projects} và \code{tasks} được lặp lại theo cùng định dạng để giữ quan hệ đọc được trên trang dọc.}
+\end{figure}
+\clearpage
+\begin{figure}[p]
+  \ContinuedFloat
+  \centering
+  \makebox[\textwidth][c]{\includegraphics[width=1.18\textwidth,height=0.84\textheight,keepaspectratio]{data-model-core-support-ops.png}}
+  \caption[]{ERD tổng quan schema dữ liệu và quan hệ chính của UniTrack (tiếp theo)}
+  \caption*{\small Phần 3 trình bày tài nguyên, minh chứng, cleanup và audit. Các bảng ngữ cảnh như \code{users}, \code{projects} và \code{progress\_updates} được lặp lại theo cùng định dạng để giữ quan hệ đọc được trên trang dọc.}
 \end{figure}
 \clearpage
 
 \subsection{Chi tiết bảng dữ liệu}
 
-Thay vì liệt kê toàn bộ trường của từng bảng, phần này tóm tắt các thực thể chính, vai trò nghiệp vụ và ràng buộc cần đọc cùng ERD. Cách trình bày này làm rõ thiết kế cơ sở dữ liệu nhưng không biến Chương 4 thành bản sao của migration SQL.
+Phần này trình bày từ điển dữ liệu ở trạng thái sau khi chạy toàn bộ migration \code{Up}. Các bảng đã bị loại khỏi schema hiện tại như \code{invitations}, \code{meeting\_notes}, \code{meeting\_note\_attendees}, \code{feedback} và \code{feedback\_replies} không được đưa vào từ điển. Hai bảng \code{courses} và \code{assessments} vẫn còn trong schema vì lịch sử migration; phần dưới đánh dấu rõ là schema-only để không nhầm với luồng chức năng hiện tại.
 
-\tableintro{tab:data-design-summary}{tóm tắt các bảng ứng dụng chính, quan hệ và ràng buộc nghiệp vụ quan trọng}
-\begingroup\small
+\begingroup\scriptsize
+\tableintro{tab:data-dictionary-identity}{trình bày trường dữ liệu và ràng buộc chính của nhóm tài khoản, phiên và Workspace}
 \begin{longtblr}[
-  caption={Tóm tắt thiết kế dữ liệu ứng dụng chính},
-  label={tab:data-design-summary},
+  caption={Từ điển dữ liệu nhóm tài khoản, phiên và Workspace},
+  label={tab:data-dictionary-identity},
 ]{
   width=\textwidth,
-  colspec={X[1.25,l]X[1.2,l]X[1.7,l]},
-  colsep=3pt,
+  colspec={X[0.95,l]X[1.55,l]X[1.70,l]},
   rowhead=1,
-  rowsep=2pt,
   rows={valign=t},
   row{1}={font=\bfseries,bg=black!7},
   hlines={0.35pt,black!24},
 }
-Bảng/nhóm bảng & Vai trò nghiệp vụ & Quan hệ và ràng buộc chính \\
-\smallcode{users}, \smallcode{sessions} & Tài khoản, vai trò, trạng thái hoạt động và phiên đăng nhập cookie-based & Email unique theo chữ thường; session lưu token hash, có thời hạn và trạng thái thu hồi; các phiên phụ thuộc vào tài khoản. \\
-\stackcell{\smallcode{course\_sections}\\\smallcode{course\_section}\\\smallcode{\_projects}} & Thư mục Workspace và liên kết một dự án vào tối đa một thư mục & Chủ thư mục phải khớp giảng viên phụ trách dự án khi gán dự án; \smallcode{project\_id} unique trong bảng liên kết. \\
-\smallcode{projects} & Trục dữ liệu chính: metadata, giảng viên phụ trách, trạng thái vòng đời và tiến độ tổng hợp & Trạng thái \stackcell{\smallcode{active}/\smallcode{on\_hold}\\\smallcode{completed}/\smallcode{archived}} quyết định thao tác ghi; nhiều bảng con tham chiếu về dự án. \\
-\smallcode{project\_members} & Danh sách sinh viên trong dự án và vai trò \smallcode{leader}/\smallcode{member} & Sinh viên liên kết về \smallcode{users}; mỗi dự án chỉ có tối đa một leader; khi xóa thành viên, các phân công liên quan được dọn. \\
-\stackcell{\smallcode{project\_milestones}\\\smallcode{tasks}\\\smallcode{task\_assignees}} & Mốc kế hoạch, nhiệm vụ chính thức và phân công sinh viên & Nhiệm vụ phải thuộc mốc cùng dự án; người được giao phải là thành viên active cùng dự án; deadline là date-only. \\
-\stackcell{\smallcode{progress\_updates}\\\smallcode{progress\_reviews}} & Bài nộp tiến độ và quyết định duyệt cuối cùng & Bài nộp phải thuộc nhiệm vụ cùng dự án; mỗi nhiệm vụ chỉ có một bài \smallcode{pending\_review}; mỗi bài nộp có tối đa một quyết định duyệt. \\
-\stackcell{\smallcode{resource\_links}\\\smallcode{uploaded\_files}} & Tài nguyên tham khảo và file minh chứng gắn với dự án/mốc/nhiệm vụ/bài nộp & Đích đa hình được trigger kiểm tra cùng dự án; tài nguyên và file của bài đã duyệt chuyển sang chỉ đọc; file thực nằm ở local storage hoặc R2. \\
-\smallcode{activity\_logs} & Lịch sử thao tác quản trị tài khoản và thao tác thành viên dự án đã triển khai & Ghi actor, đối tượng, hành động và metadata; giao diện tra cứu audit còn nằm ngoài phạm vi hiện tại. \\
+Bảng & Trường dữ liệu & Ràng buộc và vai trò \\
+\code{users} & \code{id}; \code{full\_name}, \code{email}, \code{password\_hash}, \code{role}, \code{status}, \code{avatar\_url}; \code{created\_at}, \code{updated\_at}. & Khóa chính người dùng; email unique theo chữ thường; \code{role} và \code{status} là enum kiểm soát quyền đăng nhập và phân quyền. \\
+\code{sessions} & \code{id}, \code{user\_id}; \code{token\_hash}, \code{expires\_at}, \code{revoked\_at}, \code{last\_seen\_at}, \code{user\_agent}, \code{ip\_address}, \code{created\_at}. & FK tới \code{users}; token chỉ lưu dạng hash; phiên active là phiên chưa thu hồi và chưa hết hạn. \\
+\code{courses} & \code{id}; \code{code}, \code{title}, \code{description}, \code{status}; \code{created\_by}, \code{created\_at}, \code{updated\_at}. & Bảng schema-only lịch sử; \code{code} unique theo chữ thường; không còn route/giao diện course độc lập. \\
+\code{course\_sections} & \code{id}; \code{title}, \code{description}, \code{color}, \code{status}; \code{owner\_teacher\_id}, \code{created\_by}, \code{created\_at}, \code{updated\_at}. & Thư mục Workspace; chủ thư mục phải là giảng viên; trigger bảo đảm thư mục chỉ chứa dự án do đúng giảng viên phụ trách. \\
+\stackcell{\code{course\_section}\\\code{\_projects}} & \code{id}; \code{course\_section\_id}, \code{project\_id}, \code{added\_by}, \code{added\_at}. & Bảng nối thư mục--dự án; unique \code{project\_id} để một dự án chỉ nằm trong tối đa một thư mục. \\
+\end{longtblr}
+
+\tableintro{tab:data-dictionary-project}{trình bày trường dữ liệu và ràng buộc chính của nhóm dự án, nhóm thành viên, mốc kế hoạch và schema-only assessment}
+\begin{longtblr}[
+  caption={Từ điển dữ liệu nhóm dự án và kế hoạch},
+  label={tab:data-dictionary-project},
+]{
+  width=\textwidth,
+  colspec={X[0.95,l]X[1.55,l]X[1.70,l]},
+  rowhead=1,
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Bảng & Trường dữ liệu & Ràng buộc và vai trò \\
+\code{projects} & \code{id}; \code{name}, \code{description}, \code{topic}; \code{supervisor\_id}, \code{created\_by}; \code{start\_date}, \code{end\_date}; \code{status}, \code{official\_progress\_state}, \code{progress\_summary}; \code{created\_at}, \code{updated\_at}. & Trục dữ liệu chính; check ngày kết thúc không trước ngày bắt đầu; \code{status} chi phối thao tác ghi theo vòng đời. \\
+\code{project\_members} & \code{id}; \code{project\_id}, \code{student\_id}; \code{member\_role}; \code{joined\_at}. & Unique cặp dự án--sinh viên; partial unique bảo đảm mỗi dự án có tối đa một leader. \\
+\code{project\_milestones} & \code{id}; \code{project\_id}, \code{created\_by}; \code{title}, \code{description}; \code{target\_date}, \code{sort\_order}; \code{created\_at}, \code{updated\_at}. & Mốc Work Plan; unique cặp \code{project\_id}, \code{id} để assignment và support kiểm tra cùng dự án. \\
+\code{assessments} & \code{id}; \code{project\_id}, \code{assessed\_by}; \code{target\_type}, \code{target\_id}; \code{score}, \code{max\_score}, \code{note}; \code{created\_at}, \code{updated\_at}. & Bảng schema-only của luồng điểm số đã loại khỏi UI/API; vẫn có FK dự án/người chấm và check điểm không vượt thang điểm. \\
+\end{longtblr}
+
+\tableintro{tab:data-dictionary-assignment}{trình bày trường dữ liệu và ràng buộc chính của nhóm assignment, bài nộp và duyệt bài}
+\begin{longtblr}[
+  caption={Từ điển dữ liệu nhóm assignment và bài nộp},
+  label={tab:data-dictionary-assignment},
+]{
+  width=\textwidth,
+  colspec={X[0.95,l]X[1.55,l]X[1.70,l]},
+  rowhead=1,
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Bảng & Trường dữ liệu & Ràng buộc và vai trò \\
+\code{tasks} & \code{id}; \code{project\_id}, \code{parent\_task\_id}, \code{milestone\_id}; \code{title}, \code{description}; \code{status}, \code{priority}, \code{deadline}, \code{official\_progress\_state}; \code{created\_by}, \code{updated\_by}, \code{created\_at}, \code{updated\_at}. & Assignment chính thức phải thuộc một mốc cùng dự án; child-task còn ở schema nhưng không còn workflow chủ động. \\
+\code{task\_assignees} & \code{id}; \code{task\_id}, \code{project\_id}, \code{student\_id}; \code{assigned\_at}. & Unique cặp task--sinh viên; FK composite bảo đảm người được giao là thành viên cùng dự án. \\
+\code{progress\_updates} & \code{id}; \code{project\_id}, \code{task\_id}, \code{submitted\_by}; \code{title}, \code{description}, \code{blockers}; \code{review\_status}; \code{created\_at}, \code{updated\_at}. & Một task chỉ có một bài \code{pending\_review}; trigger bảo đảm người nộp là sinh viên active được giao assignment chính thức. \\
+\code{progress\_reviews} & \code{id}; \code{progress\_update\_id}, \code{reviewed\_by}; \code{review\_status}, \code{review\_comment}, \code{official\_progress\_state}; \code{reviewed\_at}. & Unique một quyết định cuối cùng cho mỗi bài nộp; backend kiểm tra người duyệt còn quyền quản lý dự án. \\
+\end{longtblr}
+
+\tableintro{tab:data-dictionary-support}{trình bày trường dữ liệu và ràng buộc chính của nhóm tài nguyên, minh chứng, cleanup và audit}
+\begin{longtblr}[
+  caption={Từ điển dữ liệu nhóm tài nguyên, minh chứng và audit},
+  label={tab:data-dictionary-support},
+]{
+  width=\textwidth,
+  colspec={X[0.95,l]X[1.55,l]X[1.70,l]},
+  rowhead=1,
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Bảng & Trường dữ liệu & Ràng buộc và vai trò \\
+\code{resource\_links} & \code{id}; \code{project\_id}, \code{added\_by}; \code{related\_entity\_type}, \code{related\_entity\_id}; \code{title}, \code{url}, \code{type}, \code{description}; \code{created\_at}, \code{updated\_at}. & Liên kết đa hình tới project/milestone/task/submission; trigger kiểm tra đích cùng dự án; unique URL theo đích; khóa sau duyệt. \\
+\code{uploaded\_files} & \code{id}; \code{project\_id}, \code{uploaded\_by}; \code{related\_entity\_type}, \code{related\_entity\_id}; \code{original\_file\_name}, \code{stored\_file\_name}, \code{storage\_path}, \code{mime\_type}, \code{file\_size\_bytes}, \code{created\_at}. & Metadata file riêng tư; trigger kiểm tra đích cùng dự án và khóa file gắn với bài đã duyệt. \\
+\stackcell{\code{uploaded\_file}\\\code{\_object\_cleanup}\\\code{\_jobs}} & \code{id}; \code{storage\_path}; \code{reason}, \code{attempts}, \code{last\_error}; \code{completed\_at}, \code{created\_at}, \code{updated\_at}. & Hàng đợi dọn object khi upload/delete lệch giữa DB và storage; index pending theo job chưa có \code{completed\_at}. \\
+\code{activity\_logs} & \code{id}; \code{actor\_id}, \code{project\_id}; \code{action}, \code{entity\_type}, \code{entity\_id}; \code{metadata}; \code{created\_at}. & Audit thao tác tài khoản và nhóm dự án; \code{project\_id} có thể rỗng với thao tác không thuộc dự án. \\
 \end{longtblr}
 \endgroup
 
-\tableintro{tab:data-legacy-summary}{phân biệt các bảng còn tồn tại trong schema nhưng không còn là bề mặt sản phẩm chính}
-\begin{table}[H]
-\caption{Các bảng legacy và phạm vi sử dụng hiện tại}
-\label{tab:data-legacy-summary}
-\centering
-\begin{tblr}{
-  width=\textwidth,
-  colspec={X[0.9,l]X[1.5,l]X[1.45,l]},
-  rows={valign=t},
-  row{1}={font=\bfseries,bg=black!7},
-  hlines={0.35pt,black!24},
-}
-Bảng legacy & Lý do còn tồn tại & Cách đọc trong báo cáo \\
-\code{courses} & Còn lại từ lát course cũ; route/course độc lập đã bị loại khỏi sản phẩm active & Không coi là module khóa học; Workspace dùng thư mục nhẹ qua \code{course\_sections}. \\
-\code{assessments} & Còn trong schema lịch sử cho chức năng chấm điểm số đã bỏ & Không còn route/UI active; quyết định duyệt hiện nằm ở \code{progress\_reviews}. \\
-\end{tblr}
-\end{table}
-
 \subsection{Migration và ràng buộc toàn vẹn nổi bật}
 
-\tableintro{tab:key-migrations}{liệt kê các migration quan trọng và mục đích nghiệp vụ mà từng migration bảo vệ}
+\tableintro{tab:key-migrations}{tóm tắt các nhóm migration quan trọng và mục đích nghiệp vụ mà từng nhóm bảo vệ}
 \begin{longtblr}[
-  caption={Các migration quan trọng và mục đích nghiệp vụ},
+  caption={Các nhóm migration quan trọng và mục đích nghiệp vụ},
   label={tab:key-migrations},
 ]{
   width=\textwidth,
-  colspec={X[1.45,l]X[0.95,l]X[1.45,l]},
+  colspec={X[0.95,l]X[1.25,l]X[1.55,l]},
   rowhead=1,
   rows={valign=t},
   row{1}={font=\bfseries,bg=black!7},
   hlines={0.35pt,black!24},
 }
-Migration & Khu vực & Vai trò \\
-\stackcell{\smallcode{20260601000100\_}\\\smallcode{init\_mvp.sql}} & Nền tảng & Tạo tài khoản, session, dự án, nhiệm vụ, bài nộp và duyệt bài \\
-\stackcell{\smallcode{20260604000100\_}\\\smallcode{session\_revocation.sql}} & Xác thực & Bổ sung session revocation và chỉ mục session còn hiệu lực \\
-\stackcell{\smallcode{20260606000100\_}\\\smallcode{class\_folders.sql}} & Workspace & Tạo thư mục lớp và liên kết thư mục-dự án \\
-\stackcell{\smallcode{20260606000200\_}\\\smallcode{project\_milestones.sql}} & Kế hoạch & Tạo mốc kế hoạch và liên kết nhiệm vụ với mốc \\
-\stackcell{\smallcode{20260608000100\_}\\\smallcode{milestone\_required\_}\\\smallcode{assignments.sql}} & Nhiệm vụ & Yêu cầu nhiệm vụ chính thức thuộc mốc kế hoạch \\
-\stackcell{\smallcode{20260619000100\_}\\\smallcode{assignment\_submission\_}\\\smallcode{integrity.sql}} & Toàn vẹn dữ liệu & Khóa ngoại cùng dự án cho nhiệm vụ/bài nộp và một bài chờ duyệt \\
-\stackcell{\smallcode{20260620000100\_}\\\smallcode{folder\_and\_task\_}\\\smallcode{integrity.sql}} & Toàn vẹn dữ liệu & Nhiệm vụ cùng dự án và trigger khớp chủ thư mục/giảng viên phụ trách \\
-\stackcell{\smallcode{20260621000100\_}\\\smallcode{support\_target\_}\\\smallcode{integrity.sql}} & Tài nguyên/minh chứng & Trigger kiểm tra đích tài nguyên/minh chứng cùng dự án \\
-\stackcell{\smallcode{20260621000200\_}\\\smallcode{reviewed\_support\_}\\\smallcode{immutability.sql}} & Minh chứng & Trigger chặn sửa/xóa tài nguyên và minh chứng của bài đã duyệt \\
-\stackcell{\smallcode{20260621000300\_}\\\smallcode{progress\_submitter\_}\\\smallcode{integrity.sql}} & Bài nộp & Trigger chặn người nộp không được phân công hoặc không active \\
+Nhóm migration & Khu vực & Vai trò trong thiết kế \\
+Nền tảng dữ liệu & Tài khoản, session, dự án, nhiệm vụ và bài nộp & Tạo các bảng cốt lõi để hệ thống có đủ trục dữ liệu ban đầu. \\
+Vòng đời và Workspace & Trạng thái dự án, thư mục Workspace và liên kết thư mục-dự án & Giữ hướng project-first, đồng thời bảo đảm dự án chỉ nằm trong thư mục phù hợp với giảng viên phụ trách. \\
+Tài khoản và nhóm dự án & Email người dùng, session revocation, thành viên và leader & Bảo đảm email không trùng theo chữ thường, session bị thu hồi khi cần và mỗi dự án chỉ có một leader. \\
+Kế hoạch và nhiệm vụ & Mốc kế hoạch, deadline theo ngày và nhiệm vụ bắt buộc thuộc mốc & Biến nhiệm vụ thành đơn vị công việc chính thức nằm trong một mốc kế hoạch rõ ràng. \\
+Bài nộp và duyệt bài & Bài nộp cùng dự án, một bài chờ duyệt và người nộp hợp lệ & Chặn bài nộp lệch nhiệm vụ/dự án, chặn nhiều bài đang chờ cho cùng nhiệm vụ và bảo đảm người nộp được phân công. \\
+Tài nguyên và minh chứng & Đích tài nguyên/file, khóa dữ liệu sau duyệt và file minh chứng riêng tư & Bảo đảm tài nguyên/minh chứng thuộc đúng dự án và không bị thay đổi sau khi đã là căn cứ duyệt bài. \\
+Lưu trữ file & Hàng đợi dọn file lỗi & Giảm rủi ro lệch giữa metadata trong database và file thật khi upload/delete gặp lỗi giữa chừng. \\
 \end{longtblr}
 
-\clearpage
-\figurelead{fig:project-lifecycle-full}{mô tả các trạng thái vòng đời của dự án và tác động trực tiếp của từng trạng thái tới quyền ghi dữ liệu}
-\figProjectLifecycleFull{Sơ đồ trạng thái vòng đời dự án và tác động tới thao tác ghi}
+\figurelead{fig:project-lifecycle-full}{tóm tắt vòng đời dự án theo trạng thái, hướng chuyển trạng thái và mức độ ghi dữ liệu chính ở mỗi trạng thái}
+\figProjectLifecycleFull{Vòng đời dự án và tác động tới thao tác ghi}
+
+Hình~\ref{fig:project-lifecycle-full} đặt vòng đời dự án làm lớp kiểm soát bên ngoài vì mọi thao tác ghi thuộc Work Plan đều phải đi qua trạng thái dự án trước. Bên trong lớp này, nhiệm vụ và mốc kế hoạch vẫn có trạng thái riêng để biểu diễn tiến độ và kết quả duyệt. Bảng~\ref{tab:lifecycle-state-hierarchy} tóm tắt cách ba tầng trạng thái phối hợp với nhau.
+
+\tableintro{tab:lifecycle-state-hierarchy}{phân biệt vai trò của vòng đời dự án, trạng thái nhiệm vụ và trạng thái mốc kế hoạch trong Work Plan}
+\begin{table}[!htbp]
+\caption{Phân tầng trạng thái trong Work Plan}
+\label{tab:lifecycle-state-hierarchy}
+\centering
+\small
+\begin{tblr}{
+  width=\textwidth,
+  colspec={X[0.72,l]X[1.40,l]X[1.68,l]},
+  rows={valign=t},
+  row{1}={font=\bfseries,bg=black!7},
+  hlines={0.35pt,black!24},
+}
+Tầng trạng thái & Trạng thái chính & Vai trò trong kiểm soát nghiệp vụ \\
+Dự án & \code{active}, \code{on\_hold}, \code{completed}, \code{archived} & Lớp bao ngoài quyết định dự án còn cho phép tạo/sửa nhóm, mốc, nhiệm vụ, tài nguyên và bài nộp hay chỉ còn đọc/xử lý phần tồn đọng. \\
+Nhiệm vụ & \code{todo}, \code{in\_progress}, \code{submitted}, \code{needs\_changes}, \code{done}; trạng thái chính thức gồm \code{no\_progress}, \code{in\_progress}, \code{needs\_changes}, \code{completed} & Đơn vị công việc chính thức của sinh viên; bài nộp và quyết định duyệt cập nhật tiến độ, chặn trạng thái mâu thuẫn và đóng nhiệm vụ khi đã hoàn thành. \\
+Mốc kế hoạch & \code{empty}, \code{planned}, \code{in\_progress}, \code{needs\_changes}, \code{completed} & Trạng thái dẫn xuất từ các nhiệm vụ con, giúp người quản lý nhìn nhanh sức khỏe của một giai đoạn mà không tạo thêm luồng duyệt riêng cho mốc. \\
+\end{tblr}
+\end{table}
 \FloatBarrier
-\clearpage
 
 \section{Thiết kế luồng nghiệp vụ chi tiết}
 
@@ -272,7 +330,7 @@ Migration & Khu vực & Vai trò \\
 Use case & Đối tượng tham gia & Trình tự xử lý chính \\
 Đăng nhập & Browser, auth API, bảng \code{users}, bảng \code{sessions}, session cookie & Browser gửi email/mật khẩu; API chuẩn hóa email, áp dụng rate limit, khóa dòng user, kiểm tra mật khẩu, tạo token, lưu token hash và đặt cookie HttpOnly. \\
 Tạo nhiệm vụ & Project detail page, task API, bảng \code{projects}, \code{project\_milestones}, \code{task\_assignees} & Giao diện gửi form; API khóa dự án, kiểm tra lại quyền quản lý/vòng đời/mốc kế hoạch/sinh viên được giao, ghi task và assignee trong transaction, sau đó refresh project/task/dashboard. \\
-Nộp bài, tải minh chứng và duyệt bài & Task detail page, progress API, file API, storage, bảng \code{progress\_updates}, \code{uploaded\_files}, \code{progress\_reviews} & Luồng được minh họa ở Hình~\ref{fig:evidence-sequence.png}: sinh viên nộp bài, upload minh chứng, giảng viên duyệt, sau đó support record chuyển sang chỉ đọc. \\
+Nộp bài, tải minh chứng và duyệt bài & Task detail page, progress API, file API, storage, bảng \code{progress\_updates}, \code{uploaded\_files}, hàng đợi cleanup object và \code{progress\_reviews} & Luồng được minh họa ở Hình~\ref{fig:evidence-sequence.png}: sinh viên nộp bài, upload minh chứng, giảng viên duyệt, sau đó support record chuyển sang chỉ đọc. \\
 \end{longtblr}
 
 \tableintro{tab:evidence-sequence-responsibilities}{phân rã trách nhiệm của giao diện, backend và cơ sở dữ liệu trong từng giai đoạn của luồng nộp bài, minh chứng và duyệt bài}
@@ -290,7 +348,7 @@ Nộp bài, tải minh chứng và duyệt bài & Task detail page, progress API
 Giai đoạn & Trách nhiệm giao diện & Trách nhiệm backend/cơ sở dữ liệu \\
 Mở nhiệm vụ & Tải chi tiết nhiệm vụ, dự án, thành viên, mốc kế hoạch, tài nguyên và file; chặn duyệt bài nếu dữ liệu hỗ trợ chưa sẵn sàng & Trả dữ liệu theo quyền xem dự án và không lộ dự án ngoài phạm vi \\
 Nộp bài & Kiểm tra form, gửi tiêu đề/mô tả/vướng mắc và refresh dữ liệu liên quan sau khi nộp & Khóa dự án, kiểm tra lại thành viên/người được giao, chặn bài chờ duyệt trùng và ghi bài nộp \\
-Tải minh chứng & Kiểm tra dung lượng 10 MB, gửi multipart tới bài nộp đang chờ duyệt & Tiền kiểm metadata/đích/vòng đời trước object write, lưu object riêng tư, khóa dự án kiểm tra lại rồi ghi metadata; nếu metadata/commit lỗi thì dọn object \\
+Tải minh chứng & Kiểm tra dung lượng 10 MB, gửi file tới bài nộp đang chờ duyệt & Tiền kiểm thông tin file/đích/vòng đời trước khi ghi file, tạo job dọn lỗi, lưu file riêng tư, khóa dự án kiểm tra lại rồi ghi metadata; nếu metadata/commit lỗi thì job còn pending để dọn file \\
 Duyệt bài & Hiển thị vùng duyệt bài, lựa chọn quyết định và yêu cầu hướng dẫn khi trả bài/từ chối & Khóa bài chờ duyệt, ghi quyết định cuối cùng, đồng bộ trạng thái nhiệm vụ và bảo đảm mỗi bài chỉ được duyệt một lần \\
 Sau duyệt & Hiển thị lịch sử và minh chứng ở chế độ chỉ đọc & Trigger cơ sở dữ liệu chặn thêm/sửa/xóa tài nguyên hoặc minh chứng của bài đã duyệt \\
 \end{tblr}
@@ -298,7 +356,9 @@ Sau duyệt & Hiển thị lịch sử và minh chứng ở chế độ chỉ đ
 
 \section{Thiết kế giao diện}
 
-Giao diện UniTrack dùng sắc xanh học thuật, thanh điều hướng đậm, các khối nội dung sáng như giấy, dấu trạng thái rõ và danh sách hành động trực tiếp. Các ảnh dưới đây minh họa những màn hình và trạng thái tương tác chính: từ đăng nhập, dashboard, Workspace, hồ sơ dự án, quản lý nhóm, kế hoạch công việc, tài nguyên, tới nộp và duyệt bài. Chuỗi minh họa từ Hình~\ref{fig:login.png} đến Hình~\ref{fig:admin-accounts.png} được đối chiếu với ý đồ thiết kế trong Bảng~\ref{tab:ui-screenshot-rationale}.
+Giao diện UniTrack dùng sắc xanh học thuật, thanh điều hướng đậm, các khối nội dung sáng như giấy, dấu trạng thái rõ và danh sách hành động trực tiếp. Phần ảnh minh họa không nhằm liệt kê mọi màn hình, mà chọn các điểm giúp người đọc hiểu luồng sản phẩm: người dùng đăng nhập, nhìn thấy việc cần xử lý, đi vào Workspace, mở hồ sơ dự án, thao tác với nhóm/kế hoạch/tài nguyên, rồi nộp hoặc duyệt bài. Bảng~\ref{tab:ui-screenshot-rationale} sau các hình tóm tắt mỗi ảnh đang chứng minh ý đồ thiết kế nào.
+
+Ba ảnh đầu cho thấy cách người dùng bắt đầu công việc: đăng nhập, xem dashboard theo vai trò và đi vào Workspace để chọn dự án hoặc thư mục.
 
 \screenshotfigure{login.png}{Giao diện đăng nhập UniTrack}
 
@@ -306,15 +366,19 @@ Giao diện UniTrack dùng sắc xanh học thuật, thanh điều hướng đ�
 
 \screenshotfigure{workspace.png}{Workspace với thư mục dự án và danh sách dự án độc lập}
 
+Nhóm ảnh tiếp theo tập trung vào hồ sơ dự án. Đây là nơi giảng viên đọc tình hình dự án, xem nhóm sinh viên, quản lý mốc kế hoạch và gắn tài nguyên đúng đối tượng nghiệp vụ.
+
 \screenshotfigure{folder-detail.png}{Màn hình chi tiết thư mục và danh sách dự án trong thư mục}
 
 \screenshotfigure{project-detail.png}{Chi tiết dự án với tiêu đề thao tác, nhóm và kế hoạch công việc}
 
 \screenshotfigure{project-team-popover.png}{Popover nhóm dự án với giảng viên phụ trách, leader và danh sách sinh viên}
 
-\screenshotfigure{project-manage-plan.png}{Chế độ quản lý kế hoạch với thao tác thêm/sửa/sắp xếp mốc và nhiệm vụ}
+\screenshotfigure{project-manage-plan.png}{Menu thao tác mốc kế hoạch với sửa, sắp xếp và tài nguyên}
 
 \screenshotfigure{project-resource-dialog.png}{Hộp thoại quản lý tài nguyên theo mốc kế hoạch trong dự án}
+
+Ba ảnh cuối thể hiện hai đầu của vòng lặp nộp và duyệt bài: giảng viên có vùng quyết định kèm minh chứng, sinh viên có hộp thoại nộp bài, còn quản trị viên có màn hình tài khoản để kiểm soát người dùng tham gia hệ thống.
 
 \screenshotfigure{assignment-review-desk.png}{Trang duyệt nhiệm vụ với minh chứng và vùng quyết định}
 
@@ -327,7 +391,7 @@ Giao diện UniTrack dùng sắc xanh học thuật, thanh điều hướng đ�
 \FloatBarrier
 
 \begingroup\small
-\begin{table}[H]
+\begin{table}[!htbp]
 \caption{Đối chiếu ảnh giao diện với ý đồ thiết kế}
 \label{tab:ui-screenshot-rationale}
 \centering
@@ -345,7 +409,7 @@ Dashboard & Đưa việc cần xử lý lên trước các số liệu tổng qu
 Workspace & Tổ chức nhiều dự án bằng thư mục nhẹ và danh sách dự án & Kệ thư mục, tìm kiếm, trạng thái/cảnh báo và dự án độc lập \\
 Chi tiết dự án & Biến dự án thành hồ sơ làm việc hàng ngày & Tiêu đề thao tác, dấu trạng thái/tiến độ, nhóm và kế hoạch theo mốc \\
 Popover nhóm & Cho phép xem nhanh và quản lý thành viên mà không rời hồ sơ dự án & Giảng viên phụ trách, leader, sinh viên, thêm thành viên và thao tác vai trò \\
-Quản lý kế hoạch & Tách chế độ xem thường khỏi chế độ chỉnh sửa để tránh nhiễu & Nút quản lý kế hoạch, thêm mốc, thêm nhiệm vụ, sắp xếp và chỉnh sửa mốc \\
+Thao tác mốc kế hoạch & Giữ kế hoạch dễ đọc nhưng vẫn cho phép sửa từng mốc khi cần & Nút Actions theo mốc, thêm nhiệm vụ, sắp xếp, chỉnh sửa mốc và mở tài nguyên \\
 Hộp thoại tài nguyên & Gom link tài liệu theo đúng đích nghiệp vụ & Tài nguyên của mốc/nhiệm vụ/bài nộp, form thêm link và trạng thái trống \\
 Trang duyệt nhiệm vụ & Giúp người duyệt quyết định nhanh nhưng vẫn thấy ngữ cảnh và minh chứng & Bài nộp, tài nguyên, file minh chứng và vùng quyết định \\
 Nộp bài của sinh viên & Tập trung vào mô tả kết quả và vướng mắc trước khi gắn minh chứng & Hộp thoại nộp bài, tiêu đề, mô tả, blockers và hành động gửi \\
@@ -396,11 +460,11 @@ CSS utility & Tailwind CSS & 4.2.4 & \url{https://tailwindcss.com/} \\
   hlines={0.35pt,black!24},
 }
 Khu vực & Số file & Số dòng & Ghi chú \\
-Backend Go & 24 & 11.992 & Bao gồm API server, handler nghiệp vụ, config, storage và kiểm thử backend \\
-Frontend TypeScript/TSX & 74 & 7.762 & Bao gồm app shell, component dùng chung, feature pages, API client và types \\
-Tổng Go/TS/TSX chính & 98 & 19.754 & Chưa tính SQL migration, tài liệu phụ trợ và asset tĩnh \\
-Database migration & 20 & -- & Schema nền tảng, gỡ chức năng cũ và bổ sung ràng buộc toàn vẹn \\
-Kịch bản Playwright & 9 & -- & Browser flow cho đăng nhập, dashboard, phân quyền, accessibility và trạng thái giao diện đã lỗi thời \\
+Backend Go & 26 & 14.624 & Bao gồm API server, handler nghiệp vụ, config, storage và kiểm thử backend \\
+Frontend TypeScript/TSX & 77 & 9.039 & Bao gồm app shell, component dùng chung, feature pages, API client và types \\
+Tổng Go/TS/TSX chính & 103 & 23.663 & Chưa tính SQL migration, tài liệu phụ trợ và asset tĩnh \\
+Database migration & 23 & -- & Schema nền tảng, ràng buộc toàn vẹn và hàng đợi dọn file lỗi \\
+Kịch bản Playwright & 9 & -- & Browser flow cho đăng nhập, dashboard, phân quyền, accessibility, luồng assignment happy path và trạng thái giao diện đã lỗi thời \\
 \end{tblr}
 \end{table}
 
@@ -420,41 +484,18 @@ Kịch bản Playwright & 9 & -- & Browser flow cho đăng nhập, dashboard, ph
   hlines={0.35pt,black!24},
 }
 Nhóm chức năng & Kết quả triển khai & Trạng thái \\
-Xác thực/session & Đăng nhập/đăng xuất/current user bằng cookie, kiểm tra origin, giới hạn đăng nhập, parse cấu hình nghiêm ngặt và kiểm tra cookie/CORS lúc khởi động & \okbadge \\
+Xác thực/session & Đăng nhập/đăng xuất/current user bằng cookie, kiểm tra origin, giới hạn đăng nhập có xét trusted proxy khi cấu hình, parse cấu hình nghiêm ngặt và kiểm tra cookie/CORS lúc khởi động & \okbadge \\
 Quản lý tài khoản & Tạo/tìm kiếm/cập nhật vai trò/trạng thái/mật khẩu, bảo vệ quản trị viên cuối cùng và ghi nhật ký thao tác & \okbadge \\
 Dashboard & Hàng đợi theo vai trò, nhánh quản trị/giảng viên/sinh viên, bài chờ duyệt cũ nhất trước và nhiệm vụ sinh viên cần xử lý & \okbadge \\
-Workspace/thư mục & Kệ thư mục màu, tìm kiếm, danh sách dự án độc lập, thêm dự án có sẵn an toàn với trạng thái cũ và khớp chủ sở hữu & \okbadge \\
+Workspace/thư mục & Kệ thư mục màu, tìm kiếm, danh sách dự án độc lập, thêm dự án có sẵn an toàn với dữ liệu đã tải trước và khớp chủ sở hữu & \okbadge \\
 Dự án/nhóm & Tạo/sửa/xem dự án, kiểm tra lại quyền quản lý và vòng đời trong transaction, tổng hợp tiến độ, kế hoạch công việc, nhóm và vai trò leader/member & \okbadge \\
 \stackcell{Nhiệm vụ\\bài nộp\\duyệt bài} & Nhiệm vụ thuộc mốc kế hoạch, sinh viên được giao active, vùng nộp bài, vùng duyệt bài và một quyết định cuối cùng & \okbadge \\
-Tài nguyên/minh chứng & Hộp thoại tài nguyên, tải lên/tải xuống/xóa minh chứng, tiền kiểm upload, xóa object trước metadata, adapter R2 và khóa dữ liệu sau duyệt & \okbadge \\
+Tài nguyên/minh chứng & Hộp thoại tài nguyên, tải lên/tải xuống/xóa minh chứng, tiền kiểm upload, hàng đợi dọn file lỗi khi khởi động, adapter R2 và khóa dữ liệu sau duyệt & \okbadge \\
 Nhật ký hoạt động & Đã ghi thao tác tài khoản và thêm/đổi vai trò/xóa thành viên; chưa có giao diện tra cứu audit & \partialbadge \\
 Kiểm thử giao diện & Playwright bao phủ các luồng rủi ro chính, nhưng chưa bao phủ toàn bộ form và biến thể tài nguyên/minh chứng & \partialbadge \\
 \end{longtblr}
 
-\subsection*{Bản đồ triển khai theo khu vực}
-
-\tableintro{tab:source-map}{liên kết các khu vực triển khai chính với trách nhiệm tương ứng trong hệ thống}
-\begin{longtblr}[
-  caption={Bản đồ triển khai các khu vực chính},
-  label={tab:source-map},
-]{
-  width=\textwidth,
-  colspec={X[1.25,l]X[2.1,l]},
-  rowhead=1,
-  rows={valign=t},
-  row{1}={font=\bfseries,bg=black!7},
-  hlines={0.35pt,black!24},
-}
-Khu vực triển khai & Vai trò trong hệ thống \\
-Auth/account backend & Đăng nhập, đăng xuất, current user, kiểm tra session, thao tác tài khoản và thu hồi session \\
-Dashboard backend & Tổng hợp SQL, hàng đợi theo vai trò và dự án/nhiệm vụ cần chú ý \\
-Project/task backend & Tạo/sửa/xem dự án, quản lý nhóm, mốc kế hoạch, nhiệm vụ, bài nộp, duyệt bài và khóa vòng đời \\
-Support/storage backend & Kiểm tra đích tài nguyên, upload/download/delete minh chứng, tiền kiểm metadata và dọn object khi lỗi \\
-Frontend app shell & Route giao diện, guard theo đăng nhập/quản trị/giảng viên và chuyển hướng route cũ \\
-Project UI & Hồ sơ dự án, vùng thao tác chính, kế hoạch công việc, nhóm và tài nguyên \\
-Assignment UI & Trang duyệt nhiệm vụ, vùng nộp bài của sinh viên, lịch sử và minh chứng \\
-State/query layer & Query keys, invalidation và refresh sau lỗi quyền hoặc trạng thái \code{403}/\code{409} \\
-\end{longtblr}
+Mã nguồn được tổ chức theo lát tính năng thay vì tách thành các module sản phẩm rời rạc. Các phần backend chính nằm quanh xác thực/tài khoản, dashboard, dự án-nhiệm vụ và tài nguyên-minh chứng; các phần giao diện chính nằm quanh app shell, Workspace, hồ sơ dự án và trang nhiệm vụ. Cách chia này giúp người đọc đối chiếu kết quả triển khai với các nhóm nghiệp vụ đã nêu ở Chương 2 mà không cần nhớ toàn bộ cấu trúc thư mục mã nguồn.
 
 \section{Kiểm thử và đánh giá chất lượng}
 
@@ -477,71 +518,29 @@ Unit/integration test backend & Gọi handler và database test để kiểm tra
 Kiểm thử biên và validation & Gửi JSON sai, route ID sai, trạng thái không hợp lệ, file quá lớn hoặc thao tác không đúng vòng đời & API trả lỗi sai, lộ lỗi database cast, ghi dữ liệu không hợp lệ \\
 Kiểm thử đồng thời và regression & Mô phỏng đăng nhập đua với vô hiệu hóa, tạo nhiệm vụ đua với completed, duyệt bài cũ & Race condition ở quyền/vòng đời và account-control \\
 Database integrity test & Ghi trực tiếp vào database để xác nhận FK, unique index và trigger vẫn chặn invariant bị phá & Lỗi bypass API hoặc migration làm lệch dữ liệu \\
-Playwright E2E/accessibility test & Chạy trình duyệt qua login, dashboard, admin, access-control, trạng thái giao diện lỗi thời, dialog và keyboard flow & Route guard sai, affordance lỗi thời, focus/keyboard không đạt \\
+Playwright E2E/accessibility test & Chạy trình duyệt qua login, dashboard, admin, access-control, assignment happy path, trạng thái giao diện lỗi thời, dialog và keyboard flow & Route guard sai, affordance lỗi thời, luồng chính bị đứt, focus/keyboard không đạt \\
 \end{longtblr}
 
-\tableintro{tab:test-evidence-overview}{tổng hợp bằng chứng kiểm thử hiện có theo từng lớp kiểm tra}
-\begin{table}[H]
-\caption{Tổng quan bằng chứng kiểm thử trong hệ thống}
-\label{tab:test-evidence-overview}
-\centering
-\begin{tblr}{
-  width=\textwidth,
-  colspec={X[1.05,l]X[2.25,l]X[0.65,c]},
-  rows={valign=t},
-  row{1}={font=\bfseries,bg=black!7},
-  hlines={0.35pt,black!24},
-}
-Bộ kiểm thử & Nội dung bao phủ & Bằng chứng kiểm chứng \\
-Kiểm thử ứng dụng Go & Xác thực/session, cấu hình khởi động, tài khoản, dashboard, phân quyền, vòng đời dự án, toàn vẹn thư mục, nhiệm vụ, bài nộp, duyệt bài, tài nguyên, minh chứng, trigger cơ sở dữ liệu và storage & Bộ kiểm thử backend chạy trực tiếp qua handler và database test \\
-Kịch bản Playwright & Đăng nhập smoke, tạo/tìm tài khoản, phân quyền, accessibility, dashboard theo vai trò, kiểm tra ứng viên dự án trong thư mục, trạng thái cũ và ảnh trang đăng nhập & Bộ kiểm thử browser flow trên giao diện web \\
-DB migrations & Schema nền tảng, gỡ chức năng cũ và bổ sung ràng buộc toàn vẹn & Migration SQL được validate trước khi dùng database \\
-\end{tblr}
-\end{table}
-
-\tableintro{tab:backend-test-cases}{nêu các test backend tiêu biểu và rủi ro nghiệp vụ được từng test kiểm soát}
+\tableintro{tab:representative-tests}{nêu các kịch bản kiểm thử tiêu biểu và ý nghĩa của từng kịch bản đối với chất lượng hệ thống}
 \begin{longtblr}[
-  caption={Các test backend tiêu biểu và ý nghĩa},
-  label={tab:backend-test-cases},
+  caption={Các kịch bản kiểm thử tiêu biểu và ý nghĩa},
+  label={tab:representative-tests},
 ]{
   width=\textwidth,
-  colspec={X[1.35,l]X[2.05,l]},
+  colspec={X[1.05,l]X[1.35,l]X[1.35,l]},
   rowhead=1,
   rows={valign=t},
   row{1}={font=\bfseries,bg=black!7},
   hlines={0.35pt,black!24},
 }
-Tình huống kiểm thử backend & Rủi ro được kiểm soát \\
-Vòng đời auth/session & Đăng nhập, current user, đăng xuất, vô hiệu hóa session và tài khoản inactive \\
-Đăng nhập đồng thời với thao tác tài khoản & Không tạo session cũ khi tài khoản đang bị vô hiệu hóa hoặc đặt lại mật khẩu \\
-Bảo vệ quản trị viên active cuối cùng & Không mất tài khoản quản trị còn hoạt động khi nhiều thao tác cập nhật diễn ra đồng thời \\
-Khóa vòng đời dự án & Transaction chặn request tạo nhiệm vụ hoặc nộp bài khi dự án đã đổi trạng thái \\
-Ràng buộc cùng dự án ở database & Trigger/FK chặn thư mục, nhiệm vụ, bài nộp, tài nguyên hoặc minh chứng lệch dự án \\
-Dữ liệu hỗ trợ sau duyệt & API và trigger chặn sửa/xóa/tải lên dữ liệu hỗ trợ khi bài nộp đã có quyết định duyệt cuối \\
-Storage minh chứng & Tải lên/tải xuống/xóa minh chứng theo quyền, vòng đời dự án và trạng thái file riêng tư \\
-\end{longtblr}
-
-\tableintro{tab:playwright-specs}{liệt kê các kịch bản Playwright hiện có và luồng giao diện tương ứng}
-\begin{longtblr}[
-  caption={Các kịch bản Playwright hiện có},
-  label={tab:playwright-specs},
-]{
-  width=\textwidth,
-  colspec={X[1.25,l]X[2.15,l]},
-  rowhead=1,
-  rows={valign=t},
-  row{1}={font=\bfseries,bg=black!7},
-  hlines={0.35pt,black!24},
-}
-Nhóm kiểm thử Playwright & Luồng giao diện được kiểm tra \\
-Auth flow & Quản trị viên đăng nhập và vào dashboard \\
-Admin accounts & Quản trị viên tạo/tìm tài khoản giảng viên và giảng viên đăng nhập \\
-Access control & Chặn người ngoài vai trò quản trị, chặn người ngoài dự án, minh chứng dự án đóng ở chế độ chỉ đọc và chặn tài khoản inactive \\
-Accessibility & Skip link, đóng/focus trong hộp thoại và chọn màu thư mục bằng bàn phím \\
-Dashboard & Tóm tắt cho quản trị viên, hàng đợi giảng viên và nhiệm vụ sinh viên cần xử lý \\
-Database integrity UI & Lọc dự án có thể thêm vào thư mục theo chủ sở hữu/giảng viên phụ trách \\
-State flow & Xóa mô tả thư mục và ẩn ứng viên dự án đã lỗi thời \\
-Visual smoke & Render trang đăng nhập và lưu ảnh kiểm chứng trong Playwright report \\
+Kịch bản & Lớp kiểm thử & Ý nghĩa đối với UniTrack \\
+Đăng nhập, đăng xuất, vô hiệu hóa tài khoản và đặt lại mật khẩu & Go test & Bảo đảm session cũ không tiếp tục hợp lệ khi tài khoản thay đổi. \\
+Quản trị viên active cuối cùng & Go test & Tránh mất đường quản trị hệ thống do thao tác cập nhật sai hoặc đồng thời. \\
+Tạo nhiệm vụ hoặc nộp bài khi dự án đổi trạng thái & Go test với database & Chứng minh server kiểm tra lại vòng đời dự án trước khi ghi dữ liệu. \\
+Ghi trực tiếp dữ liệu lệch dự án & Database integrity test & Chứng minh khóa ngoại, unique index và trigger vẫn bảo vệ dữ liệu dù bỏ qua API. \\
+Minh chứng sau duyệt & Go test và Playwright & Xác nhận file/tài nguyên đã dùng để duyệt bài chỉ còn đọc/tải xuống, không bị sửa hoặc xóa. \\
+Assignment happy path & Playwright & Kiểm tra luồng người dùng đầy đủ: giảng viên tạo dự án, thêm sinh viên, giao nhiệm vụ; sinh viên nộp bài; giảng viên duyệt bài. \\
+Access control và accessibility & Playwright & Kiểm tra route bị giới hạn đúng vai trò, người ngoài dự án bị chặn, hộp thoại/focus/keyboard vẫn dùng được. \\
 \end{longtblr}
 
 \tableintro{tab:verification-commands}{liệt kê các lệnh kiểm thử và build dùng để xác nhận chất lượng trước khi bàn giao}
@@ -557,7 +556,8 @@ Visual smoke & Render trang đăng nhập và lưu ảnh kiểm chứng trong Pl
   hlines={0.35pt,black!24},
 }
 Lệnh & Mục đích \\
-\code{make api-test} & Chạy kiểm thử backend; một số test vòng đời cần \code{TEST\_DATABASE\_URL} \\
+\stackcell{\smallcode{TEST\_DATABASE\_URL=}\\\smallcode{'<postgres-url>'}\\\smallcode{make api-test}} & Chạy kiểm thử backend có database; lệnh bắt buộc cấu hình \code{TEST\_DATABASE\_URL} để test vòng đời không bị bỏ qua ngầm \\
+\smallcode{make api-test-unit} & Chạy kiểm thử Go không bắt buộc database; các test DB tự bỏ qua khi thiếu \code{TEST\_DATABASE\_URL} \\
 \code{make api-build} & Biên dịch API server \\
 \code{make db-validate} & Kiểm tra migration bằng goose \\
 \code{pnpm --filter @unitrack/web lint} & Kiểm tra lint/type của giao diện \\
@@ -568,7 +568,7 @@ Lệnh & Mục đích \\
 
 \section{Triển khai tham khảo}
 
-Kiến trúc triển khai đề xuất dùng Vercel cho giao diện, Render cho Go API, Neon cho PostgreSQL và Cloudflare R2 cho kho minh chứng. Giai đoạn đầu chưa cần CDN hoặc load balancer riêng vì Vercel đã phục vụ giao diện tĩnh qua CDN và Render cung cấp HTTPS routing cho API.
+Kiến trúc triển khai đề xuất dùng Vercel cho giao diện, Render cho Go API, Neon cho PostgreSQL và Cloudflare R2 cho kho minh chứng. Hình~\ref{fig:deployment.png} cũng thể hiện các điểm vận hành cần cấu hình khi đưa hệ thống lên production: biến môi trường bắt buộc, health/readiness check, bước migration database và đường đi riêng tư của file minh chứng. Giai đoạn đầu chưa cần CDN hoặc load balancer riêng vì Vercel đã phục vụ giao diện tĩnh qua CDN và Render cung cấp HTTPS routing cho API.
 
 \figurelead{fig:deployment.png}{mô tả phương án triển khai tham khảo và các thành phần hạ tầng cần cấu hình khi đưa hệ thống lên môi trường production}
 \figDeployment
@@ -587,9 +587,9 @@ Kiến trúc triển khai đề xuất dùng Vercel cho giao diện, Render cho 
 }
 Thành phần & Nền tảng & Cấu hình quan trọng \\
 Giao diện & Vercel & \code{VITE\_API\_URL} trỏ tới Render API; SPA rewrite để refresh route không 404 \\
-Backend & Render & \code{DATABASE\_URL}, \code{CORS\_ALLOWED\_ORIGINS} chính xác, \code{SESSION\_SECURE=true}, \code{SESSION\_SAME\_SITE=none}; API thoát lỗi nếu cấu hình parse sai hoặc không an toàn \\
+Backend & Render & \code{DATABASE\_URL}, \code{CORS\_ALLOWED\_ORIGINS} chính xác, \code{TRUSTED\_PROXY\_CIDRS} nếu tin header proxy, \code{SESSION\_SECURE=true}, \code{SESSION\_SAME\_SITE=none}; production cần bootstrap admin mạnh hoặc admin active sẵn \\
 Cơ sở dữ liệu & Neon & PostgreSQL quản lý sẵn, chạy migration trước khi seed/sử dụng \\
-Lưu trữ & Cloudflare R2 & \code{UPLOAD\_STORAGE\_BACKEND=r2}, bucket private, access key/endpoint cấu hình trong Render; production không dùng local disk \\
+Lưu trữ & Cloudflare R2 & \code{UPLOAD\_STORAGE\_BACKEND=r2}, bucket private, access key/endpoint cấu hình trong Render; download qua API và mỗi lần API khởi động xử lý tối đa 100 job dọn file còn pending \\
 \end{tblr}
 \end{table}
 

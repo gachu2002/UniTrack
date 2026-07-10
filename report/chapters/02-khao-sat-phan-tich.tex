@@ -8,6 +8,8 @@ Quản lý dự án sinh viên khác với quản lý một danh sách bài tậ
 
 Các công cụ rời rạc có thể hỗ trợ một phần công việc, nhưng không tạo được một quy trình có trạng thái rõ ràng. Email lưu được nội dung trao đổi nhưng khó lọc theo nhiệm vụ. Nhóm chat phản hồi nhanh nhưng thông tin dễ bị trôi. Bảng tính dễ chỉnh sửa nhưng thiếu phân quyền và nhật ký thay đổi. Thư mục file lưu được sản phẩm nhưng không thể hiện sản phẩm đó đã được duyệt hay chưa. Vì vậy, hệ thống cần gom các đối tượng nghiệp vụ chính vào một luồng dữ liệu có quan hệ rõ ràng.
 
+Phần khảo sát này dựa trên phân tích quy trình thường gặp khi giảng viên theo dõi nhiều nhóm dự án bằng các công cụ phổ biến nêu trên. Trọng tâm không phải thay thế mọi công cụ giao tiếp, mà là xác định những dữ liệu nào cần được quản lý có trạng thái: dự án, nhiệm vụ, bài nộp, quyết định duyệt và minh chứng.
+
 \tableintro{tab:current-tool-comparison}{so sánh các phương pháp theo dõi dự án hiện tại và rút ra yêu cầu nghiệp vụ tương ứng cho UniTrack}
 \begin{table}[H]
 \caption{So sánh phương pháp hiện tại và yêu cầu nghiệp vụ của UniTrack}
@@ -23,7 +25,7 @@ Các công cụ rời rạc có thể hỗ trợ một phần công việc, như
 Công cụ & Điểm mạnh & Hạn chế trong đồ án dự án & Yêu cầu rút ra cho UniTrack \\
 Email & Có lịch sử trao đổi, quen thuộc & Khó theo dõi trạng thái từng nhiệm vụ, dễ lẫn phiên bản bài nộp & Bài nộp phải gắn trực tiếp với nhiệm vụ và dự án \\
 Nhóm chat & Phản hồi nhanh & Không có cấu trúc nghiệp vụ, khó tìm lại quyết định duyệt bài cũ & Quyết định duyệt bài cần có lịch sử riêng và trạng thái cuối cùng \\
-Bảng tính & Tổng hợp được danh sách & Dễ sai khi nhiều người sửa, thiếu kiểm tra quyền & Backend và cơ sở dữ liệu phải giữ ràng buộc, không tin hoàn toàn dữ liệu từ giao diện \\
+Bảng tính & Tổng hợp được danh sách & Dễ sai khi nhiều người sửa, thiếu kiểm tra quyền & Server và cơ sở dữ liệu phải giữ ràng buộc, không tin hoàn toàn dữ liệu từ giao diện \\
 Thư mục lưu file & Lưu sản phẩm, ảnh, báo cáo & Không biết file thuộc bài nộp nào, có thể bị sửa sau khi đã duyệt & Minh chứng phải gắn với bài nộp và chuyển sang chỉ đọc sau khi duyệt \\
 UniTrack & Dự án, nhiệm vụ, bài nộp, duyệt bài và minh chứng trong cùng hệ thống & Cần xây dựng ứng dụng Web và vận hành dữ liệu, session, file storage & Tập trung vào dự án, phân quyền và vòng đời rõ ràng \\
 \end{tblr}
@@ -143,7 +145,7 @@ UC07 & Thêm sinh viên vào dự án & Người quản lý thêm sinh viên act
 
 \subsection{Quy trình thêm sinh viên vào dự án}
 
-Giảng viên thêm sinh viên bằng email. Backend tìm tài khoản theo email, sau đó kiểm tra quyền quản lý dự án, trạng thái dự án, trạng thái tài khoản, vai trò sinh viên và tư cách thành viên hiện tại. Thao tác này được đồng bộ với các thay đổi tài khoản để tránh trường hợp một sinh viên vừa bị vô hiệu hóa ở request khác nhưng vẫn được thêm vào dự án.
+Giảng viên thêm sinh viên bằng email. Server tìm tài khoản theo email, sau đó kiểm tra quyền quản lý dự án, trạng thái dự án, trạng thái tài khoản, vai trò sinh viên và tư cách thành viên hiện tại. Thao tác này được đồng bộ với các thay đổi tài khoản để tránh trường hợp một sinh viên vừa bị vô hiệu hóa ở yêu cầu khác nhưng vẫn được thêm vào dự án.
 
 \figurelead{fig:add-student-workflow.png}{cụ thể hóa các bước kiểm tra cần thực hiện trước khi một sinh viên được ghi nhận là thành viên dự án}
 \figAddStudentWorkflow
@@ -175,10 +177,10 @@ Vòng đời dự án là căn cứ quyết định các thao tác ghi. Ở mứ
   hlines={0.35pt,black!24},
 }
 Luồng nghiệp vụ & Điểm dễ sai nếu làm thủ công & Quy tắc UniTrack áp dụng \\
-Thêm thành viên & Sinh viên không còn hoạt động hoặc không thuộc dự án vẫn được giao việc & Backend khóa tài khoản khi kiểm tra và chỉ nhận sinh viên active; khi xóa thành viên thì dọn liên kết phân công liên quan \\
+Thêm thành viên & Sinh viên không còn hoạt động hoặc không thuộc dự án vẫn được giao việc & Server đọc trạng thái tài khoản mới nhất và chỉ nhận sinh viên active; khi xóa thành viên thì dọn liên kết phân công liên quan \\
 Tạo nhiệm vụ & Nhiệm vụ không gắn mốc hoặc gán nhầm sinh viên ngoài dự án & Nhiệm vụ phải thuộc mốc cùng dự án; người được giao phải là thành viên active \\
 Nộp bài & Một nhiệm vụ có nhiều bài chờ duyệt, hoặc sinh viên nộp sau khi dự án đã đóng & Ràng buộc một bài chờ duyệt và khóa vòng đời chặn request đã cũ \\
-Duyệt bài & Hai giảng viên cùng duyệt một bài hoặc duyệt khi minh chứng chưa tải đủ & Backend khóa bài đang chờ duyệt; giao diện chặn lưu nếu dữ liệu hỗ trợ chưa sẵn sàng \\
+Duyệt bài & Hai giảng viên cùng duyệt một bài hoặc duyệt khi minh chứng chưa tải đủ & Server chỉ cho một quyết định cuối cùng; giao diện chặn lưu nếu dữ liệu hỗ trợ chưa sẵn sàng \\
 Minh chứng & File minh chứng bị sửa/xóa sau khi đã là căn cứ đánh giá & API và trigger cơ sở dữ liệu chặn ghi sau khi duyệt, nhưng vẫn cho tải xuống \\
 \end{tblr}
 \end{table}
@@ -208,9 +210,9 @@ FR07 & Mốc kế hoạch & Người quản lý tạo, sửa, xóa khi hợp l�
 FR08 & Nhiệm vụ & Người quản lý tạo/sửa nhiệm vụ thuộc mốc kế hoạch, đặt hạn nộp, mức ưu tiên và phân công sinh viên active trong dự án. \\
 FR09 & Bài nộp & Sinh viên được phân công nộp báo cáo tiến độ khi dự án active và chưa có bài chờ duyệt trùng nhiệm vụ. \\
 FR10 & Duyệt bài & Người quản lý duyệt một bài đang chờ duyệt một lần duy nhất, đồng bộ trạng thái bài nộp và trạng thái tiến độ nhiệm vụ. \\
-FR11 & Tài nguyên & Người có quyền xem dự án được thêm resource link vào dự án, mốc kế hoạch, nhiệm vụ hoặc bài nộp đang chờ duyệt theo trạng thái vòng đời. \\
+FR11 & Tài nguyên & Người có quyền xem dự án được thêm đường dẫn tài nguyên vào dự án, mốc kế hoạch, nhiệm vụ hoặc bài nộp đang chờ duyệt theo trạng thái vòng đời. \\
 FR12 & Minh chứng & Người nộp hoặc người quản lý được tải lên, tải xuống, xóa minh chứng cho bài đang chờ duyệt; minh chứng đã duyệt chỉ còn đọc/tải xuống. \\
-FR13 & Phân quyền & Giao diện và backend kiểm tra quyền theo vai trò, quan hệ với dự án, trạng thái tài khoản và vòng đời dự án. \\
+FR13 & Phân quyền & Giao diện và server kiểm tra quyền theo vai trò, quan hệ với dự án, trạng thái tài khoản và vòng đời dự án. \\
 FR14 & Toàn vẹn dữ liệu & Cơ sở dữ liệu bảo vệ quan hệ cùng dự án giữa nhiệm vụ, bài nộp và minh chứng; bảo đảm một bài chờ duyệt và không sửa minh chứng sau khi duyệt. \\
 FR15 & Kiểm thử & Có kiểm thử backend, kiểm thử trình duyệt bằng Playwright, kiểm tra lint/build giao diện và kiểm tra migration cơ sở dữ liệu. \\
 \end{longtblr}
@@ -236,9 +238,9 @@ Phần đặc tả chi tiết chỉ chọn bảy use case trọng tâm. Các tha
 Thuộc tính & Mô tả \\
 Tác nhân & Quản trị viên, giảng viên hoặc sinh viên đã có tài khoản active \\
 Tiền điều kiện & API hoạt động, tài khoản tồn tại, mật khẩu đúng, trạng thái tài khoản là \code{active} \\
-Luồng chính & Người dùng nhập email và mật khẩu; giao diện gọi \route{POST /api/v1/auth/login}; backend chuẩn hóa email, áp dụng giới hạn đăng nhập, khóa dòng tài khoản, kiểm tra mật khẩu bcrypt, tạo session token ngẫu nhiên, lưu token hash vào bảng \code{sessions}, đặt cookie HttpOnly và trả thông tin người dùng. \\
-Luồng thay thế & Sai thông tin đăng nhập trả \code{401}; tài khoản inactive bị từ chối; body JSON sai hoặc có dữ liệu thừa trả \code{400}; vượt giới hạn đăng nhập trả \code{429}. \\
-Hậu điều kiện & Browser có session cookie hợp lệ; giao diện lưu current user và chuyển tới dashboard hoặc trang đang chờ. \\
+Luồng chính & Người dùng nhập email và mật khẩu; hệ thống kiểm tra thông tin đăng nhập, trạng thái tài khoản và giới hạn đăng nhập; nếu hợp lệ, hệ thống tạo phiên đăng nhập và chuyển người dùng tới dashboard theo vai trò. \\
+Luồng thay thế & Sai thông tin đăng nhập, tài khoản không hoạt động, dữ liệu form không hợp lệ hoặc vượt giới hạn đăng nhập sẽ bị từ chối và giao diện hiển thị thông báo lỗi phù hợp. \\
+Hậu điều kiện & Người dùng có phiên đăng nhập hợp lệ; giao diện biết vai trò hiện tại và chuyển tới dashboard hoặc trang đang chờ. \\
 \end{longtblr}
 
 \subsection{UC02 -- Tạo dự án}
@@ -258,8 +260,8 @@ Hậu điều kiện & Browser có session cookie hợp lệ; giao diện lưu c
 Thuộc tính & Mô tả \\
 Tác nhân & Giảng viên hoặc quản trị viên \\
 Tiền điều kiện & Người dùng đã đăng nhập; nếu chọn thư mục thì thư mục active và chủ thư mục khớp giảng viên phụ trách dự án \\
-Luồng chính & Người dùng mở hộp thoại tạo dự án, nhập tên, chủ đề, mô tả, khoảng thời gian và thư mục nếu có; giao diện kiểm tra cơ bản; backend kiểm tra vai trò, giảng viên phụ trách, thứ tự ngày và khả năng sử dụng thư mục; tạo dự án và liên kết thư mục trong transaction; trả dữ liệu dự án. \\
-Luồng thay thế & Tên rỗng, ngày không hợp lệ, thư mục không thuộc giảng viên phụ trách hoặc người dùng không đủ quyền sẽ trả lỗi; giao diện refresh dữ liệu liên quan khi có xung đột trạng thái. \\
+Luồng chính & Người dùng mở hộp thoại tạo dự án, nhập tên, chủ đề, mô tả, khoảng thời gian và thư mục nếu có. Hệ thống kiểm tra quyền tạo dự án, thông tin thời gian và việc gán thư mục, sau đó tạo dự án mới. \\
+Luồng thay thế & Tên rỗng, ngày không hợp lệ, thư mục không phù hợp hoặc người dùng không đủ quyền sẽ bị từ chối; giao diện giữ lại dữ liệu để người dùng sửa. \\
 Hậu điều kiện & Dự án mới xuất hiện trong workspace, trang chi tiết thư mục hoặc danh sách dự án độc lập và được đưa vào các thống kê liên quan. \\
 \end{longtblr}
 
@@ -280,8 +282,8 @@ Hậu điều kiện & Dự án mới xuất hiện trong workspace, trang chi t
 Thuộc tính & Mô tả \\
 Tác nhân & Giảng viên hoặc quản trị viên có quyền quản lý dự án \\
 Tiền điều kiện & Dự án active; mốc kế hoạch thuộc cùng dự án; sinh viên được giao là thành viên active của dự án \\
-Luồng chính & Người quản lý mở chức năng tạo nhiệm vụ trong kế hoạch, chọn mốc, nhập tiêu đề, mô tả, hạn nộp, mức ưu tiên và danh sách sinh viên; backend khóa dự án, kiểm tra lại quyền quản lý, vòng đời, mốc cùng dự án và sinh viên được giao, sau đó tạo nhiệm vụ và các phân công tương ứng. \\
-Luồng thay thế & Dự án on hold/completed/archived, mốc không cùng dự án hoặc sinh viên được giao không hợp lệ sẽ bị từ chối; giao diện refresh dữ liệu sau lỗi \code{403}/\code{409}. \\
+Luồng chính & Người quản lý mở chức năng tạo nhiệm vụ trong kế hoạch, chọn mốc, nhập tiêu đề, mô tả, hạn nộp, mức ưu tiên và danh sách sinh viên. Hệ thống kiểm tra dự án còn cho phép giao việc, mốc thuộc dự án và sinh viên được giao là thành viên hợp lệ, sau đó tạo nhiệm vụ. \\
+Luồng thay thế & Dự án không còn cho phép giao việc, mốc không cùng dự án hoặc sinh viên được giao không hợp lệ sẽ bị từ chối; giao diện tải lại dữ liệu khi trạng thái dự án đã thay đổi. \\
 Hậu điều kiện & Nhiệm vụ xuất hiện dưới mốc kế hoạch, sinh viên được giao nhìn thấy trong dashboard và thống kê dự án được cập nhật. \\
 \end{longtblr}
 
@@ -302,8 +304,8 @@ Hậu điều kiện & Nhiệm vụ xuất hiện dưới mốc kế hoạch, si
 Thuộc tính & Mô tả \\
 Tác nhân & Sinh viên được phân công nhiệm vụ \\
 Tiền điều kiện & Sinh viên active, là thành viên dự án, được phân công vào nhiệm vụ, dự án active, nhiệm vụ chưa hoàn tất, chưa có bài chờ duyệt cùng nhiệm vụ và file minh chứng không vượt 10 MB. \\
-Luồng chính & Sinh viên mở trang nhiệm vụ, nhập tiêu đề, mô tả và vướng mắc rồi gửi bài nộp. Backend khóa dự án, kiểm tra lại thành viên, nhiệm vụ và bài chờ duyệt trùng, tạo báo cáo đang chờ duyệt. Khi sinh viên gắn file minh chứng, backend tiền kiểm metadata, ghi object riêng tư, kiểm tra lại quyền/đích trong transaction và lưu metadata file. \\
-Luồng thay thế & Dự án đã đóng ghi, sinh viên bị xóa khỏi nhóm, nhiệm vụ đã hoàn tất, có bài chờ duyệt trùng, file quá lớn hoặc bài đã được duyệt sẽ trả \code{400}/\code{403}/\code{409}; giao diện refresh dữ liệu nhiệm vụ/dự án. \\
+Luồng chính & Sinh viên mở trang nhiệm vụ, nhập tiêu đề, mô tả và vướng mắc rồi gửi bài nộp. Hệ thống kiểm tra sinh viên còn thuộc dự án, còn được phân công và nhiệm vụ chưa có bài đang chờ duyệt, sau đó ghi nhận bài nộp. Sinh viên có thể gắn file minh chứng cho bài đang chờ duyệt. \\
+Luồng thay thế & Dự án đã đóng ghi, sinh viên bị xóa khỏi nhóm, nhiệm vụ đã hoàn tất, có bài chờ duyệt trùng, file quá lớn hoặc bài đã được duyệt sẽ bị từ chối; giao diện tải lại dữ liệu nhiệm vụ/dự án. \\
 Hậu điều kiện & Bài nộp xuất hiện trong lịch sử và danh sách chờ duyệt; minh chứng gắn với bài nộp đang chờ duyệt và sẵn sàng cho người duyệt kiểm tra. \\
 \end{longtblr}
 
@@ -324,8 +326,8 @@ Hậu điều kiện & Bài nộp xuất hiện trong lịch sử và danh sách
 Thuộc tính & Mô tả \\
 Tác nhân & Giảng viên hoặc quản trị viên có quyền quản lý dự án \\
 Tiền điều kiện & Bài nộp đang chờ duyệt, dự án chưa archived, người duyệt còn quyền quản lý \\
-Luồng chính & Người duyệt mở trang duyệt bài, xem mô tả nhiệm vụ, ngữ cảnh, tài nguyên và minh chứng, chọn chấp nhận/yêu cầu sửa/từ chối, nhập hướng dẫn khi cần và gửi quyết định; backend khóa dự án, kiểm tra lại quyền quản lý, khóa bài đang chờ duyệt, tạo bản ghi duyệt, đồng bộ trạng thái nhiệm vụ và trả lịch sử mới. \\
-Luồng thay thế & Bài nộp đã được session khác duyệt trả \code{409}; quyết định yêu cầu sửa hoặc từ chối nhưng thiếu hướng dẫn trả \code{400}; nếu dữ liệu minh chứng chưa tải đủ thì giao diện chặn nút lưu duyệt. \\
+Luồng chính & Người duyệt mở trang duyệt bài, xem mô tả nhiệm vụ, ngữ cảnh, tài nguyên và minh chứng, chọn chấp nhận/yêu cầu sửa/từ chối, nhập hướng dẫn khi cần và gửi quyết định. Hệ thống ghi nhận quyết định cuối cùng và cập nhật trạng thái nhiệm vụ. \\
+Luồng thay thế & Bài nộp đã được người khác duyệt, quyết định yêu cầu sửa/từ chối nhưng thiếu hướng dẫn, hoặc dữ liệu minh chứng chưa sẵn sàng sẽ bị chặn. \\
 Hậu điều kiện & Bài nộp có quyết định duyệt cuối cùng; tài nguyên và minh chứng của bài nộp chuyển sang chỉ đọc nhưng vẫn tải xuống được. \\
 \end{longtblr}
 
@@ -346,7 +348,7 @@ Hậu điều kiện & Bài nộp có quyết định duyệt cuối cùng; tài
 Thuộc tính & Mô tả \\
 Tác nhân & Quản trị viên \\
 Tiền điều kiện & Quản trị viên đã đăng nhập; hệ thống còn ít nhất một quản trị viên active sau thao tác. \\
-Luồng chính & Quản trị viên mở trang quản lý tài khoản, tìm kiếm hoặc tạo tài khoản mới, chọn vai trò/trạng thái và đặt mật khẩu khi cần. Backend kiểm tra quyền quản trị, chuẩn hóa email, giữ lại quản trị viên active cuối cùng, thu hồi session khi đổi mật khẩu/vô hiệu hóa và ghi nhật ký thao tác. \\
+Luồng chính & Quản trị viên mở trang quản lý tài khoản, tìm kiếm hoặc tạo tài khoản mới, chọn vai trò/trạng thái và đặt mật khẩu khi cần. Hệ thống kiểm tra quyền quản trị, tránh làm mất quản trị viên hoạt động cuối cùng, thu hồi phiên đăng nhập khi đổi mật khẩu/vô hiệu hóa và ghi nhật ký thao tác. \\
 Luồng thay thế & Email trùng, vai trò không hợp lệ, cố vô hiệu hóa quản trị viên active cuối cùng hoặc tài khoản đang phụ trách công việc mở mà chưa chọn phương án chuyển giao sẽ bị từ chối. \\
 Hậu điều kiện & Danh sách tài khoản được cập nhật; session liên quan bị thu hồi khi cần; dashboard và cache tài khoản được làm mới. \\
 \end{longtblr}
@@ -368,7 +370,7 @@ Hậu điều kiện & Danh sách tài khoản được cập nhật; session li
 Thuộc tính & Mô tả \\
 Tác nhân & Giảng viên hoặc quản trị viên có quyền quản lý dự án \\
 Tiền điều kiện & Dự án active hoặc on hold theo quy tắc nhóm; tài khoản sinh viên đã tồn tại và đang active. \\
-Luồng chính & Người quản lý mở popover nhóm, nhập email sinh viên và gửi yêu cầu thêm. Backend khóa dự án, kiểm tra lại quyền quản lý, kiểm tra vòng đời, khóa tài khoản sinh viên để đọc trạng thái mới nhất rồi tạo bản ghi thành viên nếu chưa tồn tại. \\
+Luồng chính & Người quản lý mở popover nhóm, nhập email sinh viên và gửi yêu cầu thêm. Hệ thống kiểm tra quyền quản lý, trạng thái dự án, vai trò và trạng thái tài khoản sinh viên rồi thêm sinh viên nếu chưa là thành viên. \\
 Luồng thay thế & Email không tồn tại, tài khoản không phải sinh viên, tài khoản inactive, dự án archived/completed hoặc sinh viên đã là thành viên sẽ trả lỗi và giao diện giữ nguyên danh sách hiện tại. \\
 Hậu điều kiện & Sinh viên thấy dự án trong Workspace; người quản lý có thể phân công sinh viên vào nhiệm vụ sau đó. \\
 \end{longtblr}
@@ -389,12 +391,12 @@ Hậu điều kiện & Sinh viên thấy dự án trong Workspace; người qu�
 }
 Nhóm yêu cầu & Mô tả \\
 Tính dễ dùng & Giao diện phải dẫn người dùng tới việc cần làm tiếp theo: giảng viên/quản trị viên thấy bài chờ duyệt và nhiệm vụ quá hạn; sinh viên thấy nhiệm vụ cần xử lý. \\
-Bảo mật session & Session cookie phải có cấu hình \code{Secure}/\code{SameSite} theo môi trường; write request phải qua lớp kiểm tra origin tin cậy. \\
-Phân quyền & Backend là nguồn quyết định cuối cùng cho vai trò, trạng thái tài khoản, quan hệ với dự án và vòng đời dự án. \\
+Bảo mật session & Session cookie phải được cấu hình an toàn theo môi trường; các request thay đổi dữ liệu phải đến từ nguồn tin cậy; hệ thống phải thu hồi session khi tài khoản thay đổi. \\
+Phân quyền & Server là nguồn quyết định cuối cùng cho vai trò, trạng thái tài khoản, quan hệ với dự án và vòng đời dự án. \\
 Toàn vẹn dữ liệu & PostgreSQL phải có khóa ngoại, chỉ mục duy nhất và trigger để giữ nhiệm vụ, bài nộp, tài nguyên/minh chứng cùng dự án và không bị sửa sau khi duyệt. \\
 Khả năng bảo trì & Mã nguồn tổ chức theo lát tính năng; phần mô tả kỹ thuật phải bám sát triển khai hiện tại. \\
-Khả năng kiểm thử & Kiểm thử backend phải bao phủ các ràng buộc nghiệp vụ; Playwright kiểm tra những route/giao diện rủi ro cao từ góc nhìn người dùng. \\
-Triển khai & Hệ thống chạy cục bộ với PostgreSQL và có hướng triển khai Vercel, Render, Neon, Cloudflare R2 cho môi trường sản xuất chi phí thấp. \\
+Khả năng kiểm thử & Kiểm thử phía server phải bao phủ các ràng buộc nghiệp vụ; Playwright kiểm tra những màn hình rủi ro cao từ góc nhìn người dùng. \\
+Triển khai & Hệ thống chạy cục bộ với PostgreSQL và có hướng triển khai Vercel, Render, Neon, Cloudflare R2; môi trường production phải có cấu hình đăng nhập, CORS, storage và tài khoản quản trị ban đầu an toàn. \\
 \end{longtblr}
 
 Các yêu cầu chính của UniTrack đã được xác định theo ba vai trò, các use case trọng tâm và các ràng buộc nghiệp vụ cần bảo vệ. Những yêu cầu này là cơ sở để Chương 3 lựa chọn công nghệ phù hợp và Chương 4 thiết kế chi tiết kiến trúc, dữ liệu, giao diện và kiểm thử.

@@ -17,7 +17,7 @@ Các lựa chọn công nghệ của UniTrack xuất phát từ yêu cầu đã 
 Yêu cầu từ Chương 2 & Lựa chọn thay thế & Công nghệ chọn & Lý do chọn \\
 Giao diện theo vai trò, nhiều trạng thái và nhiều hộp thoại & Vue, Angular, render phía server & React, TypeScript, Vite & React phù hợp SPA nhiều trạng thái; TypeScript giúp kiểm soát DTO; Vite tạo môi trường phát triển nhanh \\
 Thiết kế UI nhất quán và có khả năng truy cập & CSS thuần, Bootstrap, Material UI & Tailwind CSS, shadcn/Radix & Tailwind dễ bám visual system riêng; Radix hỗ trợ focus, dialog, popover và select tốt \\
-Cache dữ liệu server và xử lý stale state & Tự viết fetch/cache, Redux Toolkit Query & TanStack Query, Zustand & TanStack Query phù hợp invalidation theo route/dữ liệu; Zustand chỉ dùng cho session state nhỏ \\
+Cache dữ liệu server và xử lý dữ liệu cũ trên giao diện & Tự viết fetch/cache, Redux Toolkit Query & TanStack Query, Zustand & TanStack Query phù hợp invalidation theo route/dữ liệu; Zustand chỉ dùng cho session state nhỏ \\
 API REST, transaction và triển khai gọn & Node.js/Express, Java Spring Boot, Python/FastAPI & Go, chi, pgx & Go build gọn; chi đơn giản; pgx cho phép kiểm soát SQL, transaction và khóa dòng rõ ràng \\
 Dữ liệu quan hệ và ràng buộc nghiệp vụ mạnh & MySQL, MongoDB, SQLite & PostgreSQL, goose & PostgreSQL hỗ trợ FK, partial unique index, trigger và transaction phù hợp dữ liệu cùng dự án \\
 Minh chứng riêng tư và triển khai cloud chi phí thấp & Lưu file public, S3, disk local production & Local filesystem dev, Cloudflare R2 production & R2 private bucket phù hợp object storage chi phí thấp; download đi qua API để kiểm tra quyền \\
@@ -26,7 +26,7 @@ Kiểm thử luồng nghiệp vụ và giao diện & Cypress, Selenium, test th�
 
 \section{Giao diện Web}
 
-Phần giao diện được xây dựng bằng React, TypeScript và Vite. React phù hợp với các màn hình như dashboard, Workspace, hồ sơ dự án và trang nhiệm vụ, nơi dữ liệu thay đổi theo vai trò người dùng, trạng thái dự án và kết quả trả về từ API. TypeScript giúp thống nhất kiểu dữ liệu giữa giao diện và backend, giảm lỗi khi thay đổi các đối tượng như dự án, nhiệm vụ, bài nộp, tài nguyên hoặc minh chứng. Vite được dùng để chạy môi trường phát triển và tạo bản build nhanh cho ứng dụng SPA \cite{react,typescript,vite}.
+Phần giao diện được xây dựng bằng React, TypeScript và Vite. React phù hợp với các màn hình như dashboard, Workspace, hồ sơ dự án và trang nhiệm vụ, nơi dữ liệu thay đổi theo vai trò người dùng, trạng thái dự án và kết quả trả về từ API. TypeScript giúp thống nhất kiểu dữ liệu giữa giao diện và server, giảm lỗi khi thay đổi các đối tượng như dự án, nhiệm vụ, bài nộp, tài nguyên hoặc minh chứng. Vite được dùng để chạy môi trường phát triển và tạo bản build nhanh cho ứng dụng SPA \cite{react,typescript,vite}.
 
 Giao diện UniTrack dùng Tailwind CSS cùng các primitive của shadcn/Radix. Tailwind giúp triển khai nhất quán phong cách sổ theo dõi học thuật: nền xanh đậm, khối nội dung sáng, tiêu đề lệnh gọn, dấu trạng thái rõ và các danh sách phân tách bằng đường kẻ mảnh. Radix hỗ trợ các thành phần cần khả năng truy cập tốt như hộp thoại, popover, select và kiểm soát focus \cite{tailwind,radix}.
 
@@ -36,21 +36,21 @@ So với các UI framework đóng gói sẵn như Bootstrap hoặc Material UI, 
 
 UniTrack dùng TanStack Query để quản lý dữ liệu lấy từ server. Một thao tác như tạo nhiệm vụ, thêm sinh viên, nộp bài hoặc duyệt bài có thể ảnh hưởng đồng thời tới dashboard, Workspace, hồ sơ dự án và trang nhiệm vụ. Vì vậy, hệ thống đặt query key và hàm làm mới dữ liệu tập trung trong lớp tiện ích của giao diện. Zustand được dùng cho phần state nhỏ của session, đặc biệt là current user \cite{tanstackquery,zustand}.
 
-Giao diện phải xử lý stale state. Nếu người dùng đang mở form tạo nhiệm vụ trong lúc dự án bị chuyển sang \code{completed} ở session khác, backend sẽ từ chối request và giao diện cần tải lại dữ liệu để ẩn thao tác không còn hợp lệ.
+Giao diện phải xử lý dữ liệu cũ. Nếu người dùng đang mở form tạo nhiệm vụ trong lúc dự án bị chuyển sang \code{completed} ở session khác, server sẽ từ chối request và giao diện cần tải lại dữ liệu để ẩn thao tác không còn hợp lệ.
 
 Nếu tự viết cache hoặc lưu toàn bộ dữ liệu vào một global store, mỗi mutation sẽ phải tự quyết định vùng dữ liệu nào cần làm mới. TanStack Query phù hợp hơn vì query key, stale time, invalidation và refetch có thể chuẩn hóa theo từng nhóm chức năng, trong khi Zustand chỉ giữ phần session nhỏ để tránh biến giao diện thành một kho trạng thái cục bộ lớn.
 
-\section{Backend và API}
+\section{Server và API}
 
-Backend được viết bằng Go, sử dụng chi để đăng ký route và pgx để làm việc với PostgreSQL. Go phù hợp với kiểu triển khai một API server nhỏ gọn, dễ build và dễ đưa lên các nền tảng như Render. chi giữ phần định tuyến đơn giản, trong khi pgx cho phép viết SQL trực tiếp và kiểm soát rõ transaction, khóa dòng và các truy vấn tổng hợp \cite{go,chi,pgx}.
+Server được viết bằng Go, sử dụng chi để đăng ký route và pgx để làm việc với PostgreSQL. Go phù hợp với kiểu triển khai một API server nhỏ gọn, dễ build và dễ đưa lên các nền tảng như Render. chi giữ phần định tuyến đơn giản, trong khi pgx cho phép viết SQL trực tiếp và kiểm soát rõ transaction, khóa dòng và các truy vấn tổng hợp \cite{go,chi,pgx}.
 
-API dùng mô hình REST dưới tiền tố \route{/api/v1}, lấy tài nguyên và thao tác HTTP làm ranh giới giao tiếp giữa giao diện và backend \cite{fielding2000rest}. Các request JSON đi qua strict JSON decoder: giới hạn kích thước, từ chối trường lạ và không nhận body có nhiều giá trị JSON nối tiếp. Với các route có route ID, backend kiểm tra UUID trước khi truy vấn để trả lỗi rõ ràng, tránh để lỗi ép kiểu từ cơ sở dữ liệu rơi ra ngoài. Các helper nghiệp vụ có thể trả lỗi trạng thái có kiểu rõ ràng để phân biệt lỗi dữ liệu người dùng với lỗi hạ tầng.
+API dùng mô hình REST dưới tiền tố \route{/api/v1}, lấy tài nguyên và thao tác HTTP làm ranh giới giao tiếp giữa giao diện và server \cite{fielding2000rest}. Các request JSON đi qua strict JSON decoder: giới hạn kích thước, từ chối trường lạ và không nhận body có nhiều giá trị JSON nối tiếp. Với các route có route ID, server kiểm tra UUID trước khi truy vấn để trả lỗi rõ ràng, tránh để lỗi ép kiểu từ cơ sở dữ liệu rơi ra ngoài. Các helper nghiệp vụ có thể trả lỗi trạng thái có kiểu rõ ràng để phân biệt lỗi dữ liệu người dùng với lỗi hạ tầng.
 
 Các framework backend lớn hơn như Spring Boot hoặc NestJS có nhiều thành phần tích hợp sẵn, nhưng cũng làm tăng độ phức tạp đối với một đồ án cần kiểm soát rõ transaction và SQL. Go với chi và pgx giữ đường đi request ngắn hơn: route, middleware, handler, helper phân quyền, transaction và câu SQL đều nằm trong phạm vi dễ đọc.
 
 \section{Cơ sở dữ liệu}
 
-PostgreSQL là lớp bảo vệ quan trọng của hệ thống. Ngoài việc lưu dữ liệu, UniTrack cần giữ đúng quan hệ giữa dự án, thành viên, mốc kế hoạch, nhiệm vụ, bài nộp, duyệt bài, tài nguyên và minh chứng. Các khái niệm khóa ngoại, ràng buộc toàn vẹn, transaction và phục hồi khi lỗi là nền tảng của hệ quản trị cơ sở dữ liệu quan hệ \cite{silberschatz2020database}. PostgreSQL hỗ trợ khóa ngoại, chỉ mục duy nhất, transaction và trigger, phù hợp với các ràng buộc mà backend cũng kiểm tra ở tầng ứng dụng \cite{postgresql}.
+PostgreSQL là lớp bảo vệ quan trọng của hệ thống. Ngoài việc lưu dữ liệu, UniTrack cần giữ đúng quan hệ giữa dự án, thành viên, mốc kế hoạch, nhiệm vụ, bài nộp, duyệt bài, tài nguyên và minh chứng. Các khái niệm khóa ngoại, ràng buộc toàn vẹn, transaction và phục hồi khi lỗi là nền tảng của hệ quản trị cơ sở dữ liệu quan hệ \cite{silberschatz2020database}. PostgreSQL hỗ trợ khóa ngoại, chỉ mục duy nhất, transaction và trigger, phù hợp với các ràng buộc mà server cũng kiểm tra ở tầng ứng dụng \cite{postgresql}.
 
 Với những thao tác có thể xảy ra đồng thời, transaction và khóa dòng giúp hệ thống đọc lại trạng thái mới nhất trước khi ghi. Cách tiếp cận này dựa trên nguyên tắc kiểm soát đồng thời trong hệ cơ sở dữ liệu: thao tác hợp lệ phải giữ được tính nhất quán ngay cả khi nhiều request cùng tác động lên một đối tượng \cite{bernstein1987concurrency}.
 
@@ -79,13 +79,13 @@ Thư mục đúng giảng viên phụ trách & Trigger ràng buộc chủ thư m
 
 \section{Session và file storage}
 
-UniTrack dùng cookie-based session. Khi đăng nhập thành công, backend sinh token ngẫu nhiên, lưu token hash trong bảng \code{sessions} và gửi cookie HttpOnly về browser. Cách làm này tránh lưu access token trong local storage. Các cấu hình \code{Secure}, \code{SameSite} và CORS được parse nghiêm ngặt và kiểm tra lúc khởi động; giá trị bool/duration/\code{SameSite} sai định dạng hoặc cấu hình production nguy hiểm làm API thoát lỗi thay vì chạy với trạng thái không an toàn.
+UniTrack dùng cookie-based session. Khi đăng nhập thành công, server sinh token ngẫu nhiên, lưu token hash trong bảng \code{sessions} và gửi cookie HttpOnly về browser. Cách làm này tránh lưu access token trong local storage. Các cấu hình \code{Secure}, \code{SameSite}, CORS, trusted proxy khi khai báo và bootstrap admin được parse nghiêm ngặt lúc khởi động; giá trị sai định dạng hoặc cấu hình production nguy hiểm làm API thoát lỗi thay vì chạy với trạng thái không an toàn.
 
-Minh chứng trong môi trường phát triển được lưu trên local filesystem với quyền file riêng tư. Khi triển khai, backend được thiết kế để dùng Cloudflare R2 private bucket. File không public trực tiếp; người dùng tải qua API để backend kiểm tra quyền xem dự án trước khi truyền nội dung. Luồng upload kiểm tra metadata trước khi ghi object, còn luồng xóa gỡ object trước metadata để lỗi storage còn có thể thử lại \cite{cloudflarer2}.
+Minh chứng trong môi trường phát triển được lưu trên local filesystem với quyền file riêng tư. Khi triển khai, server được thiết kế để dùng Cloudflare R2 private bucket. File không public trực tiếp; người dùng tải qua API để server kiểm tra quyền xem dự án trước khi truyền nội dung. Luồng upload tạo job dọn lỗi trước khi ghi file, rồi hoàn tất job trong transaction lưu metadata; nếu metadata lỗi, job còn lại giúp dọn file mồ côi. Luồng xóa metadata cũng tạo job dọn lỗi, thử xóa ngay sau commit và để job còn pending được xử lý lại khi API khởi động; hệ thống chưa có worker định kỳ cho hàng đợi này \cite{cloudflarer2}.
 
 \section{Kiểm thử và triển khai}
 
-Backend dùng Go test để kiểm tra các ràng buộc nghiệp vụ quan trọng như session, phân quyền, vòng đời dự án, bài nộp, duyệt bài, minh chứng và trigger cơ sở dữ liệu. Frontend dùng Playwright cho các browser flow có rủi ro cao như đăng nhập, phân quyền, khả năng truy cập, dashboard và stale UI state \cite{playwright}.
+Server dùng Go test để kiểm tra các ràng buộc nghiệp vụ quan trọng như session, phân quyền, vòng đời dự án, bài nộp, duyệt bài, minh chứng và trigger cơ sở dữ liệu. Frontend dùng Playwright cho các browser flow có rủi ro cao như đăng nhập, phân quyền, khả năng truy cập, dashboard và dữ liệu cũ trên giao diện \cite{playwright}.
 
 Stack triển khai tham khảo gồm Vercel cho frontend, Render cho Go API, Neon cho PostgreSQL và Cloudflare R2 cho lưu trữ minh chứng. Cách chọn này phù hợp với mục tiêu đồ án: dễ vận hành ban đầu, có HTTPS sẵn, có cơ sở dữ liệu quản lý và không cần tự dựng CDN hoặc load balancer riêng \cite{vercel,render,neon,cloudflarer2}.
 
@@ -105,10 +105,10 @@ Lớp & Công nghệ & Vai trò trong UniTrack \\
 Giao diện & React, TypeScript, Vite & Ứng dụng SPA, route bảo vệ, màn hình theo vai trò \\
 Thiết kế UI & Tailwind CSS, shadcn/Radix & Giao diện học thuật, hộp thoại, form và điều khiển có hỗ trợ truy cập \\
 State & TanStack Query, Zustand & Cache dữ liệu server, làm mới dữ liệu sau thao tác ghi và lưu current user \\
-Backend & Go, chi, pgx & API REST, middleware, phân quyền, truy vấn SQL và transaction \\
+Server & Go, chi, pgx & API REST, middleware, phân quyền, truy vấn SQL và transaction \\
 Dữ liệu & PostgreSQL, goose & Schema, migration, khóa ngoại, chỉ mục và trigger \\
 Lưu trữ & Local filesystem, Cloudflare R2 & File minh chứng và tải xuống qua API riêng tư \\
-Kiểm thử & Go test, Playwright & Kiểm tra nghiệp vụ backend và browser flow quan trọng \\
+Kiểm thử & Go test, Playwright & Kiểm tra nghiệp vụ server và browser flow quan trọng \\
 Triển khai & Vercel, Render, Neon, R2 & Hạ tầng production đầu tiên với chi phí thấp \\
 \end{tblr}
 \end{table}

@@ -3,22 +3,39 @@
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam dpi 130
 skinparam sequenceArrowThickness 1
+skinparam ParticipantPadding 70
+skinparam BoxPadding 7
+skinparam maxMessageSize 86
 hide footbox
 
-actor "Admin UI" as Admin
-participant "Go API" as API
-database "PostgreSQL users row" as DB
-actor "Concurrent login" as Login
+actor "Admin" as Admin
+participant "Admin UI" as AdminUI
+participant "Account admin\nroute" as AccountRoute
+participant "Auth/login\nroute" as LoginRoute
+participant "Security\nchecks" as Security
+database "PostgreSQL\nusers + sessions" as DB
+actor "Concurrent\nlogin" as Concurrent
 
-Admin -> API : Account-control mutation
-API -> DB : BEGIN; SELECT users FOR UPDATE
-API -> API : Last-admin and transition checks
-API -> DB : Update account and revoke sessions
-Login -> API : Login with same email
-API -> DB : Wait for same users row lock
-DB -> API : Commit mutation and release lock
-API -> DB : Login rereads current account state
-API -> Login : Create session or reject
-API -> Admin : Return audited result
+Admin -> AdminUI : Disable / activate / reset password
+AdminUI -> AccountRoute : PATCH user or POST password reset
+AccountRoute -> Security : Check admin session, role, origin
+Security --> AccountRoute : admin principal
+AccountRoute -> DB : BEGIN; advisory lock;\nlock actor + target; checks
+
+group Concurrent login for same account
+  Concurrent -> LoginRoute : POST /auth/login same email
+  LoginRoute -> Security : Rate limit, origin, normalize email
+  LoginRoute -> DB : SELECT target user FOR UPDATE;\nwait if row is locked
+end
+
+alt Admin mutation blocked
+  DB --> AccountRoute : rollback + error reason
+  AccountRoute --> AdminUI : Explain invariant failure
+else Admin mutation accepted
+  AccountRoute -> DB : UPDATE account; revoke sessions\nwhen needed; activity log; COMMIT
+  AccountRoute --> AdminUI : Updated account state
+end
 @enduml

@@ -3,7 +3,7 @@
 
 start
 :HTTP method, path, cookie, body;
-:Origin/CORS guard for write requests;
+:Origin guard for unsafe session requests;
 :Session lookup and active account gate;
 :Validate route UUID parameters;
 if (JSON body?) then (yes)

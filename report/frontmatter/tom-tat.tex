@@ -4,7 +4,7 @@ Trong các học phần có làm dự án, giảng viên phải theo dõi nhiề
 
 UniTrack hỗ trợ ba vai trò: quản trị viên, giảng viên và sinh viên. Quản trị viên quản lý tài khoản và trạng thái người dùng; giảng viên tổ chức Workspace, tạo dự án, quản lý thành viên, giao nhiệm vụ và duyệt bài; sinh viên theo dõi nhiệm vụ, nộp tiến độ và bổ sung minh chứng. Phạm vi hệ thống tập trung vào luồng \textit{Giảng viên -- Dự án -- Nhiệm vụ -- Bài nộp -- Duyệt bài}, không mở rộng sang mạng xã hội hoặc kho học liệu độc lập.
 
-Về kỹ thuật, hệ thống sử dụng React, TypeScript, Tailwind CSS và shadcn/Radix cho giao diện; Go, chi và pgx cho API; PostgreSQL cho cơ sở dữ liệu; local filesystem hoặc Cloudflare R2 cho lưu trữ minh chứng. Kết quả đạt được là một sản phẩm Web triển khai được các luồng nghiệp vụ chính, có cookie-based session, phân quyền theo dự án, kiểm tra vòng đời trong transaction, trigger bảo vệ toàn vẹn dữ liệu, kiểm thử backend và kiểm thử Playwright cho một số luồng rủi ro cao.
+Về kỹ thuật, hệ thống sử dụng React và TypeScript cho giao diện, Go cho API, PostgreSQL cho cơ sở dữ liệu và kho lưu trữ riêng tư cho file minh chứng. Kết quả đạt được là một sản phẩm Web triển khai được các luồng nghiệp vụ chính, có đăng nhập bằng session cookie, phân quyền theo dự án, kiểm tra trạng thái vòng đời trước khi ghi dữ liệu, bảo vệ minh chứng sau khi duyệt và có kiểm thử cho các luồng rủi ro cao.
 
 \vspace{1cm}
 \begin{flushright}

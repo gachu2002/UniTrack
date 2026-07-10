@@ -60,7 +60,7 @@ cd apps/api
 DATABASE_URL='<postgres-url>' go run ./cmd/seed
 ```
 
-The seed command creates deterministic demo accounts, folders, projects, teams, milestones, assignments, submissions, reviews, resources, and activity logs. By default it only inserts data; it does not delete existing demo rows. All demo users use password `DemoPass123!`; the demo admin is `demo.admin@demo.unitrack.local`.
+The seed command creates deterministic demo accounts, folders, projects, teams, milestones, assignments, submissions, reviews, resources, and activity logs. By default it only inserts data; it does not delete existing demo rows. All demo users use password `DemoPass123!`; the demo admin is `demo.admin@demo.unitrack.local`. Use `-timeout=15m` for larger remote seeds on slower hosted databases.
 
 The seed command no longer resets existing demo rows unless explicitly requested. To refresh demo data, run `DATABASE_URL='<postgres-url>' go run ./cmd/seed -reset -confirm-reset=demo.unitrack.local`.
 

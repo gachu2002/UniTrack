@@ -79,6 +79,7 @@ func main() {
 	teacherCount := flag.Int("teachers", 16, "number of demo teachers to create")
 	studentCount := flag.Int("students", 240, "number of demo students to create")
 	projectCount := flag.Int("projects", 72, "number of demo projects to create")
+	timeout := flag.Duration("timeout", 5*time.Minute, "maximum duration for the seed transaction")
 	reset := flag.Bool("reset", false, "delete previous UniTrack demo seed data before inserting")
 	resetConfirm := flag.String("confirm-reset", "", "required confirmation value for -reset; use demo.unitrack.local")
 	allowNonLocal := flag.Bool("allow-non-local", false, "allow seeding a non-local DATABASE_URL; requires DEMO_SEED_PASSWORD")
@@ -86,6 +87,9 @@ func main() {
 
 	if *teacherCount < 4 || *studentCount < 12 || *projectCount < 4 {
 		log.Fatal("seed counts are too small; use at least -teachers=4 -students=12 -projects=4")
+	}
+	if *timeout <= 0 {
+		log.Fatal("-timeout must be greater than zero")
 	}
 	if *reset && strings.TrimSpace(*resetConfirm) != seedDomain {
 		log.Fatalf("-reset deletes previous demo seed rows; rerun with -reset -confirm-reset=%s", seedDomain)
@@ -109,7 +113,7 @@ func main() {
 		seedPasswordValue = seedPassword
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
 	db, err := pgxpool.New(ctx, databaseURL)

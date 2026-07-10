@@ -13,7 +13,7 @@ Scope: keep command forms, verification choice, Playwright knobs, suite map, and
 | Web e2e setup/debug | `pnpm --filter @unitrack/web test:e2e:install`, `test:e2e:install-deps`, `test:e2e:headed`, `test:e2e:ui`, `test:e2e:report` |
 | API build/test | `make api-build`, `TEST_DATABASE_URL='<postgres-url>' make api-test`, `make api-test-unit` for non-DB tests |
 | DB validate | `make db-validate` |
-| Demo seed | `cd apps/api && DATABASE_URL='<postgres-url>' go run ./cmd/seed` |
+| Demo seed | `cd apps/api && DATABASE_URL='<postgres-url>' go run ./cmd/seed`; add `-timeout=15m` for larger remote seeds |
 
 ## Verification Chooser
 

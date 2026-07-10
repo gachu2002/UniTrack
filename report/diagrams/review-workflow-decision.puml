@@ -1,0 +1,41 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam dpi 130
+skinparam sequenceArrowThickness 1
+skinparam ParticipantPadding 76
+skinparam BoxPadding 7
+skinparam maxMessageSize 84
+hide footbox
+
+actor "Giảng viên /\nquản trị viên" as Manager
+participant "React\nreview desk" as Web
+participant "Task/support\nqueries" as Query
+participant "Review\nroute" as Review
+database "PostgreSQL\ntransaction" as Tx
+actor "Sinh viên" as Student
+
+Manager -> Web : Mở review desk
+Web -> Query : GET task + support data
+Query -> Tx : Load progress history, files, links
+Query --> Web : Pending submission + support
+Web --> Manager : Show decision form
+
+group Final review decision
+  Manager -> Web : Accept / complete / return
+  Web -> Review : POST save review
+  Review -> Tx : BEGIN; lock project,\npending update and task
+  alt Submission already decided
+    Tx --> Review : rollback + 409
+    Review --> Web : Refresh latest history
+  else Decision accepted
+    Review -> Tx : INSERT progress_reviews;\nupdate progress + task; COMMIT
+    Review --> Web : Final result;\nsupport now read-only
+  end
+end
+
+Web --> Student : Next reload shows decision\nand read-only support
+@enduml

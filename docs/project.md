@@ -87,7 +87,7 @@ Frontend: React, TypeScript, Vite, Tailwind, shadcn/Radix, React Router, TanStac
 - API: `make api-build`, `TEST_DATABASE_URL='<postgres-url>' make api-test`, `make api-test-unit` for non-DB tests
 - DB: `make db-validate`
 - Demo seed local DB: `cd apps/api && DATABASE_URL='<local-postgres-url>' go run ./cmd/seed`
-- Demo seed non-local DB: set `DEMO_SEED_PASSWORD='<strong-demo-password>'`, add `-allow-non-local`; replace demo rows with `-reset -confirm-reset=demo.unitrack.local`
+- Demo seed non-local DB: set `DEMO_SEED_PASSWORD='<strong-demo-password>'`, add `-allow-non-local`; use `-timeout=15m` for larger hosted seeds; replace demo rows with `-reset -confirm-reset=demo.unitrack.local`
 
 Use `docs/engineering-guide.md` and `docs/testing.md` to choose targeted verification.
 

@@ -1,54 +1,82 @@
 @startuml
-!include includes/report-style.iuml
+skinparam backgroundColor white
 skinparam monochrome false
-skinparam backgroundColor #FFFFFF
 skinparam shadowing false
-skinparam componentStyle rectangle
+skinparam dpi 170
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam defaultFontColor #0F172A
+skinparam componentStyle uml2
+skinparam packageStyle rectangle
 skinparam linetype ortho
-skinparam defaultFontSize 18
-skinparam Nodesep 42
-skinparam Ranksep 58
+skinparam ArrowColor #334155
+skinparam ArrowThickness 1.2
+skinparam RoundCorner 12
+skinparam Padding 4
+skinparam Nodesep 34
+skinparam Ranksep 40
+skinparam component {
+  BorderColor #475569
+  FontColor #0F172A
+}
+skinparam database {
+  BorderColor #6D28D9
+  BackgroundColor #F5F3FF
+  FontColor #2E1065
+}
+skinparam cloud {
+  BorderColor #2563EB
+  BackgroundColor #EFF6FF
+  FontColor #1E3A8A
+}
+skinparam node {
+  BorderColor #0F766E
+  BackgroundColor #DCFCE7
+  FontColor #064E3B
+}
+skinparam queue {
+  BorderColor #E11D48
+  BackgroundColor #FFE4E6
+  FontColor #881337
+}
+skinparam actor {
+  BorderColor #2563EB
+  BackgroundColor #EFF6FF
+  FontColor #0F172A
+}
+skinparam note {
+  BorderColor #CBD5E1
+  BackgroundColor #F8FAFC
+  FontColor #334155
+}
 top to bottom direction
 
-skinparam node {
-  BorderColor #1F2937
-  FontColor #111827
+actor "Người dùng\nAdmin / Giảng viên / Sinh viên" as User #DBEAFE
+
+rectangle "Mô hình triển khai production đề xuất" as Production #F8FAFC {
+  cloud "Vercel Frontend\nReact/Vite static build\nHTTPS CDN + SPA rewrite\nVITE_API_URL" as Vercel #DBEAFE
+
+  node "Render Go API\nchi routes /api/v1\nCORS + secure cookie\nstrict JSON + UUID" as Render #BBF7D0
+  component "Health checks\n/health + /ready" as Health #D1FAE5
+  component "Config and secrets\nAPP_ENV, DATABASE_URL\nCORS_ALLOWED_ORIGINS\nSESSION_SECURE, R2 credentials" as Config #A7F3D0
+
+  database "Neon PostgreSQL\nbusiness data + sessions\nFK, indexes, triggers" as Neon #DDD6FE
+  cloud "Cloudflare R2\nprivate evidence bucket\nAPI-authorized download" as R2 #DBEAFE
+
+  queue "uploaded_file_object_cleanup_jobs\nretry pending object deletes" as Cleanup #FFE4E6
+  component "Startup processor\nreconciles DB metadata\nand object store deletes" as Processor #FED7AA
+  component "Scale guard\none API instance initially\nreview rate limits + DB pool\nbefore horizontal scale" as Scale #FEF3C7
 }
 
-actor "Admin / teacher / student\nbrowser" as Browser #DBEAFE
-
-node "Vercel\nfrontend hosting" as Vercel #E0F2FE {
-  component "Global CDN" as CDN #BFDBFE
-  component "React SPA\nVite build" as SPA #DBEAFE
-}
-
-node "Render\nGo API service" as Render #DCFCE7 {
-  component "HTTPS router" as Router #BBF7D0
-  component "Go API\n/api/v1 + file stream" as API #D1FAE5
-  component "startup config guard\nstrict env parsing" as Guard #FEF3C7
-}
-
-database "Neon PostgreSQL\ntransactions, locks, triggers" as Neon #FDE68A
-cloud "Cloudflare R2\nprivate evidence bucket" as R2 #FED7AA
-
-rectangle "Required production settings" as Settings #F5F3FF {
-  component "Exact HTTPS\nCORS origins" as CORS #EDE9FE
-  component "SESSION_SECURE=true\nSameSite=None" as Cookie #DDD6FE
-  component "UPLOAD_STORAGE_BACKEND=r2\nno local disk" as StorageRule #C4B5FD
-}
-
-Browser --> CDN : HTTPS page load
-CDN --> SPA : static assets
-SPA --> Router : REST + HttpOnly cookie
-Router --> API : route to Go server
-Guard --> API : validate before serving
-API --> Neon : SQL queries + migrations
-API --> R2 : upload / download objects
-Settings --> Guard : env policy
-
-note bottom of Render
-  First launch stays single-instance.
-  Vercel already provides the frontend CDN;
-  Render already provides HTTPS routing for the API.
-end note
+User --> Vercel : HTTPS page load
+Vercel --> Render : REST JSON + cookie
+Render --> Health : readiness probe
+Render --> Config : env at boot
+Render --> Neon : SQL transactions
+Render --> R2 : upload / download
+Render --> Cleanup : enqueue failed delete
+Cleanup --> Processor : poll pending jobs
+Processor --> R2 : delete object
+Processor --> Neon : completed_at / last_error
+Scale ..> Render : operational limit
 @enduml

@@ -1,0 +1,41 @@
+@startuml
+!include includes/report-style.iuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 14
+skinparam dpi 130
+skinparam sequenceArrowThickness 1
+skinparam ParticipantPadding 76
+skinparam BoxPadding 7
+skinparam maxMessageSize 84
+hide footbox
+
+actor "Giảng viên /\nquản trị" as Teacher
+participant "React\nreview desk" as Web
+participant "Task/support\nqueries" as Query
+participant "Progress API\nroute" as Progress
+participant "File API\nroute" as FileAPI
+database "PostgreSQL\ntx + triggers" as DB
+database "Private object\nstorage" as Store
+
+group Review freezes support
+  Teacher -> Web : Open review desk
+  Web -> Query : GET task + support data
+  Query -> DB : Load progress history, files, links
+  Query --> Web : Evidence panel + decision form
+
+  Teacher -> Web : Submit decision
+  Web -> Progress : POST save review
+  Progress -> DB : BEGIN; lock pending + project;\ninsert review; update state; COMMIT
+  Progress --> Web : Final history
+end
+
+group Authorized download
+  Teacher -> Web : Download evidence
+  Web -> FileAPI : GET download file
+  FileAPI -> DB : Recheck project access;\nload authorized storage key
+  FileAPI -> Store : Stream private object
+  FileAPI --> Web : Authorized download
+end
+@enduml

@@ -1,0 +1,147 @@
+@startdot
+digraph G {
+  graph [rankdir=TB, bgcolor="white", margin=0.02, pad=0.10, nodesep=0.72, ranksep=0.78, splines=ortho, outputorder=edgesfirst, newrank=true, dpi=170];
+  node [shape=plain, fontname="DejaVu Sans", fontsize=11, margin=0];
+  edge [dir=none, color="#94A3B8", penwidth=1.0, arrowsize=0.55, fontname="DejaVu Sans", fontsize=9, fontcolor="#475569"];
+
+  users [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>users</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">full_name</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">email</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">password_hash</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">role</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">status</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">avatar_url</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">updated_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  projects [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>projects</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">name</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">description</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">topic</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> supervisor_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">start_date</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">date</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">end_date</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">date</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">status</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">official_progress_state</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">progress_summary</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> created_by</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">updated_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  progress_updates [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>progress_updates</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> project_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> task_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> submitted_by</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">title</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">description</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">blockers</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">review_status</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">updated_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  resource_links [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>resource_links</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> project_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">related_entity_type</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">related_entity_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">title</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">url</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">type</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">description</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> added_by</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">updated_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  uploaded_files [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>uploaded_files</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> project_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">related_entity_type</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">related_entity_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">original_file_name</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">stored_file_name</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">storage_path</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">mime_type</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">file_size_bytes</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">bigint</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> uploaded_by</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  cleanup [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>uploaded_file_object_cleanup_jobs</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="178"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">storage_path</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">reason</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">attempts</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">integer</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">last_error</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">completed_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">updated_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  activity_logs [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" COLOR="#D1D5DB">
+      <TR><TD COLSPAN="2" BGCOLOR="#2F6F9F" ALIGN="LEFT"><FONT COLOR="white"><B>activity_logs</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8" WIDTH="150"><B>PK</B> id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8" WIDTH="86"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> actor_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8"><B>FK</B> project_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">action</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">entity_type</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">text</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">entity_id</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">uuid</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">metadata</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">jsonb</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" BGCOLOR="#F4F6F8">created_at</TD><TD ALIGN="RIGHT" BGCOLOR="#F4F6F8"><FONT COLOR="#6B7280">timestamptz</FONT></TD></TR>
+    </TABLE>
+  >];
+
+  legend [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="6" COLOR="#D1D5DB">
+      <TR><TD BGCOLOR="#F1F5F9" ALIGN="LEFT"><B>Phần 3</B></TD></TR>
+      <TR><TD BGCOLOR="#F8FAFC" ALIGN="LEFT">Tài nguyên, minh chứng, cleanup và audit.</TD></TR>
+      <TR><TD BGCOLOR="#F8FAFC" ALIGN="LEFT">Đường chấm: target đa hình hoặc quan hệ vận hành.</TD></TR>
+    </TABLE>
+  >];
+
+  { rank=same; users; projects; }
+  { rank=same; progress_updates; resource_links; }
+  { rank=same; uploaded_files; activity_logs; }
+  { rank=same; cleanup; legend; }
+
+  users -> projects [style=dashed];
+  projects -> progress_updates;
+  users -> progress_updates [style=dashed, constraint=false];
+  projects -> resource_links;
+  users -> resource_links [style=dashed, constraint=false];
+  progress_updates -> resource_links [style=dashed, constraint=false];
+  projects -> uploaded_files;
+  users -> uploaded_files [style=dashed, constraint=false];
+  progress_updates -> uploaded_files [style=dashed, constraint=false];
+  resource_links -> uploaded_files [style=dashed, constraint=false];
+  uploaded_files -> cleanup [style=dashed];
+  projects -> activity_logs [style=dashed, constraint=false];
+  users -> activity_logs [style=dashed, constraint=false];
+  activity_logs -> legend [style=invis, weight=8];
+}
+@enddot

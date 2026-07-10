@@ -6,9 +6,9 @@ Chương cuối tổng kết kết quả đạt được của đồ án, so sá
 
 Đồ án đã xây dựng UniTrack, một nền tảng Web hỗ trợ giảng viên giám sát tiến độ dự án sinh viên theo hướng lấy dự án làm trung tâm. Sản phẩm đã hình thành một quy trình chính gồm: quản trị tài khoản, tổ chức Workspace, tạo dự án, quản lý nhóm, tạo mốc kế hoạch và nhiệm vụ, sinh viên nộp bài tiến độ, giảng viên duyệt bài, quản lý tài nguyên và minh chứng.
 
-Về kỹ thuật, UniTrack sử dụng React, TypeScript, Vite, Tailwind CSS và shadcn/Radix cho giao diện; Go, chi và pgx cho backend; PostgreSQL cho dữ liệu quan hệ; local filesystem hoặc Cloudflare R2 cho kho minh chứng; Go test và Playwright cho kiểm thử. Kiến trúc này phù hợp với mục tiêu của đồ án: dễ chạy cục bộ, có thể triển khai cloud chi phí thấp, và đủ rõ để tiếp tục bảo trì theo từng lát tính năng.
+Về kỹ thuật, UniTrack sử dụng React, TypeScript, Vite, Tailwind CSS và shadcn/Radix cho giao diện; Go, chi và pgx cho server; PostgreSQL cho dữ liệu quan hệ; local filesystem hoặc Cloudflare R2 cho kho minh chứng; Go test và Playwright cho kiểm thử. Kiến trúc này phù hợp với mục tiêu của đồ án: dễ chạy cục bộ, có thể triển khai cloud chi phí thấp, và đủ rõ để tiếp tục bảo trì theo từng lát tính năng.
 
-Điểm quan trọng nhất của đồ án là cách hệ thống xử lý dữ liệu có trạng thái. Vòng đời dự án được coi là nguồn quyết định thao tác ghi. Backend kiểm tra quyền theo vai trò và quan hệ với dự án, kiểm tra lại quyền quản lý cùng vòng đời trong transaction và trả lỗi rõ ràng khi request không còn hợp lệ. PostgreSQL tiếp tục giữ các ràng buộc bằng khóa ngoại tổng hợp, một bài chờ duyệt và trigger deferred. Tài nguyên/minh chứng của bài nộp sau khi duyệt được bảo toàn ở cả API và cơ sở dữ liệu, giúp lịch sử đánh giá có tính tin cậy hơn.
+Điểm quan trọng nhất của đồ án là cách hệ thống xử lý dữ liệu có trạng thái. Vòng đời dự án được coi là nguồn quyết định thao tác ghi. Server kiểm tra quyền theo vai trò và quan hệ với dự án, kiểm tra lại quyền quản lý cùng vòng đời trong transaction và trả lỗi rõ ràng khi request không còn hợp lệ. PostgreSQL tiếp tục giữ các ràng buộc bằng khóa ngoại tổng hợp, một bài chờ duyệt và trigger deferred. Tài nguyên/minh chứng của bài nộp sau khi duyệt được bảo toàn ở cả API và cơ sở dữ liệu; hàng đợi dọn file lỗi giúp giảm rủi ro lệch giữa metadata và file thực.
 
 \tableintro{tab:solution-comparison}{so sánh UniTrack với cách quản lý dự án sinh viên bằng công cụ rời rạc thường gặp}
 \begin{table}[H]
@@ -25,7 +25,7 @@ Về kỹ thuật, UniTrack sử dụng React, TypeScript, Vite, Tailwind CSS v�
 Tiêu chí & Công cụ rời rạc & UniTrack \\
 Ngữ cảnh dự án & Email, chat, bảng tính và thư mục file tách rời nhau & Dự án là trục chính, liên kết thành viên, mốc, nhiệm vụ, bài nộp, tài nguyên và minh chứng \\
 Theo dõi trạng thái & Trạng thái dễ bị nhớ thủ công hoặc ghi không thống nhất & Trạng thái nhiệm vụ/bài nộp/vòng đời dự án được lưu và suy ra trong hệ thống \\
-Phân quyền & Chủ yếu dựa vào quyền chia sẻ file hoặc nhóm chat & Backend kiểm tra vai trò, quan hệ với dự án, tài khoản active và vòng đời dự án \\
+Phân quyền & Chủ yếu dựa vào quyền chia sẻ file hoặc nhóm chat & Server kiểm tra vai trò, quan hệ với dự án, tài khoản active và vòng đời dự án \\
 Minh chứng đánh giá & File có thể bị thay đổi hoặc mất liên kết với bài nộp & Minh chứng gắn với bài nộp và chuyển sang chỉ đọc sau khi duyệt \\
 Khả năng kiểm thử & Khó kiểm thử vì quy trình nằm ngoài phần mềm & Có Go test, Playwright, migration validation và mô tả kỹ thuật theo tính năng \\
 \end{tblr}
@@ -48,7 +48,7 @@ Quản lý tài khoản theo vai trò & Tạo/tìm/sửa tài khoản, trạng t
 Quản lý dự án sinh viên & Workspace, thư mục, tạo/sửa/xem dự án, vòng đời, thành viên nhóm và tổng hợp tiến độ & \okbadge \\
 Theo dõi nhiệm vụ và tiến độ & Mốc kế hoạch, nhiệm vụ chính thức, phân công sinh viên, hạn nộp theo ngày, trạng thái nhiệm vụ và hàng đợi dashboard & \okbadge \\
 Nộp bài và duyệt bài & Bài nộp theo nhiệm vụ, một bài chờ duyệt, trang duyệt của giảng viên, quyết định cuối và lịch sử & \okbadge \\
-Quản lý minh chứng & Đường dẫn tài nguyên, tải lên/tải xuống/xóa minh chứng, adapter lưu trữ riêng tư và chế độ chỉ đọc sau duyệt & \okbadge \\
+Quản lý minh chứng & Đường dẫn tài nguyên, tải lên/tải xuống/xóa minh chứng, adapter lưu trữ riêng tư, hàng đợi dọn file lỗi và chế độ chỉ đọc sau duyệt & \okbadge \\
 Toàn vẹn dữ liệu & Ràng buộc theo dự án, trigger cho tài nguyên/minh chứng, khóa dữ liệu sau duyệt và kiểm tra người nộp bài & \okbadge \\
 Kiểm thử và mô tả kỹ thuật & Kiểm thử backend, kịch bản Playwright và mô tả triển khai theo các luồng rủi ro chính & \partialbadge \\
 \end{tblr}
@@ -64,9 +64,11 @@ Thứ nhất, nhóm chức năng quản lý toàn bộ dự án cho quản trị
 
 Thứ hai, nhật ký hoạt động mới được ghi cho quản lý tài khoản và một số thao tác thành viên dự án. Hệ thống chưa có giao diện audit log để người quản trị tra cứu lịch sử theo người thao tác, đối tượng, dự án hoặc khoảng thời gian.
 
-Thứ ba, kho minh chứng production mới dừng ở private R2 backend và tải xuống qua API. Các chính sách vận hành như quota, danh sách MIME cho phép, quét mã độc, sao lưu, lưu giữ và job sửa lệch giữa cơ sở dữ liệu/object storage chưa được triển khai.
+Thứ ba, kho minh chứng production mới dừng ở private R2, tải xuống qua API và hàng đợi dọn file lỗi. Các chính sách vận hành như quota, danh sách MIME cho phép, quét mã độc, sao lưu, lưu giữ, cảnh báo chi phí và quy trình xử lý job dọn file còn lỗi chưa được hoàn thiện.
 
-Thứ tư, kiểm thử giao diện vẫn còn thiếu so với backend. Playwright đã bao phủ các luồng rủi ro cao, nhưng form dự án, form nhiệm vụ, hộp thoại tài nguyên, thêm/xóa thành viên và luồng tải lên/xóa minh chứng cần độ phủ rộng hơn.
+Thứ tư, kiểm thử giao diện vẫn còn thiếu so với backend. Playwright đã bao phủ luồng chính tạo dự án, thêm sinh viên, tạo assignment, nộp bài và duyệt bài, nhưng các biến thể lỗi/edge case của form dự án, form nhiệm vụ, hộp thoại tài nguyên, thêm/xóa thành viên và luồng tải lên/xóa minh chứng cần độ phủ rộng hơn.
+
+Thứ năm, giới hạn đăng nhập hiện là in-memory theo từng API instance. Cách này đủ cho triển khai một instance ban đầu, nhưng cần shared rate limit hoặc rule ở edge trước khi mở rộng nhiều instance.
 
 \section{Hướng phát triển}
 
@@ -88,8 +90,8 @@ Giai đoạn & Nội dung đề xuất & Ưu tiên \\
 Ngắn hạn & Mở rộng Playwright cho form dự án/nhiệm vụ, luồng tài nguyên/minh chứng và thêm/xóa thành viên; hoàn thiện câu chữ trạng thái bài nộp & Cao \\
 Ngắn hạn & Hoàn thiện quản lý toàn bộ dự án cho quản trị viên: danh sách dự án toàn cục, bộ lọc, trạng thái vòng đời và mở nhanh & Cao \\
 Trung hạn & Xây dựng giao diện nhật ký hoạt động cho thay đổi tài khoản, nhóm, vòng đời dự án, duyệt bài và thao tác can thiệp & Cao \\
-Trung hạn & Bổ sung thông báo trong hệ thống hoặc email khi có nhiệm vụ mới, bài nộp mới, kết quả duyệt mới hoặc hạn nộp gần tới & Trung bình \\
-Dài hạn & Hardening kho minh chứng: quota, MIME allowlist, quét mã độc, sao lưu, lưu giữ, repair job và chính sách signed download nếu cần & Cao \\
+Trung hạn & Bổ sung thông báo trong hệ thống khi có nhiệm vụ mới, bài nộp mới, kết quả duyệt mới hoặc hạn nộp gần tới; email chỉ xem xét sau khi có nhu cầu vận hành rõ ràng & Trung bình \\
+Dài hạn & Hardening kho minh chứng: quota, MIME allowlist, quét mã độc, sao lưu, lưu giữ, cảnh báo chi phí, quy trình xử lý job dọn file lỗi và chính sách signed download nếu giữ được kiểm soát quyền tương đương & Cao \\
 Dài hạn & Phân tích dashboard: tiến độ theo thư mục, xu hướng quá hạn, tốc độ nộp/duyệt bài và tải công việc của sinh viên & Trung bình \\
 Mở rộng & Rubric/checklist duyệt bài, khung mốc kế hoạch, tích hợp hệ thống đào tạo nếu có nhu cầu thực tế & Thấp/tuỳ nhu cầu \\
 \end{tblr}
