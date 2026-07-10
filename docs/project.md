@@ -12,6 +12,8 @@ Keep top-level docs as navigation, not duplicated feature manuals.
 | --- | --- |
 | `docs/project.md` | Executive index: status, routes, risks, commands, next slices. |
 | `docs/architecture.md` | System design, domain model, lifecycles, API/data/state boundaries. |
+| `docs/api-flows.md` | API route catalog, request sequences, transaction flows, and frontend cache behavior. |
+| `docs/database.md` | Database schema guide: tables, fields, relationships, integrity rules, and FE/BE usage. |
 | `docs/security-auth.md` | Auth, sessions, roles, permissions, route guards, security review. |
 | `docs/deployment.md` | Deployment decisions, launch steps, troubleshooting, rollback. |
 | `docs/testing.md` | Verification strategy, commands, Playwright knobs, coverage gaps. |
@@ -28,6 +30,8 @@ Sync rules: update this file only for status/routes/top-risks/commands/doc-set/n
 | Goal | Read |
 | --- | --- |
 | Learn the product | `project.md`, then `architecture.md`, then one feature doc. |
+| Understand API flows | `api-flows.md`, then owning feature doc, then source handlers. |
+| Understand the database | `database.md`, then `architecture.md`, then the owning feature doc. |
 | Review a feature | Owning `features/*.md`, plus `architecture.md` or `security-auth.md` only if touched. |
 | Plan a change | `engineering-guide.md`, owning feature doc, then source/tests. |
 | Change auth/permissions | `security-auth.md`, `architecture.md`, relevant feature doc. |
@@ -39,7 +43,7 @@ Sync rules: update this file only for status/routes/top-risks/commands/doc-set/n
 
 | Area | Status | Primary Docs / Sources |
 | --- | --- | --- |
-| Architecture/API/data/frontend state | Implemented | `architecture.md`; `server.go`, `response.go`, migrations, query keys/invalidation |
+| Architecture/API/data/frontend state | Implemented | `architecture.md`, `api-flows.md`, `database.md`; `server.go`, `response.go`, migrations, query keys/invalidation |
 | Auth/session/protected access | Implemented | `security-auth.md`; `auth.go`, `security.go`, `permissions.go`, route guards |
 | Admin accounts | Implemented | `admin-accounts.md`; `admin_users.go`, admin UI |
 | Dashboard | Implemented | `dashboard.md`; `dashboard.go`, dashboard page, `dashboard.spec.ts` |
@@ -102,4 +106,4 @@ Use `docs/engineering-guide.md` and `docs/testing.md` to choose targeted verific
 
 ## Source Documents
 
-Use this file, `docs/audit.md`, `docs/architecture.md`, `docs/security-auth.md`, `docs/deployment.md`, `docs/testing.md`, `docs/engineering-guide.md`, feature docs, and current code/tests as the source of truth. If `references/` returns, treat it as canonical rebuild-spec input.
+Use this file, `docs/audit.md`, `docs/architecture.md`, `docs/api-flows.md`, `docs/database.md`, `docs/security-auth.md`, `docs/deployment.md`, `docs/testing.md`, `docs/engineering-guide.md`, feature docs, and current code/tests as the source of truth. If `references/` returns, treat it as canonical rebuild-spec input.

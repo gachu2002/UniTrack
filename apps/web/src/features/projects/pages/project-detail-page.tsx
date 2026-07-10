@@ -25,7 +25,7 @@ import { resourcesForTarget } from '@/features/resources/utils'
 import { getAssignmentState, isAssignmentNeedsRevision } from '@/features/tasks/assignment-state'
 import { CreateTaskForm } from '@/features/tasks/components/task-forms'
 import { getErrorMessage, isForbiddenError } from '@/lib/axios'
-import { formatDate, titleize } from '@/lib/format'
+import { formatDate } from '@/lib/format'
 import { canManageProject, projectAcceptsNewAssignments, projectAcceptsPlanChanges, projectAcceptsSupportChanges, projectAcceptsTeamChanges } from '@/lib/permissions'
 import { invalidateProjectData, refreshProjectDataOnStaleError } from '@/lib/query-invalidation'
 import { queryKeys } from '@/lib/query-keys'
@@ -264,7 +264,7 @@ function ProjectPlanTree({ project, user, tasks, milestones, members, resources,
   const [resourceTarget, setResourceTarget] = useState<ResourceLinkTarget | null>(null)
   const [deleteMilestoneTarget, setDeleteMilestoneTarget] = useState<ProjectMilestone | null>(null)
   const [editMilestoneTarget, setEditMilestoneTarget] = useState<ProjectMilestone | null>(null)
-  const [filter, setFilter] = useState<AssignmentFilter>('all')
+  const [selectedFilter, setSelectedFilter] = useState<AssignmentFilter | null>(null)
   const [search, setSearch] = useState('')
   const deleteMilestoneMutation = useMutation({
     mutationFn: deleteMilestone,
@@ -316,6 +316,8 @@ function ProjectPlanTree({ project, user, tasks, milestones, members, resources,
   }
   const currentMilestoneId = currentCheckpointId(milestones)
   const filterOptions = assignmentFilterOptions(tasks, user)
+  const requestedFilter = selectedFilter ?? 'all'
+  const filter = filterOptions.some((option) => option.key === requestedFilter) ? requestedFilter : 'all'
   const filteredTasks = tasksForAssignmentFilter(filter, tasks, user)
   const visibleTasks = filterTasks(filteredTasks, search)
   const groups = checkpointTaskGroups(milestones, tasksByMilestone, visibleTasks, filter, search)
@@ -370,7 +372,7 @@ function ProjectPlanTree({ project, user, tasks, milestones, members, resources,
                 </label>
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {filterOptions.map((option) => (
-                    <button key={option.key} type="button" aria-pressed={filter === option.key} className={cn('border-b-2 py-1 text-xs font-semibold transition', filter === option.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-ink')} onClick={() => setFilter(option.key)}>
+                    <button key={option.key} type="button" aria-pressed={filter === option.key} className={cn('border-b-2 py-1 text-xs font-semibold transition', filter === option.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-ink')} onClick={() => setSelectedFilter(option.key)}>
                       {option.label}{option.count > 0 ? <span className="ml-1 text-[0.7rem] opacity-70">{option.count}</span> : null}
                     </button>
                   ))}
@@ -633,23 +635,17 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
     <section id={`checkpoint-${milestone.id}`} className={cn('relative overflow-hidden rounded-2xl border bg-white/85 p-4 transition sm:p-5', isCurrent ? 'border-primary/25' : 'border-border/70')}>
       <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', checkpointAccentClasses(tone))} />
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 gap-3">
-          <span className="mt-1 w-8 shrink-0 text-right font-heading text-sm font-semibold tabular-nums text-muted-foreground">{String(index + 1).padStart(2, '0')}</span>
+        <div className="flex min-w-0 gap-3 sm:gap-4">
+          <div className="grid size-11 shrink-0 place-items-center rounded-xl border border-border/70 bg-paper text-center shadow-sm">
+            <span className="font-heading text-base font-semibold tabular-nums text-ink">{String(index + 1).padStart(2, '0')}</span>
+          </div>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
-              <StatusDot tone={tone} small />
-              <span>{titleize(milestone.state)}</span>
-              {isCurrent ? <span className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">Current</span> : null}
-              <span>{milestoneDateLabel(milestone)}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge value={milestone.state} tone={tone} />
+              {isCurrent ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">Current</span> : null}
             </div>
-            <h3 className="mt-1 break-words font-heading text-xl font-semibold tracking-tight text-ink">{milestone.title}</h3>
+            <h3 className="mt-2 break-words font-heading text-xl font-semibold tracking-tight text-ink">{milestone.title}</h3>
             {milestone.description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{milestone.description}</p> : null}
-            <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-muted-foreground">
-              <span>{milestone.taskCount} assignment{milestone.taskCount === 1 ? '' : 's'}</span>
-              <span>{milestone.completedTaskCount} done</span>
-              {milestone.pendingReviewCount > 0 ? <span className="text-amber-700">{milestone.pendingReviewCount} waiting review</span> : null}
-              {milestone.overdueTaskCount > 0 ? <span className="text-red-700">{milestone.overdueTaskCount} overdue</span> : null}
-            </div>
           </div>
         </div>
 
@@ -658,6 +654,15 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
           {canCreateAssignment ? <Button type="button" variant="secondary" size="sm" disabled={!assignmentMembersReady} title={!assignmentMembersReady ? assignmentMembersError ? 'Student list could not be loaded.' : 'Student list is still loading.' : undefined} onClick={onCreateTask}><Plus className="size-4" /> {assignmentMembersReady ? 'Add assignment' : assignmentMembersError ? 'Students unavailable' : 'Loading students...'}</Button> : null}
           {canPlan ? <CheckpointActionsPopover milestone={milestone} resourceCount={milestoneResources.length} canManageResources={canManageResources} canMoveUp={canMoveUp} canMoveDown={canMoveDown} isMoving={isMoving} isDeleting={isDeleting} onEdit={onEdit} onResources={onResourcesMilestone} onMoveUp={onMoveUp} onMoveDown={onMoveDown} onDelete={onDelete} /> : null}
         </div>
+      </div>
+      <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <dl className="flex flex-wrap gap-2">
+          <CheckpointMetric label="assignments" value={milestone.taskCount} />
+          <CheckpointMetric label="done" value={milestone.completedTaskCount} tone={milestone.completedTaskCount > 0 ? 'teal' : 'slate'} />
+          {milestone.pendingReviewCount > 0 ? <CheckpointMetric label="waiting review" value={milestone.pendingReviewCount} tone="amber" /> : null}
+          {milestone.overdueTaskCount > 0 ? <CheckpointMetric label="overdue" value={milestone.overdueTaskCount} tone="red" /> : null}
+        </dl>
+        <p className="shrink-0 text-xs font-semibold text-muted-foreground">{milestoneDateLabel(milestone)}</p>
       </div>
       <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
         <div className="h-full rounded-full bg-primary transition-all duration-700 ease-out" style={{ width: `${milestone.completionPercent}%` }} />
@@ -671,6 +676,21 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
       ) : null}
       {tasks.length === 0 && showEmpty ? <p className="mt-4 rounded-xl border border-dashed border-border/70 px-4 py-3 text-sm text-muted-foreground">No assignments in this checkpoint yet.</p> : null}
     </section>
+  )
+}
+
+function CheckpointMetric({ label, value, tone = 'slate' }: { label: string; value: number; tone?: 'slate' | 'teal' | 'amber' | 'red' }) {
+  const toneClass = {
+    slate: 'bg-slate-100 text-slate-700',
+    teal: 'bg-emerald-50 text-emerald-700',
+    amber: 'bg-amber-50 text-amber-800',
+    red: 'bg-red-50 text-red-700',
+  }[tone]
+  return (
+    <div className={cn('inline-flex items-baseline gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium', toneClass)}>
+      <dt>{label}</dt>
+      <dd className="order-first font-bold tabular-nums">{value}</dd>
+    </div>
   )
 }
 
@@ -749,14 +769,22 @@ function resourceDialogKey(target: ResourceLinkTarget | null) {
 }
 
 function assignmentFilterOptions(allTasks: Task[], user?: User | null) {
-  const options = [
+  if (user?.role === 'student') {
+    return [
+      { key: 'all' as const, label: 'All assignments', count: tasksForAssignmentFilter('all', allTasks, user).length },
+      { key: 'mine' as const, label: 'Mine', count: tasksForAssignmentFilter('mine', allTasks, user).length },
+      { key: 'review' as const, label: 'Waiting review', count: tasksForAssignmentFilter('review', allTasks, user).length },
+      { key: 'overdue' as const, label: 'Overdue', count: tasksForAssignmentFilter('overdue', allTasks, user).length },
+      { key: 'revision' as const, label: 'Needs revision', count: tasksForAssignmentFilter('revision', allTasks, user).length },
+    ]
+  }
+
+  return [
     { key: 'all' as const, label: 'All', count: tasksForAssignmentFilter('all', allTasks, user).length },
-    { key: 'review' as const, label: user?.role === 'student' ? 'Waiting review' : 'Needs review', count: tasksForAssignmentFilter('review', allTasks, user).length },
+    { key: 'review' as const, label: 'Needs review', count: tasksForAssignmentFilter('review', allTasks, user).length },
     { key: 'overdue' as const, label: 'Overdue', count: tasksForAssignmentFilter('overdue', allTasks, user).length },
     { key: 'revision' as const, label: 'Needs revision', count: tasksForAssignmentFilter('revision', allTasks, user).length },
-    user?.role === 'student' ? { key: 'mine' as const, label: 'Mine', count: tasksForAssignmentFilter('mine', allTasks, user).length } : null,
-  ].filter((option): option is { key: AssignmentFilter; label: string; count: number } => Boolean(option))
-  return options
+  ]
 }
 
 function tasksForAssignmentFilter(filter: AssignmentFilter, allTasks: Task[], user?: User | null) {
@@ -771,7 +799,7 @@ function tasksForAssignmentFilter(filter: AssignmentFilter, allTasks: Task[], us
     case 'mine':
       return allTasks.filter((task) => isTaskMine(task, user))
     case 'all':
-      return studentScoped ? allTasks.filter((task) => isTaskMine(task, user)) : allTasks
+      return allTasks
   }
 }
 
@@ -854,17 +882,6 @@ function statusTone(status: string): Tone {
     default:
       return 'slate'
   }
-}
-
-function StatusDot({ tone, small }: { tone: Tone; small?: boolean }) {
-  const color = {
-    slate: 'bg-slate-400 ring-slate-200',
-    blue: 'bg-primary ring-blue-100',
-    teal: 'bg-secondary ring-teal-100',
-    amber: 'bg-amber-500 ring-amber-100',
-    red: 'bg-destructive ring-red-100',
-  }[tone]
-  return <span className={small ? `block size-2.5 rounded-full ring-4 ${color}` : `mt-1 block size-3 rounded-full ring-4 ${color}`} />
 }
 
 function ProjectTeamPopover({ project, members, canManage, isLoading, isError, onRetry }: { project: Project; members: ProjectMember[]; canManage: boolean; isLoading: boolean; isError: boolean; onRetry: () => void }) {

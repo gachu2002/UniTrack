@@ -70,7 +70,7 @@ export function ProjectCard({ project, showContext = false, actions }: { project
 function ProjectCardContent({ project, showContext, context, linkedTitle, actions, palette }: { project: Project; showContext: boolean; context: string; linkedTitle: boolean; actions?: ReactNode; palette: ReturnType<typeof projectPalette> }) {
   const compact = Boolean(actions)
   const progressPercent = clampPercent(project.plannedProgressPercent)
-  const title = <h3 className={cn('line-clamp-2 font-heading font-semibold leading-tight tracking-tight text-ink transition-colors group-hover:text-primary group-focus-visible:text-primary', compact ? 'text-base' : 'text-lg')}>{project.name}</h3>
+  const title = <h3 className={cn('line-clamp-2 break-words font-heading font-semibold leading-tight tracking-tight text-ink transition-colors group-hover:text-primary group-focus-visible:text-primary', compact ? 'text-base' : 'text-lg')} title={project.name}>{project.name}</h3>
   const assignmentLabel = `assignment${project.taskCount === 1 ? '' : 's'}`
   const scopeLabel = project.milestoneCount > 0 ? `${project.completedMilestoneCount}/${project.milestoneCount} checkpoints` : `${project.completedTaskCount}/${project.taskCount} ${assignmentLabel}`
 
@@ -80,12 +80,12 @@ function ProjectCardContent({ project, showContext, context, linkedTitle, action
       <div className={cn('relative h-full overflow-hidden rounded-[1.15rem] rounded-tl-[0.75rem] border shadow-sm ring-1 ring-transparent transition duration-200 group-hover:shadow-panel group-hover:ring-primary/15 group-focus-within:ring-primary/20', palette.card)}>
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.9),transparent_48%)]" />
         {actions ? <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">{actions}</div> : null}
-        <div className={cn('relative flex h-full flex-col justify-between', compact ? 'gap-3 p-3' : 'gap-4 p-4')}>
-          <div className="flex items-start justify-between gap-3">
+        <div className={cn('relative grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]', compact ? 'gap-3 p-3' : 'gap-4 p-4')}>
+          <div className="flex min-h-0 items-start justify-between gap-3 overflow-hidden">
             <div className={cn('min-w-0 flex-1', compact ? 'pr-28' : '')}>
               {showContext && context ? <span className={cn('mb-2 inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm ring-1 ring-white/80', palette.pill)}>{context}</span> : null}
-              {linkedTitle ? <Link className="block underline-offset-4 hover:underline" to={`/workspace/projects/${project.id}`}>{title}</Link> : title}
-              <p className="mt-1.5 line-clamp-2 text-sm leading-5 text-muted-foreground">{project.topic || project.description || 'Assignments, submissions, resources, and members.'}</p>
+              {linkedTitle ? <Link className="block min-w-0 underline-offset-4 hover:underline" to={`/workspace/projects/${project.id}`}>{title}</Link> : title}
+              <p className={cn('mt-1.5 text-sm leading-5 text-muted-foreground', compact || showContext ? 'line-clamp-1' : 'line-clamp-2')}>{project.topic || project.description || 'Assignments, submissions, resources, and members.'}</p>
             </div>
             {!actions ? <ArrowUpRight className="mt-1 size-5 shrink-0 text-muted-foreground transition duration-200 motion-safe:translate-x-1 group-hover:text-primary motion-safe:group-hover:translate-x-0 group-focus-visible:text-primary motion-safe:group-focus-visible:translate-x-0" /> : null}
           </div>

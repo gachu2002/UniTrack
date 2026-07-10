@@ -34,8 +34,8 @@ export function ProgressTimeline({ projectId, updates, canReview, canUploadEvide
   return (
     <section id="progress-timeline" className={compact ? 'overflow-hidden rounded-xl border border-border bg-card/90 shadow-sm' : 'overflow-hidden rounded-[1.4rem] border border-border bg-card shadow-sm'}>
       <div className={compact ? 'border-b border-border px-4 py-3' : 'border-b border-border px-5 py-4'}>
-        <h2 className="font-heading text-xl font-semibold tracking-tight text-ink">{title}</h2>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
+        <h2 className={compact ? 'font-heading text-lg font-semibold tracking-tight text-ink' : 'font-heading text-xl font-semibold tracking-tight text-ink'}>{title}</h2>
+        {description ? <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </div>
       {updates.length > 0 ? (
         <div className="divide-y divide-border">
@@ -77,7 +77,7 @@ function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, ca
         </div>
       ) : null}
       {update.latestReview && reviewTone ? (
-        <div className={`${compact ? 'mt-3' : 'mt-4'} border-l-2 pl-3 text-sm ${reviewTone.containerClass}`}>
+        <div className={`${compact ? 'mt-3 rounded-lg px-3 py-2' : 'mt-4 border-l-2 pl-3'} text-sm ${reviewTone.containerClass}`}>
           <p className="flex items-center gap-2 font-semibold">
             {reviewTone.kind === 'approved' ? <CheckCircle2 className="size-4" /> : <MessageSquareWarning className="size-4" />}
             {reviewTone.label} by {update.latestReview.reviewedByName}
@@ -98,12 +98,12 @@ function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, ca
 
 function latestReviewTone(status: ProgressReview['reviewStatus']) {
   if (status === 'needs_changes') {
-    return { kind: 'needs_changes', label: 'Returned for revision', containerClass: 'border-amber-300 text-amber-800', dateClass: 'text-amber-700' }
+    return { kind: 'needs_changes', label: 'Returned for revision', containerClass: 'border-amber-300 bg-amber-50/70 text-amber-800', dateClass: 'text-amber-700' }
   }
   if (status === 'rejected') {
-    return { kind: 'rejected', label: 'Rejected', containerClass: 'border-red-300 text-red-800', dateClass: 'text-red-700' }
+    return { kind: 'rejected', label: 'Rejected', containerClass: 'border-red-300 bg-red-50/70 text-red-800', dateClass: 'text-red-700' }
   }
-  return { kind: 'approved', label: 'Approved', containerClass: 'border-emerald-300 text-emerald-800', dateClass: 'text-emerald-700' }
+  return { kind: 'approved', label: 'Approved', containerClass: 'border-emerald-300 bg-emerald-50/70 text-emerald-800', dateClass: 'text-emerald-700' }
 }
 
 function ProgressLinks({ resources }: { resources: ResourceLink[] }) {

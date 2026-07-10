@@ -2,7 +2,7 @@
 
 This guide is the fast path for understanding what to read, what to change, and how to verify UniTrack work without mining every feature document first.
 
-Use `docs/project.md` for current product status and feature ownership. Use `docs/architecture.md`, `docs/security-auth.md`, `docs/deployment.md`, and `docs/testing.md` for cross-cutting review. Use feature docs for vertical UI/API/data/test behavior.
+Use `docs/project.md` for current product status and feature ownership. Use `docs/architecture.md`, `docs/api-flows.md`, `docs/database.md`, `docs/security-auth.md`, `docs/deployment.md`, and `docs/testing.md` for cross-cutting review. Use feature docs for vertical UI/API/data/test behavior.
 
 ## Documentation Ownership
 
@@ -12,6 +12,8 @@ Use this scope before editing docs:
 | --- | --- | --- |
 | `docs/project.md` | Goal, doc index, status, active routes, top risks, commands, next slices. | Feature manuals, detailed API rules, long audit narratives. |
 | `docs/architecture.md` | Shared system shape, domain vocabulary, lifecycle/write patterns, API/data/state boundaries, cross-feature invariants. | Launch steps, feature UI detail, account-specific policy, test-suite catalog. |
+| `docs/api-flows.md` | API route catalog, request/response rules, common sequences, transaction flow, frontend cache invalidation, focused API debugging guide. | Full feature behavior manuals, schema field reference, security policy deep dive. |
+| `docs/database.md` | Database schema guide, table fields, relationships, integrity rules, FE/BE data contribution, migration map. | Exhaustive API route flow, deployment steps, feature-specific UX detail. |
 | `docs/security-auth.md` | Auth model, sessions, roles, permission review rules, route guard ownership, security gaps. | Provider launch steps, feature-specific UX flows, exhaustive API route docs. |
 | `docs/deployment.md` | First-launch stack, env, preflight, launch, rollback, hosted storage limits. | Product workflow detail, local test strategy, feature behavior manuals. |
 | `docs/testing.md` | Verification chooser, command forms, Playwright knobs, suite map, coverage gaps. | Feature-specific expected behavior or audit findings. |
@@ -26,8 +28,8 @@ When a doc-wide pass finds a stale name, update the source reference instead of 
 | --- | --- | --- | --- |
 | Auth, sessions, roles, CORS | `docs/security-auth.md`, `docs/deployment.md` | `apps/api/internal/app/auth.go`, `security.go`, `permissions.go`, `server.go`, `apps/api/internal/config/config.go`, `apps/web/src/features/auth` | `make api-build`, focused auth/config/access tests, web lint for auth UI changes |
 | Admin account changes | `docs/features/admin-accounts.md`, `docs/security-auth.md`, `docs/architecture.md` | `apps/api/internal/app/admin_users.go`, `auth.go`, `bootstrap.go`, `apps/web/src/features/admin`, `apps/web/src/lib/query-invalidation.ts` | focused admin lifecycle tests, web lint, targeted admin Playwright |
-| New or changed API route | `docs/architecture.md`, `docs/security-auth.md`, relevant feature doc | `apps/api/internal/app/server.go`, `response.go`, `permissions.go`, feature handler file, `apps/web/src/types/api.ts`, feature `api.ts` | route/handler tests, `make api-build`, web lint/build if contract changes |
-| Schema or integrity rule | `docs/architecture.md`, relevant feature doc | `apps/api/db/migrations`, feature handlers using the data, `apps/api/internal/app/lifecycle_test.go` | `make db-validate`, focused DB/lifecycle tests, document migration behavior |
+| New or changed API route | `docs/api-flows.md`, `docs/architecture.md`, `docs/security-auth.md`, relevant feature doc | `apps/api/internal/app/server.go`, `response.go`, `permissions.go`, feature handler file, `apps/web/src/types/api.ts`, feature `api.ts` | route/handler tests, `make api-build`, web lint/build if contract changes |
+| Schema or integrity rule | `docs/database.md`, `docs/architecture.md`, relevant feature doc | `apps/api/db/migrations`, feature handlers using the data, `apps/api/internal/app/lifecycle_test.go` | `make db-validate`, focused DB/lifecycle tests, document migration behavior |
 | Workspace, project, folder, team workflow | `docs/features/workspace-projects.md`, `docs/architecture.md`, `docs/security-auth.md` | `projects.go`, `classes.go`, `milestones.go`, related `apps/web/src/features/*` pages/components | focused lifecycle tests, web lint/build, targeted Playwright |
 | Assignment, submission, review workflow | `docs/features/assignment-review.md`, `docs/architecture.md`, `docs/security-auth.md` | `tasks.go`, task detail/progress/evidence components | focused lifecycle tests, web lint/build, targeted Playwright |
 | Resources, evidence, storage | `docs/features/resources-evidence.md`, `docs/deployment.md`, `docs/architecture.md` | `resources.go`, `files.go`, `storage.go`, config/storage env | focused lifecycle/storage tests, `make db-validate`, targeted support/evidence Playwright |

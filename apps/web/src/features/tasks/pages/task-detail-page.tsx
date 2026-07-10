@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, CalendarClock, CheckCircle2, ClipboardList, Clock, ExternalLink, MessageSquareWarning, Pencil, Send, Users } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ClipboardList, Clock, ExternalLink, MessageSquareWarning, Pencil, Send } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
@@ -177,7 +177,7 @@ export function TaskDetailPage() {
           <div className="min-w-0 space-y-6">
             <AssignmentWorkflowPanel projectId={resolvedProjectId} task={detail.task} project={project} updates={detail.progressUpdates} state={assignmentState} canReview={canReview} isAssignedStudent={isAssignedStudent} canSubmitProgress={canSubmitProgress} onSubmitProgress={() => setProgressOpen(true)} />
             {supportDataNotice ? <SupportDataNotice message={supportDataNotice} isError={supportDataIsError} onRetry={retrySupportData} /> : null}
-            <ProgressTimeline projectId={resolvedProjectId} updates={detail.progressUpdates} canReview={canReview} canUploadEvidence={canUploadEvidence} canManageEvidence={canManageEvidence} canDeleteOwnEvidence={canDeleteOwnEvidence} currentUserId={user?.id} uploadedFiles={files} resourceLinks={resources} canManageResources={canManageResources} onManageResources={(update) => setResourceTarget({ type: 'progress_update', id: update.id, label: update.title || 'Submission resources', eyebrow: 'Submission resources' })} showReviewForms={false} title="History" description="Submission and review history for this assignment." compact />
+            <ProgressTimeline projectId={resolvedProjectId} updates={detail.progressUpdates} canReview={canReview} canUploadEvidence={canUploadEvidence} canManageEvidence={canManageEvidence} canDeleteOwnEvidence={canDeleteOwnEvidence} currentUserId={user?.id} uploadedFiles={files} resourceLinks={resources} canManageResources={canManageResources} onManageResources={(update) => setResourceTarget({ type: 'progress_update', id: update.id, label: update.title || 'Submission resources', eyebrow: 'Submission resources' })} showReviewForms={false} title="Submission history" description="" compact />
           </div>
 
           <AssignmentAside
@@ -234,7 +234,7 @@ function TeacherReviewDesk({ projectId, task, project, update, historyUpdates, u
         <div className="mt-4">
           <ReviewProgressForm projectId={projectId} update={update} compact disabledReason={reviewDisabledReason} />
         </div>
-        {task.description ? <div className="mt-4"><AssignmentInstructionsDisclosure task={task} /></div> : null}
+        <div className="mt-4"><AssignmentInstructions task={task} /></div>
         {(taskResources.length > 0 || canManageResources) ? <div className="mt-4"><AssignmentResourcesPanel resources={taskResources} canManageResources={canManageResources} onManageResources={onManageResources} /></div> : null}
       </aside>
     </div>
@@ -309,7 +309,6 @@ function TaskProjectLifecycleNotice({ project }: { project: Project }) {
 
 function AssignmentWorkflowPanel({ projectId, task, project, updates, state, canReview, isAssignedStudent, canSubmitProgress, onSubmitProgress }: { projectId: string; task: Task; project?: Project; updates: ProgressUpdate[]; state: AssignmentState; canReview: boolean; isAssignedStudent: boolean; canSubmitProgress: boolean; onSubmitProgress: () => void }) {
   const pendingUpdate = updates.find((update) => update.reviewStatus === 'pending_review')
-  const latestUpdate = updates[0]
   const revisionUpdate = latestRevisionUpdate(updates)
 
   if (canReview && pendingUpdate) {
@@ -333,7 +332,6 @@ function AssignmentWorkflowPanel({ projectId, task, project, updates, state, can
   if (isAssignedStudent && state.key === 'waiting_review') {
     return (
       <AssignmentWorkflowShell eyebrow="Student workflow" title="Waiting for teacher review" description="No duplicate submission is needed while the latest work is under review." tone="amber" badge={<StatusBadge value={state.key} tone={state.tone} />}>
-        {latestUpdate ? <WorkflowSubmissionCard update={latestUpdate} /> : null}
         <Button asChild variant="outline"><a href="#progress-timeline"><Clock className="size-4" /> View submission timeline</a></Button>
       </AssignmentWorkflowShell>
     )
@@ -349,33 +347,45 @@ function AssignmentWorkflowPanel({ projectId, task, project, updates, state, can
 
   if (state.key === 'complete') {
     return (
-      <AssignmentWorkflowShell eyebrow="Assignment state" title="Assignment complete" description="The latest teacher decision closed this assignment. The submission history remains below for reference." tone="teal" badge={<StatusBadge value={state.key} tone={state.tone} />}>
-        {latestUpdate ? <WorkflowSubmissionCard update={latestUpdate} /> : null}
-      </AssignmentWorkflowShell>
+      <AssignmentWorkflowShell eyebrow="Assignment state" title="Assignment complete" description="The latest teacher decision closed this assignment. Its submission history remains available below." tone="teal" badge={<StatusBadge value={state.key} tone={state.tone} />} />
     )
   }
 
   return (
-    <AssignmentWorkflowShell eyebrow={canReview ? 'Teacher workflow' : 'Assignment state'} title={canReview ? 'No submission is waiting' : 'Read-only assignment'} description={canReview ? 'Use the submission timeline below for context, or edit the assignment from the header.' : 'This assignment is readable, but the current project state or assignment state does not allow a new submission.'} tone="slate" badge={<StatusBadge value={state.key} tone={state.tone} />}>
-      {latestUpdate ? <WorkflowSubmissionCard update={latestUpdate} /> : <p className="rounded-xl border border-dashed border-border bg-paper/70 px-4 py-3 text-sm text-muted-foreground">No student submission has been recorded yet.</p>}
-    </AssignmentWorkflowShell>
+    <AssignmentWorkflowShell
+      eyebrow={canReview ? 'Teacher workflow' : 'Assignment state'}
+      title={canReview ? 'No submission to review' : 'Assignment is view-only'}
+      description={canReview ? 'No student work is waiting for a decision.' : readOnlyAssignmentDescription(project, isAssignedStudent)}
+      tone="slate"
+      badge={<StatusBadge value={state.key} tone={state.tone} />}
+    />
   )
 }
 
-function AssignmentWorkflowShell({ eyebrow, title, description, tone, badge, children }: { eyebrow: string; title: string; description: string; tone: AssignmentState['tone']; badge: ReactNode; children: ReactNode }) {
+function AssignmentWorkflowShell({ eyebrow, title, description, tone, badge, children }: { eyebrow: string; title: string; description: string; tone: AssignmentState['tone']; badge: ReactNode; children?: ReactNode }) {
   return (
-    <section id="assignment-workflow" className={cn('scroll-mt-24 rounded-xl border p-4 shadow-sm sm:p-5', workflowToneClasses(tone))}>
+    <section id="assignment-workflow" className={cn('scroll-mt-24 rounded-xl border p-4 shadow-sm', workflowToneClasses(tone))}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-3xl">
           <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-75">{eyebrow}</p>
-          <h2 className="mt-1 font-heading text-2xl font-semibold tracking-tight">{title}</h2>
-          <p className="mt-2 text-sm leading-6 opacity-80">{description}</p>
+          <h2 className="mt-1 font-heading text-xl font-semibold tracking-tight">{title}</h2>
+          <p className="mt-1 text-sm leading-6 opacity-80">{description}</p>
         </div>
         <div className="shrink-0">{badge}</div>
       </div>
-      <div className="mt-4 space-y-4">{children}</div>
+      {children ? <div className="mt-3 space-y-3">{children}</div> : null}
     </section>
   )
+}
+
+function readOnlyAssignmentDescription(project: Project | undefined, isAssignedStudent: boolean) {
+  if (!isAssignedStudent) {
+    return 'You can view this assignment and its history. Only assigned students can submit work.'
+  }
+  if (project && project.status !== 'active') {
+    return `This project is ${titleize(project.status)}, so new submissions are paused.`
+  }
+  return 'This assignment is not accepting another submission right now.'
 }
 
 function WorkflowSubmissionCard({ update }: { update: ProgressUpdate }) {
@@ -447,18 +457,12 @@ function AssignmentHeader({ task, project, projectId, canReview, canEditAssignme
   )
 }
 
-function AssignmentInstructionsDisclosure({ task }: { task: Task }) {
+function AssignmentInstructions({ task }: { task: Task }) {
   return (
-    <details className="group rounded-xl border border-border bg-card/90 px-4 py-3 shadow-sm">
-      <summary className="cursor-pointer list-none font-heading text-base font-semibold tracking-tight text-ink marker:hidden">
-        <span className="inline-flex items-center gap-2">
-          Instructions
-          <span className="text-xs font-medium text-muted-foreground transition group-open:hidden">Show</span>
-          <span className="hidden text-xs font-medium text-muted-foreground transition group-open:inline">Hide</span>
-        </span>
-      </summary>
-      <p className="mt-3 max-w-4xl break-words border-t border-border pt-3 text-sm leading-7 text-muted-foreground">{task.description}</p>
-    </details>
+    <section className="rounded-xl border border-border bg-card/90 px-4 py-3 shadow-sm">
+      <h2 className="font-heading text-base font-semibold tracking-tight text-ink">Instructions</h2>
+      <p className="mt-2 max-w-4xl break-words text-sm leading-6 text-muted-foreground">{task.description || 'No instructions were provided for this assignment.'}</p>
+    </section>
   )
 }
 
@@ -468,42 +472,32 @@ function AssignmentAside({ task, project, resources, canManageResources, onManag
   return (
     <aside className="space-y-4 xl:sticky xl:top-6">
       <section className="rounded-xl border border-border bg-card/90 p-4 shadow-sm">
-        <h2 className="font-heading text-xl font-semibold tracking-tight text-ink">Details</h2>
-        <dl className="mt-4 divide-y divide-border">
-          <FactRow icon={<StatusDotIcon tone={assignmentState.tone} />} label="Status" value={assignmentState.label} />
-          <FactRow icon={<ClipboardList className="size-4" />} label="Priority" value={titleize(task.priority)} />
-          <FactRow icon={<ClipboardList className="size-4" />} label="Submissions" value={`${task.progressUpdateCount} submission${task.progressUpdateCount === 1 ? '' : 's'}`} />
-          {project ? <FactRow icon={<ClipboardList className="size-4" />} label="Project" value={project.name} /> : null}
-          <FactRow icon={<CalendarClock className="size-4" />} label="Due date" value={deadlineText(task)} />
-          <FactRow icon={<ClipboardList className="size-4" />} label="Checkpoint" value={task.milestoneTitle || 'Missing checkpoint'} />
-          <FactRow icon={<Users className="size-4" />} label="Assigned to" value={assigneeText(task)} />
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-heading text-lg font-semibold tracking-tight text-ink">Details</h2>
+          <StatusBadge value={assignmentState.key} tone={assignmentState.tone} />
+        </div>
+        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+          <CompactFact label="Priority" value={titleize(task.priority)} />
+          <CompactFact label="Submissions" value={`${task.progressUpdateCount} submission${task.progressUpdateCount === 1 ? '' : 's'}`} />
+          <CompactFact label="Due date" value={deadlineText(task)} />
+          <CompactFact label="Checkpoint" value={task.milestoneTitle || 'Missing checkpoint'} />
+          {project ? <CompactFact className="col-span-2" label="Project" value={project.name} /> : null}
+          <CompactFact className="col-span-2" label="Assigned to" value={assigneeText(task)} />
         </dl>
       </section>
 
-      {task.description ? <AssignmentInstructionsDisclosure task={task} /> : null}
+      <AssignmentInstructions task={task} />
 
       {(resources.length > 0 || canManageResources) ? <AssignmentResourcesPanel resources={resources} canManageResources={canManageResources} onManageResources={onManageResources} /> : null}
     </aside>
   )
 }
 
-function StatusDotIcon({ tone }: { tone: AssignmentState['tone'] }) {
-  const dotClass = {
-    blue: 'bg-primary',
-    teal: 'bg-secondary',
-    amber: 'bg-amber-500',
-    red: 'bg-destructive',
-    slate: 'bg-slate-400',
-  }[tone]
-
-  return <span className={`size-2 rounded-full ${dotClass}`} />
-}
-
-function FactRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function CompactFact({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div className="grid gap-1 py-3 first:pt-0 last:pb-0">
-      <dt className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{icon}{label}</dt>
-      <dd className="text-sm font-medium leading-6 text-ink">{value}</dd>
+    <div className={cn('min-w-0', className)}>
+      <dt className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 break-words text-sm font-medium leading-5 text-ink">{value}</dd>
     </div>
   )
 }

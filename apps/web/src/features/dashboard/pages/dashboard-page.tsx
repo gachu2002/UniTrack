@@ -234,7 +234,7 @@ function ReviewTable({ updates, isFiltered, sort, onSort }: { updates: ProgressU
                     {update.title || update.taskTitle}
                   </Link>
                   <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{update.description}</p>
-                  {update.blockers ? <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="size-3.5" /> {update.blockers}</p> : null}
+                  {update.blockers ? <p className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> <span>Blocker: {update.blockers}</span></p> : null}
                 </TableCell>
                 <TableCell className="text-muted-foreground">{update.submittedByName}</TableCell>
                 <TableCell className="text-muted-foreground">
@@ -413,7 +413,7 @@ function SubmissionTable({ updates, isFiltered, sort, onSort }: { updates: Progr
                 <Link className="font-heading font-semibold text-ink underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${update.projectId}/tasks/${update.taskId}#progress-${update.id}`}>
                   {update.title || update.taskTitle}
                 </Link>
-                {update.blockers ? <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="size-3.5" /> {update.blockers}</p> : null}
+                {update.blockers ? <p className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> <span>Blocker: {update.blockers}</span></p> : null}
               </TableCell>
               <TableCell className="text-muted-foreground">
                 <Link className="block truncate underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${update.projectId}`}>{update.projectName}</Link>
