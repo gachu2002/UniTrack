@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { EmptyState } from '@/components/shared/empty-state'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { SortableTableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { PersonLink } from '@/features/activity/components/person-link'
 import { getAssignmentState } from '@/features/tasks/assignment-state'
 import { formatDate } from '@/lib/format'
 import { dateSortValue, sortItems, toggleSort, type SortState } from '@/lib/sort'
@@ -66,7 +67,7 @@ export function TaskTable({ tasks, emptyTitle, emptyMessage, showProject = false
                   {task.title}
                 </Link>
                 {showProject ? <p className="mt-1 text-xs font-medium text-muted-foreground md:hidden">{task.projectName}</p> : null}
-                {showAssignees ? <p className="mt-1 text-xs text-muted-foreground lg:hidden">{assigneeText(task)}</p> : null}
+                {showAssignees ? <p className="mt-1 text-xs text-muted-foreground lg:hidden"><AssigneeLinks task={task} /></p> : null}
               </TableCell>
               {showProject ? (
                 <TableCell className="hidden max-w-52 truncate text-muted-foreground md:table-cell">
@@ -80,7 +81,7 @@ export function TaskTable({ tasks, emptyTitle, emptyMessage, showProject = false
                   {formatDate(task.deadline)}
                 </span>
               </TableCell>
-              {showAssignees ? <TableCell className="hidden max-w-64 truncate text-muted-foreground lg:table-cell">{assigneeText(task)}</TableCell> : null}
+               {showAssignees ? <TableCell className="hidden max-w-64 truncate text-muted-foreground lg:table-cell"><AssigneeLinks task={task} /></TableCell> : null}
               <TableCell><StatusBadge value={assignmentState.key} tone={assignmentState.tone} /></TableCell>
               <TableCell><StatusBadge value={task.priority} /></TableCell>
               {showAttention ? <TableCell>{task.pendingReviewCount > 0 ? <StatusBadge value="pending_review" /> : task.isOverdue ? <StatusBadge value="overdue" tone="red" /> : <span className="text-xs text-muted-foreground">None</span>}</TableCell> : null}
@@ -100,6 +101,11 @@ export function TaskTable({ tasks, emptyTitle, emptyMessage, showProject = false
 
 function assigneeText(task: Task) {
   return task.assignees.length > 0 ? task.assignees.map((assignee) => assignee.fullName).join(', ') : 'No assignee'
+}
+
+function AssigneeLinks({ task }: { task: Task }) {
+  if (!task.assignees.length) return 'No assignee'
+  return task.assignees.map((assignee, index) => <span key={assignee.id}>{index > 0 ? ', ' : null}<PersonLink id={assignee.id} name={assignee.fullName} role="student" /></span>)
 }
 
 function priorityRank(priority: Task['priority']) {

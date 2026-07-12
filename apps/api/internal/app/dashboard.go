@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"strconv"
 )
@@ -215,12 +216,13 @@ func (s *Server) dashboardProgressUpdates(ctx context.Context, user User, limit 
 	}
 
 	rows, err := s.db.Query(ctx, `
-		SELECT pu.id::text, pu.project_id::text, p.name, pu.task_id::text, t.title, pu.submitted_by::text, u.full_name,
+		SELECT pu.id::text, pu.project_id::text, p.name, p.supervisor_id::text, supervisor.full_name, pu.task_id::text, t.title, pu.submitted_by::text, u.full_name,
 		       pu.title, pu.description, pu.blockers, pu.review_status, pu.created_at, pu.updated_at
 		FROM progress_updates pu
 		JOIN projects p ON p.id = pu.project_id
 		JOIN tasks t ON t.id = pu.task_id AND t.project_id = pu.project_id
 		JOIN users u ON u.id = pu.submitted_by
+		JOIN users supervisor ON supervisor.id = p.supervisor_id
 		`+where+`
 		`+orderBy+`
 		LIMIT $`+strconv.Itoa(len(args))+`
@@ -232,10 +234,18 @@ func (s *Server) dashboardProgressUpdates(ctx context.Context, user User, limit 
 
 	updates := []ProgressUpdateDTO{}
 	for rows.Next() {
-		update, err := scanProgressUpdate(rows)
+		var update ProgressUpdateDTO
+		var title, blockers sql.NullString
+		err := rows.Scan(
+			&update.ID, &update.ProjectID, &update.ProjectName, &update.SupervisorID, &update.SupervisorName,
+			&update.TaskID, &update.TaskTitle, &update.SubmittedBy, &update.SubmittedByName,
+			&title, &update.Description, &blockers, &update.ReviewStatus, &update.CreatedAt, &update.UpdatedAt,
+		)
 		if err != nil {
 			return nil, err
 		}
+		update.Title = nullString(title)
+		update.Blockers = nullString(blockers)
 		latest, err := s.latestReview(ctx, update.ID)
 		if err != nil && !isNoRows(err) {
 			return nil, err

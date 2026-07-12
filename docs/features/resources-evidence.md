@@ -26,6 +26,7 @@ Teachers and students need support material attached to project work, but eviden
 - Evidence upload/delete controls are hidden until evidence metadata has loaded successfully, so users do not act against an unknown file state.
 - Support writes must recheck current project access, manager/owner authority, target validity, and submission state under project locks.
 - Reviewed submission support records are immutable in API and database; pending submissions can still receive support while lifecycle allows it. Open submission-resource dialogs derive writability from current submission review state and become read-only after review. Database compatibility evidence rows that target a resource link resolve through that resource link when enforcing reviewed-submission evidence immutability.
+- Empty resource shelves and evidence panels use the shared compact empty treatment, identifying the missing support record and its next useful expectation.
 - Development/tests use local files; production requires private R2 through API-proxied downloads.
 - Evidence uploads create a cleanup job before object storage and complete it in the metadata transaction. If metadata insert/commit fails, the queued job deletes the orphan object.
 - Evidence deletes remove metadata and enqueue object cleanup in one transaction, then delete the object; failed object deletes remain queued and are retried at API startup or by focused cleanup processing.

@@ -32,6 +32,7 @@ Scope: keep cross-cutting auth, session, role, permission, and route-guard rules
 | Student | View member projects and submit assigned work. |
 
 - Folder routes are teacher/admin only.
+- Person work pages are permission-scoped: teachers can view related students and themselves, students can view supervisors only through shared projects, and admins can view any permitted person/project relationship.
 - Project-scoped manager writes require relationship checks plus lifecycle gates.
 - Feature handlers add stricter checks for assignments, submissions, reviews, resources, and evidence.
 - Manager/viewer authority must be rechecked inside transactions for stale-sensitive writes.

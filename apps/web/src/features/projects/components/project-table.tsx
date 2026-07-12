@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { EmptyState } from '@/components/shared/empty-state'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { SortableTableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { PersonLink } from '@/features/activity/components/person-link'
 import { getLastApprovedLabel, getProjectAttentionReason } from '@/features/projects/attention'
 import { sortItems, toggleSort, type SortState } from '@/lib/sort'
 import type { Project } from '@/types/api'
@@ -59,7 +60,7 @@ export function ProjectTable({ projects, emptyTitle, emptyMessage, mode = 'defau
                 </Link>
                 <p className="mt-1 text-xs text-muted-foreground md:hidden">{project.memberCount} members · {project.taskCount} tasks</p>
               </TableCell>
-              <TableCell className="text-muted-foreground">{showSupervisor ? project.supervisorName : project.topic || 'No topic set'}</TableCell>
+              <TableCell className="text-muted-foreground">{showSupervisor ? <PersonLink id={project.supervisorId} name={project.supervisorName} role="teacher" /> : project.topic || 'No topic set'}</TableCell>
               <TableCell className="hidden text-muted-foreground md:table-cell">{project.memberCount}</TableCell>
               <TableCell className="hidden text-muted-foreground md:table-cell">{project.taskCount}</TableCell>
               <TableCell><StatusBadge value={project.status} /></TableCell>

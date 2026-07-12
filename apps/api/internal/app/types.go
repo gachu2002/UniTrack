@@ -31,6 +31,11 @@ type UserDTO struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
+type TeacherWorkDTO struct {
+	Teacher  UserDTO      `json:"teacher"`
+	Projects []ProjectDTO `json:"projects"`
+}
+
 type ProjectDTO struct {
 	ID                      string     `json:"id"`
 	Name                    string     `json:"name"`
@@ -75,6 +80,8 @@ type TaskDTO struct {
 	ID                    string    `json:"id"`
 	ProjectID             string    `json:"projectId"`
 	ProjectName           string    `json:"projectName"`
+	SupervisorID          string    `json:"supervisorId"`
+	SupervisorName        string    `json:"supervisorName"`
 	MilestoneID           *string   `json:"milestoneId,omitempty"`
 	MilestoneTitle        *string   `json:"milestoneTitle,omitempty"`
 	Title                 string    `json:"title"`
@@ -123,6 +130,8 @@ type ProgressUpdateDTO struct {
 	ID              string             `json:"id"`
 	ProjectID       string             `json:"projectId"`
 	ProjectName     string             `json:"projectName"`
+	SupervisorID    string             `json:"supervisorId,omitempty"`
+	SupervisorName  string             `json:"supervisorName,omitempty"`
 	TaskID          string             `json:"taskId"`
 	TaskTitle       string             `json:"taskTitle"`
 	SubmittedBy     string             `json:"submittedBy"`
@@ -203,6 +212,26 @@ type DashboardDTO struct {
 	Projects        []ProjectDTO        `json:"projects"`
 	Tasks           []TaskDTO           `json:"tasks"`
 	ProgressUpdates []ProgressUpdateDTO `json:"progressUpdates"`
+}
+
+type StudentWorkDTO struct {
+	Student         UserDTO             `json:"student"`
+	ActiveTasks     []TaskDTO           `json:"activeTasks"`
+	HistoryTasks    []TaskDTO           `json:"historyTasks"`
+	ProgressUpdates []ProgressUpdateDTO `json:"progressUpdates"`
+	CurrentProjects []ProjectDTO        `json:"currentProjects"`
+}
+
+type SearchResultDTO struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type GlobalSearchDTO struct {
+	Students []UserDTO         `json:"students"`
+	Projects []SearchResultDTO `json:"projects"`
+	Folders  []SearchResultDTO `json:"folders"`
 }
 
 type DashboardStats struct {

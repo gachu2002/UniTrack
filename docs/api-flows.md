@@ -184,6 +184,8 @@ Pagination details:
 | Method | Route | Handler | FE API |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/dashboard` | `handleDashboard` | `features/dashboard/api.ts` |
+| `GET` | `/api/v1/work` | `handleStudentWork` | `features/activity/api.ts` |
+| `GET` | `/api/v1/search` | `handleGlobalSearch` | `features/activity/api.ts` |
 | `GET` | `/api/v1/projects` | `handleListProjects` | `features/projects/api.ts` |
 | `POST` | `/api/v1/projects` | `handleCreateProject` | `features/projects/api.ts` |
 | `GET` | `/api/v1/projects/{projectId}` | `handleGetProject` | `features/projects/api.ts` |
@@ -537,6 +539,8 @@ Backend routes involved:
 | Projects | `GET /api/v1/projects` |
 | Folders | `GET /api/v1/classes` |
 | Dashboard | `GET /api/v1/dashboard` |
+| Work history / people pages | `GET /api/v1/work`, `GET /api/v1/work?studentId=:id`, `GET /api/v1/work?teacherId=:id` |
+| Global navigation search | `GET /api/v1/search?q=ab` |
 
 Filtering examples:
 
@@ -546,6 +550,7 @@ Filtering examples:
 | `/projects?unassigned=true` | Projects not in any folder. |
 | `/projects?excludeArchived=true` | Hide archived projects. |
 | `/classes?status=active` | Active folders only. |
+| `/search?q=ab` | Accessible global student, folder, and project navigation results. |
 
 ## Flow 5: Create Project With Optional Folder
 

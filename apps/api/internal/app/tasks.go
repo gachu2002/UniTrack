@@ -868,6 +868,8 @@ func taskSelectSQL(where string, suffix string) string {
 			t.id::text,
 			t.project_id::text,
 			p.name,
+			p.supervisor_id::text,
+			supervisor.full_name,
 			t.milestone_id::text,
 			m.title,
 			t.title,
@@ -886,10 +888,11 @@ func taskSelectSQL(where string, suffix string) string {
 		FROM tasks t
 		JOIN projects p ON p.id = t.project_id
 		JOIN users u ON u.id = t.created_by
+		JOIN users supervisor ON supervisor.id = p.supervisor_id
 		LEFT JOIN project_milestones m ON m.id = t.milestone_id
 		LEFT JOIN progress_updates pu ON pu.task_id = t.id AND pu.project_id = t.project_id
 		` + where + `
-		GROUP BY t.id, p.name, u.full_name, m.id, m.title, p.status
+		GROUP BY t.id, p.name, p.supervisor_id, supervisor.full_name, u.full_name, m.id, m.title, p.status
 		` + suffix + `
 	`
 }
@@ -902,6 +905,8 @@ func scanTask(row pgx.Row) (TaskDTO, error) {
 		&task.ID,
 		&task.ProjectID,
 		&task.ProjectName,
+		&task.SupervisorID,
+		&task.SupervisorName,
 		&milestoneID,
 		&milestoneTitle,
 		&task.Title,

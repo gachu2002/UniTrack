@@ -4,6 +4,7 @@ import { useId, useState } from 'react'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { deleteUploadedFile, downloadUploadedFile, uploadProjectFile } from '@/features/files/api'
@@ -153,7 +154,7 @@ export function EvidenceFilePanel({ projectId, targetType, targetId, files, canU
             </div>
           ) : null}
         </div>
-      ) : <p className="rounded-xl border border-dashed border-border bg-white/70 px-3 py-3 text-sm text-muted-foreground">{emptyMessage}</p>}
+      ) : <EmptyState title="No evidence yet" message={emptyMessage} compact />}
     </section>
     <ConfirmDialog
       open={Boolean(deleteTarget)}

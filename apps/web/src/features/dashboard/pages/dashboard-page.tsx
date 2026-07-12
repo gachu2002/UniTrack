@@ -10,6 +10,7 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SortableTableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { PersonLink } from '@/features/activity/components/person-link'
 import { getDashboard } from '@/features/dashboard/api'
 import { getLastApprovedLabel, getProjectAttentionReason, projectNeedsAttention } from '@/features/projects/attention'
 import { getAssignmentState, isAssignmentNeedsRevision } from '@/features/tasks/assignment-state'
@@ -236,7 +237,7 @@ function ReviewTable({ updates, isFiltered, sort, onSort }: { updates: ProgressU
                   <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{update.description}</p>
                   {update.blockers ? <p className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> <span>Blocker: {update.blockers}</span></p> : null}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{update.submittedByName}</TableCell>
+                <TableCell className="text-muted-foreground"><PersonLink id={update.submittedBy} name={update.submittedByName} role="student" /></TableCell>
                 <TableCell className="text-muted-foreground">
                   <Link className="block truncate underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${update.projectId}`}>{update.projectName}</Link>
                   <p className="mt-1 truncate text-xs">{update.taskTitle}</p>
@@ -265,11 +266,12 @@ function OverdueAssignmentTable({ tasks, isFiltered, sort, onSort }: { tasks: Ta
 
   return (
     <div className="overflow-x-auto">
-      <Table className="min-w-[48rem]">
+      <Table className="min-w-[56rem]">
         <TableHeader>
           <TableRow>
             <SortableTableHead sortKey="assignment" sort={sort} onSort={onSort}>Assignment</SortableTableHead>
             <SortableTableHead sortKey="project" sort={sort} onSort={onSort} className="w-64">Project</SortableTableHead>
+            <TableHead className="w-48">Supervisor</TableHead>
             <SortableTableHead sortKey="due" sort={sort} onSort={onSort} className="w-36">Due</SortableTableHead>
             <SortableTableHead sortKey="assignees" sort={sort} onSort={onSort} className="w-64">Assignees</SortableTableHead>
             <TableHead className="w-20 text-right">Open</TableHead>
@@ -287,10 +289,11 @@ function OverdueAssignmentTable({ tasks, isFiltered, sort, onSort }: { tasks: Ta
               <TableCell className="text-muted-foreground">
                 <Link className="block truncate underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${task.projectId}`}>{task.projectName}</Link>
               </TableCell>
+              <TableCell className="text-muted-foreground"><PersonLink id={task.supervisorId} name={task.supervisorName} role="teacher" /></TableCell>
               <TableCell className="whitespace-nowrap font-semibold text-destructive">
                 <span className="inline-flex items-center gap-1.5"><CalendarClock className="size-4" /> {formatDate(task.deadline)}</span>
               </TableCell>
-              <TableCell className="max-w-64 truncate text-muted-foreground">{assigneeText(task)}</TableCell>
+              <TableCell className="max-w-64 truncate text-muted-foreground"><AssigneeLinks task={task} /></TableCell>
               <TableCell className="text-right">
                 <OpenLink to={`/workspace/projects/${task.projectId}/tasks/${task.id}`} label={`Open assignment ${task.title}`} />
               </TableCell>
@@ -309,7 +312,7 @@ function ProjectFollowUpTable({ projects, showSupervisor, isFiltered, sort, onSo
 
   return (
     <div className="overflow-x-auto">
-      <Table className="min-w-[48rem]">
+      <Table className="min-w-[56rem]">
         <TableHeader>
           <TableRow>
             <SortableTableHead sortKey="project" sort={sort} onSort={onSort}>Project</SortableTableHead>
@@ -328,7 +331,7 @@ function ProjectFollowUpTable({ projects, showSupervisor, isFiltered, sort, onSo
                 </Link>
                 <p className="mt-1 text-xs text-muted-foreground">{project.memberCount} members · {project.taskCount} assignments</p>
               </TableCell>
-              <TableCell className="text-muted-foreground">{showSupervisor ? project.supervisorName : project.topic || 'No topic set'}</TableCell>
+              <TableCell className="text-muted-foreground">{showSupervisor ? <PersonLink id={project.supervisorId} name={project.supervisorName} role="teacher" /> : project.topic || 'No topic set'}</TableCell>
               <TableCell><span className="text-sm font-semibold text-destructive">{getProjectAttentionReason(project)}</span></TableCell>
               <TableCell className="text-muted-foreground">{getLastApprovedLabel(project)}</TableCell>
               <TableCell className="text-right">
@@ -342,6 +345,11 @@ function ProjectFollowUpTable({ projects, showSupervisor, isFiltered, sort, onSo
   )
 }
 
+function AssigneeLinks({ task }: { task: Task }) {
+  if (!task.assignees.length) return 'No assignee'
+  return task.assignees.map((assignee, index) => <span key={assignee.id}>{index > 0 ? ', ' : null}<PersonLink id={assignee.id} name={assignee.fullName} role="student" /></span>)
+}
+
 function StudentWorkTable({ tasks, isFiltered, sort, onSort }: { tasks: Task[]; isFiltered: boolean; sort: SortState<StudentWorkSortKey> | null; onSort: (key: StudentWorkSortKey) => void }) {
   if (tasks.length === 0) {
     return <DashboardEmpty title={isFiltered ? 'No matching assignments' : 'No open assignments'} message={isFiltered ? 'Try another search term or clear this table search.' : 'Nothing needs action right now. Submitted or completed work appears below or in your projects.'} />
@@ -349,11 +357,12 @@ function StudentWorkTable({ tasks, isFiltered, sort, onSort }: { tasks: Task[]; 
 
   return (
     <div className="overflow-x-auto">
-      <Table className="min-w-[48rem]">
+      <Table className="min-w-[56rem]">
         <TableHeader>
           <TableRow>
             <SortableTableHead sortKey="assignment" sort={sort} onSort={onSort}>Assignment</SortableTableHead>
             <SortableTableHead sortKey="project" sort={sort} onSort={onSort} className="w-64">Project</SortableTableHead>
+            <TableHead className="w-48">Supervisor</TableHead>
             <SortableTableHead sortKey="due" sort={sort} onSort={onSort} className="w-36">Due</SortableTableHead>
             <SortableTableHead sortKey="status" sort={sort} onSort={onSort} className="w-36">Status</SortableTableHead>
             <TableHead className="w-20 text-right">Open</TableHead>
@@ -373,6 +382,7 @@ function StudentWorkTable({ tasks, isFiltered, sort, onSort }: { tasks: Task[]; 
                 <TableCell className="text-muted-foreground">
                   <Link className="block truncate underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${task.projectId}`}>{task.projectName}</Link>
                 </TableCell>
+                <TableCell className="text-muted-foreground"><PersonLink id={task.supervisorId} name={task.supervisorName} role="teacher" /></TableCell>
                 <TableCell className={cn('whitespace-nowrap', task.isOverdue ? 'font-semibold text-destructive' : 'text-muted-foreground')}>
                   <span className="inline-flex items-center gap-1.5"><CalendarClock className="size-4" /> {formatDate(task.deadline)}</span>
                 </TableCell>
@@ -396,11 +406,12 @@ function SubmissionTable({ updates, isFiltered, sort, onSort }: { updates: Progr
 
   return (
     <div className="overflow-x-auto">
-      <Table className="min-w-[48rem]">
+      <Table className="min-w-[56rem]">
         <TableHeader>
           <TableRow>
             <SortableTableHead sortKey="submission" sort={sort} onSort={onSort}>Submission</SortableTableHead>
             <SortableTableHead sortKey="project" sort={sort} onSort={onSort} className="w-64">Project</SortableTableHead>
+            <TableHead className="w-48">Supervisor</TableHead>
             <SortableTableHead sortKey="status" sort={sort} onSort={onSort} className="w-36">Status</SortableTableHead>
             <SortableTableHead sortKey="submitted" sort={sort} onSort={onSort} className="w-44">Submitted</SortableTableHead>
             <TableHead className="w-20 text-right">Open</TableHead>
@@ -419,6 +430,7 @@ function SubmissionTable({ updates, isFiltered, sort, onSort }: { updates: Progr
                 <Link className="block truncate underline-offset-4 hover:text-primary hover:underline" to={`/workspace/projects/${update.projectId}`}>{update.projectName}</Link>
                 <p className="mt-1 truncate text-xs">{update.taskTitle}</p>
               </TableCell>
+              <TableCell className="text-muted-foreground">{update.supervisorId && update.supervisorName ? <PersonLink id={update.supervisorId} name={update.supervisorName} role="teacher" /> : 'Not available'}</TableCell>
               <TableCell><StatusBadge value={update.reviewStatus} /></TableCell>
               <TableCell className="whitespace-nowrap text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5"><Clock className="size-4" /> {formatDateTime(update.createdAt)}</span>

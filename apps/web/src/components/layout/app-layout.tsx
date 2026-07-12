@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { LogOut, UserRound } from 'lucide-react'
+import { LogOut, Search, UserRound } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { OceanAdminIcon, OceanCurrentLines, OceanDashboardIcon, OceanMark, OceanWorkspaceIcon } from '@/components/shared/ocean-lines'
 import { Button } from '@/components/ui/button'
+import { GlobalSearch } from '@/features/activity/components/global-search'
 import { logout } from '@/features/auth/api'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -27,6 +29,7 @@ function navigationFor(user?: User) {
   }
   return [
     { label: 'Dashboard', href: '/dashboard', icon: OceanDashboardIcon },
+    { label: 'My work', href: '/work', icon: OceanDashboardIcon },
     { label: 'Workspace', href: '/workspace', icon: OceanWorkspaceIcon },
   ]
 }
@@ -35,6 +38,7 @@ export function AppLayout({ user }: AppLayoutProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const setUser = useAuthStore((state) => state.setUser)
+  const [searchOpen, setSearchOpen] = useState(false)
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: () => {
@@ -44,6 +48,18 @@ export function AppLayout({ user }: AppLayoutProps) {
     },
     onError: () => toast.error('Could not log out. Try again.'),
   })
+
+  useEffect(() => {
+    function openSearch(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'p') {
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+
+    document.addEventListener('keydown', openSearch)
+    return () => document.removeEventListener('keydown', openSearch)
+  }, [])
 
   return (
     <div className="relative min-h-screen overflow-x-hidden text-foreground">
@@ -69,7 +85,7 @@ export function AppLayout({ user }: AppLayoutProps) {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_8%,rgba(14,165,233,0.2),transparent_14rem),linear-gradient(180deg,#031d34_0%,#02111f_100%)]" />
         <OceanCurrentLines className="absolute bottom-[-4rem] left-[-9rem] h-72 w-[30rem] text-cyan-100/14" />
         <div className="relative z-10 h-full">
-          <SidebarContent user={user} onLogout={() => logoutMutation.mutate()} isLoggingOut={logoutMutation.isPending} />
+          <SidebarContent user={user} onLogout={() => logoutMutation.mutate()} isLoggingOut={logoutMutation.isPending} onOpenSearch={() => setSearchOpen(true)} />
         </div>
       </aside>
 
@@ -86,9 +102,14 @@ export function AppLayout({ user }: AppLayoutProps) {
               <p className="text-xs font-medium text-white/60">{user.role}</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => logoutMutation.mutate()} aria-label="Log out">
-            <LogOut className="size-5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={() => setSearchOpen(true)} aria-label="Open search">
+              <Search className="size-5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => logoutMutation.mutate()} aria-label="Log out">
+              <LogOut className="size-5" />
+            </Button>
+          </div>
         </div>
         <div className="relative">
           <MobileNavigation user={user} />
@@ -100,6 +121,7 @@ export function AppLayout({ user }: AppLayoutProps) {
           <Outlet />
         </div>
       </main>
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   )
 }
@@ -121,7 +143,7 @@ function MobileNavigation({ user }: { user: User }) {
   )
 }
 
-function SidebarContent({ user, onLogout, isLoggingOut }: { user: User; onLogout: () => void; isLoggingOut: boolean }) {
+function SidebarContent({ user, onLogout, isLoggingOut, onOpenSearch }: { user: User; onLogout: () => void; isLoggingOut: boolean; onOpenSearch: () => void }) {
   return (
     <div className="flex h-full flex-col">
       <div className="pb-6">
@@ -135,6 +157,11 @@ function SidebarContent({ user, onLogout, isLoggingOut }: { user: User; onLogout
           </div>
         </div>
       </div>
+
+      <Button className="w-full justify-between border-cyan-100/15 bg-white/5 px-3 text-white hover:border-cyan-100/25 hover:bg-white/10 hover:text-white" variant="outline" onClick={onOpenSearch}>
+        <span className="flex items-center gap-3"><Search className="size-4" />Search workspace</span>
+        <kbd className="rounded border border-cyan-100/20 bg-cyan-50/10 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-cyan-100/70">Ctrl P</kbd>
+      </Button>
 
       <nav className="mt-4 space-y-1" aria-label="Primary navigation">
         {navigationFor(user).map((link) => {

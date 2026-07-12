@@ -21,7 +21,7 @@ Keep top-level docs as navigation, not duplicated feature manuals.
 | `docs/audit.md` | Audit rubric, scorecard, queue, open findings, residual risks, pass template. |
 | `docs/features/*.md` | Vertical feature behavior with UI, API/data rules, source maps, tests, gaps. |
 
-Feature docs cover admin accounts, dashboard, workspace/projects/team, assignment review, resources/evidence, and UI system.
+Feature docs cover admin accounts, dashboard, progress/search, workspace/projects/team, assignment review, resources/evidence, and UI system.
 
 Sync rules: update this file only for status/routes/top-risks/commands/doc-set/next-slice changes; update relevant feature docs for durable behavior/UI/API/schema/permission/user-flow/cache/test/gap changes; create a new feature doc when no owner exists.
 
@@ -47,6 +47,7 @@ Sync rules: update this file only for status/routes/top-risks/commands/doc-set/n
 | Auth/session/protected access | Implemented | `security-auth.md`; `auth.go`, `security.go`, `permissions.go`, route guards |
 | Admin accounts | Implemented | `admin-accounts.md`; `admin_users.go`, admin UI |
 | Dashboard | Implemented | `dashboard.md`; `dashboard.go`, dashboard page, `dashboard.spec.ts` |
+| Progress tracking and global search | Implemented; browser coverage remains | `progress-search.md`; `activity.go`, activity UI |
 | Workspace, projects, milestones, team | Implemented | `workspace-projects.md`; `classes.go`, `projects.go`, `milestones.go`, project UI |
 | Assignments, submissions, reviews | Implemented | `assignment-review.md`; `tasks.go`, task/detail/review UI |
 | Resources and evidence | Implemented; production hardening remains | `resources-evidence.md`; `resources.go`, `files.go`, `storage.go` |
@@ -62,6 +63,7 @@ Sync rules: update this file only for status/routes/top-risks/commands/doc-set/n
 | `/login` | Existing user sign-in. |
 | `/admin/users` | Admin-only account management. |
 | `/dashboard` | Role-aware work summary. |
+| `/work` | Student work and submission history; permitted users can open related student or supervisor pages through person links. |
 | `/workspace` | Main project workspace. |
 | `/workspace/classes/:classId` | Teacher/admin folder detail and project movement. |
 | `/workspace/projects/:projectId` | Project dossier, mission control, Work Plan, resources, team popover. |

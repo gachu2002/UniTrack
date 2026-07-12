@@ -2,6 +2,7 @@ import { CheckCircle2, Clock, ExternalLink, MessageSquareWarning } from 'lucide-
 
 import { EmptyState } from '@/components/shared/empty-state'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { PersonLink } from '@/features/activity/components/person-link'
 import { EvidenceFilePanel } from '@/features/files/components/evidence-file-panel'
 import { filesForTarget } from '@/features/files/utils'
 import { ResourceLinkButton } from '@/features/resources/components/resource-link-drawer'
@@ -34,7 +35,10 @@ export function ProgressTimeline({ projectId, updates, canReview, canUploadEvide
   return (
     <section id="progress-timeline" className={compact ? 'overflow-hidden rounded-xl border border-border bg-card/90 shadow-sm' : 'overflow-hidden rounded-[1.4rem] border border-border bg-card shadow-sm'}>
       <div className={compact ? 'border-b border-border px-4 py-3' : 'border-b border-border px-5 py-4'}>
-        <h2 className={compact ? 'font-heading text-lg font-semibold tracking-tight text-ink' : 'font-heading text-xl font-semibold tracking-tight text-ink'}>{title}</h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className={compact ? 'font-heading text-lg font-semibold tracking-tight text-ink' : 'font-heading text-xl font-semibold tracking-tight text-ink'}>{title}</h2>
+          {updates.length > 0 ? <span className="shrink-0 text-xs font-semibold text-muted-foreground">{updates.length} record{updates.length === 1 ? '' : 's'}</span> : null}
+        </div>
         {description ? <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </div>
       {updates.length > 0 ? (
@@ -43,7 +47,7 @@ export function ProgressTimeline({ projectId, updates, canReview, canUploadEvide
         </div>
       ) : (
         <div className={compact ? 'px-4 py-6' : 'px-5 py-8'}>
-          <EmptyState title={emptyTitle} message={emptyMessage} />
+          <EmptyState title={emptyTitle} message={emptyMessage} compact={compact} />
         </div>
       )}
     </section>
@@ -60,10 +64,11 @@ function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, ca
     <article id={`progress-${update.id}`} className={compact ? 'scroll-mt-24 px-4 py-4' : 'scroll-mt-24 px-5 py-5'}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
+          <p className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-muted-foreground">Student submission</p>
           <h3 className={compact ? 'break-words font-heading text-base font-semibold text-ink' : 'break-words font-heading text-lg font-semibold text-ink'}>{update.title || 'Submission'}</h3>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><Clock className="size-3.5" /> {formatDateTime(update.createdAt)}</span>
-            <span>By {update.submittedByName}</span>
+            <span>By <PersonLink id={update.submittedBy} name={update.submittedByName} role="student" /></span>
           </p>
         </div>
         <StatusBadge value={update.reviewStatus} />
@@ -77,13 +82,16 @@ function ProgressUpdateRow({ projectId, update, canReview, canUploadEvidence, ca
         </div>
       ) : null}
       {update.latestReview && reviewTone ? (
-        <div className={`${compact ? 'mt-3 rounded-lg px-3 py-2' : 'mt-4 border-l-2 pl-3'} text-sm ${reviewTone.containerClass}`}>
-          <p className="flex items-center gap-2 font-semibold">
+        <div className={`${compact ? 'mt-4 rounded-lg border px-3 py-3' : 'mt-5 border-l-2 pl-3'} text-sm ${reviewTone.containerClass}`}>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[0.68rem] font-bold uppercase tracking-[0.14em] opacity-75">Teacher decision</p>
+            <p className={`text-xs ${reviewTone.dateClass}`}>{formatDateTime(update.latestReview.reviewedAt)}</p>
+          </div>
+          <p className="mt-1 flex items-center gap-2 font-semibold">
             {reviewTone.kind === 'approved' ? <CheckCircle2 className="size-4" /> : <MessageSquareWarning className="size-4" />}
-            {reviewTone.label} by {update.latestReview.reviewedByName}
+            {reviewTone.label} <span className="font-normal">by <PersonLink id={update.latestReview.reviewedBy} name={update.latestReview.reviewedByName} role="teacher" /></span>
           </p>
           {update.latestReview.reviewComment ? <p className="mt-1 break-words leading-6">{update.latestReview.reviewComment}</p> : null}
-          <p className={`mt-1 text-xs ${reviewTone.dateClass}`}>{formatDateTime(update.latestReview.reviewedAt)}</p>
         </div>
       ) : null}
       {showReviewForm && canReview && update.reviewStatus === 'pending_review' ? <ReviewProgressForm projectId={projectId} update={update} /> : null}

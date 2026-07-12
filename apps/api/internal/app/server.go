@@ -52,6 +52,8 @@ func (s *Server) Handler() http.Handler {
 		api.Group(func(protected chi.Router) {
 			protected.Use(s.requireAuth)
 			protected.Get("/auth/me", s.handleMe)
+			protected.Get("/search", s.handleGlobalSearch)
+			protected.Get("/work", s.handleStudentWork)
 			protected.Get("/admin/users", s.handleAdminListUsers)
 			protected.Post("/admin/users", s.handleAdminCreateUser)
 			protected.Patch("/admin/users/{userId}", s.handleAdminUpdateUser)

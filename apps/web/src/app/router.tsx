@@ -5,6 +5,7 @@ import { ErrorState } from '@/components/shared/error-state'
 import { ForbiddenState } from '@/components/shared/forbidden-state'
 import { LoadingState } from '@/components/shared/loading-state'
 import { LoginPage } from '@/features/auth/pages/login-page'
+import { StudentWorkPage } from '@/features/activity/pages/student-work-page'
 import { AdminUsersPage } from '@/features/admin/pages/admin-users-page'
 import { ClassDetailPage } from '@/features/classes/pages/class-detail-page'
 import { useCurrentUser } from '@/features/auth/hooks'
@@ -21,6 +22,7 @@ export function AppRouter() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/work" element={<StudentWorkPage />} />
         <Route path="/workspace" element={<WorkspacePage />} />
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<Navigate to="/admin/users" replace />} />

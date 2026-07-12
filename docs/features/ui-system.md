@@ -28,6 +28,7 @@ UniTrack needs a compact academic workspace UI that stays readable across teache
 - Custom folder color radios use roving focus with arrow/Home/End keys, and the folder project attach combobox uses active-descendant keyboard behavior.
 - Keep decorative motion respectful of `prefers-reduced-motion`.
 - Keep desktop and mobile layouts usable; avoid dense card sprawl on project and assignment pages.
+- Use the shared `EmptyState`; embedded panels use its compact variant instead of one-off empty text so section-level absence is consistently readable.
 
 ## Source Map
 

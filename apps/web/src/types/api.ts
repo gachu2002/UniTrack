@@ -58,6 +58,11 @@ export interface ProjectMember {
   joinedAt: string
 }
 
+export interface TeacherWork {
+  teacher: User
+  projects: Project[]
+}
+
 export type ClassFolderColor = 'blue' | 'teal' | 'amber' | 'rose' | 'violet' | 'slate'
 
 export interface ClassFolder {
@@ -85,6 +90,8 @@ export interface Task {
   id: string
   projectId: string
   projectName: string
+  supervisorId: string
+  supervisorName: string
   milestoneId?: string
   milestoneTitle?: string
   title: string
@@ -171,6 +178,8 @@ export interface ProgressUpdate {
   id: string
   projectId: string
   projectName: string
+  supervisorId?: string
+  supervisorName?: string
   taskId: string
   taskTitle: string
   submittedBy: string
@@ -204,4 +213,24 @@ export interface Dashboard {
   projects: Project[]
   tasks: Task[]
   progressUpdates: ProgressUpdate[]
+}
+
+export interface StudentWork {
+  student: User
+  activeTasks: Task[]
+  historyTasks: Task[]
+  progressUpdates: ProgressUpdate[]
+  currentProjects: Project[]
+}
+
+export interface SearchResult {
+  id: string
+  label: string
+  detail?: string
+}
+
+export interface GlobalSearch {
+  students: User[]
+  projects: SearchResult[]
+  folders: SearchResult[]
 }

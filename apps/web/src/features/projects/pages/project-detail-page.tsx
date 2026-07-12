@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowRight, ArrowUp, ChevronDown, Link2, MoreHorizontal, Pencil, Plus, Search, Star, Trash2, Users } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUp, CalendarDays, ChevronDown, ClipboardCheck, FolderKanban, Link2, MoreHorizontal, Pencil, Plus, Search, Star, Trash2, Users } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
-import { PageHeader } from '@/components/layout/page-header'
+import { PageHeader, PageHeaderPill } from '@/components/layout/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ErrorState } from '@/components/shared/error-state'
 import { ForbiddenState } from '@/components/shared/forbidden-state'
@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { createMilestone, deleteMilestone, getProject, getProjectMembers, getProjectMilestones, getProjectResourceLinks, getProjectTasks, removeProjectMember, reorderMilestones, updateMilestone, updateProjectMember } from '@/features/projects/api'
 import { getProjectWorkSignal, type ProjectWorkSignal } from '@/features/projects/attention'
 import { AddProjectMemberForm, EditProjectForm } from '@/features/projects/components/project-forms'
+import { PersonLink } from '@/features/activity/components/person-link'
 import { ResourceLinkButton, ResourceLinkDialog, ResourceLinkShelf, type ResourceLinkTarget } from '@/features/resources/components/resource-link-drawer'
 import { resourcesForTarget } from '@/features/resources/utils'
 import { getAssignmentState, isAssignmentNeedsRevision } from '@/features/tasks/assignment-state'
@@ -151,10 +152,21 @@ function ProjectCommandHeader({ project, canManage, canPlan, canCreateAssignment
         title={project.name}
         description={summary || 'Assignments, submissions, resources, and project team activity in one supervision space.'}
         badges={badges}
+        meta={<ProjectHeaderMeta project={project} />}
         action={<><ProjectPrimaryActionButton action={primaryAction} assignmentCreateDisabledReason={assignmentCreateDisabledReason} onCreateMilestone={onCreateMilestone} onCreateTask={onCreateTask} />{canManage ? <Button type="button" variant="edit" size="sm" onClick={onEdit}><Pencil className="size-4" /> Edit project</Button> : null}</>}
       />
       <ProjectLifecycleNotice project={project} />
     </div>
+  )
+}
+
+function ProjectHeaderMeta({ project }: { project: Project }) {
+  return (
+    <>
+      <PageHeaderPill><FolderKanban className="size-3.5 text-primary" /> {project.classTitle || 'Standalone project'}</PageHeaderPill>
+      <PageHeaderPill><CalendarDays className="size-3.5 text-primary" /> {projectTimelineLabel(project)}</PageHeaderPill>
+      <PageHeaderPill><Users className="size-3.5 text-primary" /> {project.memberCount} student{project.memberCount === 1 ? '' : 's'}</PageHeaderPill>
+    </>
   )
 }
 
@@ -179,26 +191,25 @@ function ProjectSignalBadge({ signal }: { signal: ProjectWorkSignal }) {
 }
 
 function projectPrimaryAction(project: Project, canManage: boolean, canPlan: boolean, canCreateAssignments: boolean) {
-  if (!canManage && project.pendingReviewCount > 0) {
-    return { kind: 'open-plan' as const, label: 'Open work plan' }
-  }
   if (canPlan && project.milestoneCount === 0) {
     return { kind: 'create-checkpoint' as const, label: 'Create checkpoint' }
   }
   if (canCreateAssignments && project.milestoneCount > 0) {
     return { kind: 'create-assignment' as const, label: 'Add assignment' }
   }
-  return { kind: 'open-plan' as const, label: 'Open work plan' }
+  return null
 }
 
 function ProjectPrimaryActionButton({ action, assignmentCreateDisabledReason, onCreateMilestone, onCreateTask }: { action: ReturnType<typeof projectPrimaryAction>; assignmentCreateDisabledReason?: string; onCreateMilestone: () => void; onCreateTask: () => void }) {
+  if (!action) {
+    return null
+  }
   if (action.kind === 'create-checkpoint') {
     return <Button type="button" size="sm" onClick={onCreateMilestone}><Plus className="size-4" /> {action.label}</Button>
   }
   if (action.kind === 'create-assignment') {
     return <Button type="button" size="sm" disabled={Boolean(assignmentCreateDisabledReason)} title={assignmentCreateDisabledReason} onClick={onCreateTask}><Plus className="size-4" /> {action.label}</Button>
   }
-  return <Button asChild variant="outline" size="sm"><a href="#work-board"><ArrowRight className="size-4" /> {action.label}</a></Button>
 }
 
 function ProjectLifecycleNotice({ project }: { project: Project }) {
@@ -349,22 +360,23 @@ function ProjectPlanTree({ project, user, tasks, milestones, members, resources,
 
       {resourcesUnavailable ? <ResourceLoadWarning onRetry={onRetryResources} /> : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+      <div className="grid gap-7 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
         <section id="work-board" className="min-w-0 scroll-mt-24 space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-4 border-b border-border/80 pb-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
-              <h2 className="font-heading text-2xl font-semibold tracking-tight text-ink">Work Plan</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Project sequence</p>
+              <h2 className="mt-1 font-heading text-2xl font-semibold tracking-tight text-ink">Work Plan</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">The checkpoint sequence for assignments, due dates, reviews, and shared resources.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-              <span className="text-sm font-medium text-muted-foreground">{milestones.length} checkpoint{milestones.length === 1 ? '' : 's'} · {tasks.length} assignment{tasks.length === 1 ? '' : 's'}</span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs font-bold text-muted-foreground"><ClipboardCheck className="size-3.5 text-primary" /> {milestones.length} checkpoint{milestones.length === 1 ? '' : 's'} · {tasks.length} assignment{tasks.length === 1 ? '' : 's'}</span>
               {canPlan ? <Button type="button" size="sm" className="shrink-0" onClick={onCreateMilestone}><Plus className="size-4" /> New checkpoint</Button> : null}
             </div>
           </div>
 
           {milestones.length > 0 ? (
             <>
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-3 rounded-xl bg-paper/80 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between">
                 <label className="relative block w-full lg:max-w-xs">
                   <span className="sr-only">Search assignments</span>
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -471,7 +483,9 @@ function ProjectSideRail({ project, members, resources, canManageResources, canM
   const checkpointProgress = progressCopy(project.completedMilestoneCount, project.milestoneCount, 'checkpoint')
   return (
     <aside className="space-y-4 xl:sticky xl:top-6">
-      <section className="rounded-2xl border border-border/70 bg-white/85 p-4 shadow-sm sm:p-5">
+      <section className="overflow-hidden rounded-2xl border border-primary/15 bg-white/90 shadow-panel">
+        <div className="h-1 bg-primary" />
+        <div className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Snapshot</p>
@@ -491,7 +505,8 @@ function ProjectSideRail({ project, members, resources, canManageResources, canM
           <ProjectRailLine label="Folder" value={project.classTitle || 'Standalone'} />
           <ProjectRailLine label="Last approved" value={project.lastApprovedUpdateAt ? formatDate(project.lastApprovedUpdateAt) : 'None'} />
         </div>
-        {project.progressSummary ? <p className="mt-4 text-sm leading-6 text-muted-foreground">{project.progressSummary}</p> : null}
+        {project.progressSummary ? <p className="mt-4 border-t border-border/60 pt-4 text-sm leading-6 text-muted-foreground">{project.progressSummary}</p> : null}
+        </div>
       </section>
 
       <ProjectTeamRailCard project={project} members={members} canManage={canManageTeam} isLoading={isTeamLoading} isError={isTeamError} onRetry={onTeamRetry} />
@@ -529,8 +544,8 @@ function ProjectTeamRailCard({ project, members, canManage, isLoading, isError, 
         <ProjectTeamPopover project={project} members={members} canManage={canManage} isLoading={isLoading} isError={isError} onRetry={onRetry} />
       </div>
       <div className="mt-4 grid gap-3">
-        <ProjectPersonLine label="Supervisor" name={project.supervisorName} />
-        <ProjectPersonLine label="Leader" name={leader?.fullName || 'Not set'} muted={!leader} />
+        <ProjectPersonLine label="Supervisor" name={project.supervisorName} personId={project.supervisorId} role="teacher" />
+        <ProjectPersonLine label="Leader" name={leader?.fullName || 'Not set'} personId={leader?.id} role="student" muted={!leader} />
       </div>
       {teamNote ? <div className="mt-4 flex flex-col gap-2 text-sm leading-6 text-muted-foreground">
         <span>{teamNote}</span>
@@ -563,14 +578,14 @@ function ProjectRailLine({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ProjectPersonLine({ label, name, muted = false }: { label: string; name: string; muted?: boolean }) {
+function ProjectPersonLine({ label, name, personId, role, muted = false }: { label: string; name: string; personId?: string; role: 'student' | 'teacher'; muted?: boolean }) {
   const fallback = name.trim() ? name : 'Not set'
   return (
     <div className="flex min-w-0 items-center gap-3">
       <span className={cn('grid size-9 shrink-0 place-items-center rounded-full font-heading text-sm font-semibold', muted ? 'bg-slate-100 text-muted-foreground' : 'bg-primary/10 text-primary')}>{muted ? '-' : initials(fallback)}</span>
       <div className="min-w-0">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        <p className={cn('truncate text-sm font-semibold leading-5', muted ? 'text-muted-foreground' : 'text-ink')} title={fallback}>{fallback}</p>
+        {personId ? <PersonLink id={personId} name={fallback} role={role} className={cn('block truncate text-sm font-semibold leading-5', muted ? 'text-muted-foreground' : 'text-ink')} /> : <p className={cn('truncate text-sm font-semibold leading-5', muted ? 'text-muted-foreground' : 'text-ink')} title={fallback}>{fallback}</p>}
       </div>
     </div>
   )
@@ -632,7 +647,7 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
   const shownTasks = showAll ? tasks : tasks.slice(0, CHECKPOINT_TASK_INITIAL_COUNT)
 
   return (
-    <section id={`checkpoint-${milestone.id}`} className={cn('relative overflow-hidden rounded-2xl border bg-white/85 p-4 transition sm:p-5', isCurrent ? 'border-primary/25' : 'border-border/70')}>
+    <section id={`checkpoint-${milestone.id}`} className={cn('relative overflow-hidden rounded-2xl border bg-white/90 p-4 shadow-sm transition hover:shadow-panel sm:p-5', isCurrent ? 'border-primary/30 ring-1 ring-primary/10' : 'border-border/70')}>
       <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', checkpointAccentClasses(tone))} />
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 gap-3 sm:gap-4">
@@ -655,7 +670,7 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
           {canPlan ? <CheckpointActionsPopover milestone={milestone} resourceCount={milestoneResources.length} canManageResources={canManageResources} canMoveUp={canMoveUp} canMoveDown={canMoveDown} isMoving={isMoving} isDeleting={isDeleting} onEdit={onEdit} onResources={onResourcesMilestone} onMoveUp={onMoveUp} onMoveDown={onMoveDown} onDelete={onDelete} /> : null}
         </div>
       </div>
-      <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-5 flex flex-col gap-3 border-t border-border/60 pt-3 sm:flex-row sm:items-center sm:justify-between">
         <dl className="flex flex-wrap gap-2">
           <CheckpointMetric label="assignments" value={milestone.taskCount} />
           <CheckpointMetric label="done" value={milestone.completedTaskCount} tone={milestone.completedTaskCount > 0 ? 'teal' : 'slate'} />
@@ -664,7 +679,7 @@ function CheckpointSection({ milestone, index, tasks, showEmpty, isCurrent, mile
         </dl>
         <p className="shrink-0 text-xs font-semibold text-muted-foreground">{milestoneDateLabel(milestone)}</p>
       </div>
-      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted">
         <div className="h-full rounded-full bg-primary transition-all duration-700 ease-out" style={{ width: `${milestone.completionPercent}%` }} />
       </div>
       {shownTasks.length > 0 ? <div className="mt-4 grid gap-2">{shownTasks.map((task) => <TaskLedgerRow key={task.id} task={task} resources={taskResources(task)} canManageResources={canManageResources} onResources={() => onResourcesTask(task)} />)}</div> : null}
@@ -820,7 +835,7 @@ function TaskLedgerRow({ task, resources, canManageResources, onResources }: { t
   const assigneeLabel = assignmentAssigneeLabel(task.assignees)
   const assigneeTitle = assignmentAssigneeTitle(task.assignees)
   return (
-    <article className="rounded-xl border border-border/70 bg-white px-3 py-3 transition hover:border-primary/20 sm:px-4">
+    <article className="rounded-xl border border-border/70 bg-white px-3 py-3 transition hover:border-primary/30 hover:bg-paper/70 sm:px-4">
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -958,7 +973,7 @@ function ProjectTeamPopover({ project, members, canManage, isLoading, isError, o
                     <div className="flex min-w-0 items-center gap-3">
                       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 font-heading text-sm font-semibold text-primary">{initials(project.supervisorName)}</span>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-ink">{project.supervisorName}</p>
+                        <PersonLink id={project.supervisorId} name={project.supervisorName} role="teacher" className="block truncate text-sm font-semibold text-ink" />
                         <p className="text-xs font-medium text-muted-foreground">Supervisor</p>
                       </div>
                     </div>
@@ -1061,7 +1076,7 @@ function ProjectMemberRow({ member, canManage, actionsDisabled, onToggleRole, on
         <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary/10 font-heading text-xs font-semibold text-secondary">{initials(member.fullName)}</span>
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate text-sm font-semibold text-ink">{member.fullName}</p>
+            <PersonLink id={member.id} name={member.fullName} role="student" className="block truncate text-sm font-semibold text-ink" />
             {member.memberRole === 'leader' ? <StatusBadge value="leader" tone="teal" /> : null}
             {member.status !== 'active' ? <StatusBadge value={member.status} tone="red" /> : null}
           </div>

@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, ClipboardList, Clock, ExternalLink, MessageSquareWarning, Pencil, Send } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ClipboardList, Clock, ExternalLink, History, MessageSquareWarning, Pencil, Send } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { PageHeader } from '@/components/layout/page-header'
 import { ErrorState } from '@/components/shared/error-state'
+import { EmptyState } from '@/components/shared/empty-state'
 import { ForbiddenState } from '@/components/shared/forbidden-state'
 import { LoadingState } from '@/components/shared/loading-state'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -351,11 +352,28 @@ function AssignmentWorkflowPanel({ projectId, task, project, updates, state, can
     )
   }
 
+  if (canReview) {
+    return (
+      <AssignmentWorkflowShell
+        eyebrow="Teacher workflow"
+        title="Review queue is clear"
+        description={updates.length > 0 ? 'No student work is waiting for a decision. Previous decisions remain in the submission history below.' : 'No student work is waiting for a decision. The next review will appear here when an assigned student submits work.'}
+        tone="slate"
+        badge={<StatusBadge value={state.key} tone={state.tone} />}
+      >
+        <div className="grid gap-3 border-t border-border/70 pt-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <p className="text-sm leading-6 text-muted-foreground">{task.assignees.length === 0 ? 'Assign a student before this assignment can receive work.' : `${task.assignees.length} assigned student${task.assignees.length === 1 ? '' : 's'} can submit when ready.`}</p>
+          {updates.length > 0 ? <Button asChild variant="outline" size="sm"><a href="#progress-timeline"><History className="size-4" /> View history</a></Button> : null}
+        </div>
+      </AssignmentWorkflowShell>
+    )
+  }
+
   return (
     <AssignmentWorkflowShell
-      eyebrow={canReview ? 'Teacher workflow' : 'Assignment state'}
-      title={canReview ? 'No submission to review' : 'Assignment is view-only'}
-      description={canReview ? 'No student work is waiting for a decision.' : readOnlyAssignmentDescription(project, isAssignedStudent)}
+      eyebrow="Assignment state"
+      title="Assignment is view-only"
+      description={readOnlyAssignmentDescription(project, isAssignedStudent)}
       tone="slate"
       badge={<StatusBadge value={state.key} tone={state.tone} />}
     />
@@ -461,7 +479,7 @@ function AssignmentInstructions({ task }: { task: Task }) {
   return (
     <section className="rounded-xl border border-border bg-card/90 px-4 py-3 shadow-sm">
       <h2 className="font-heading text-base font-semibold tracking-tight text-ink">Instructions</h2>
-      <p className="mt-2 max-w-4xl break-words text-sm leading-6 text-muted-foreground">{task.description || 'No instructions were provided for this assignment.'}</p>
+      {task.description ? <p className="mt-2 max-w-4xl break-words text-sm leading-6 text-muted-foreground">{task.description}</p> : <div className="mt-3"><EmptyState title="No instructions yet" message="This assignment does not include additional guidance." compact /></div>}
     </section>
   )
 }

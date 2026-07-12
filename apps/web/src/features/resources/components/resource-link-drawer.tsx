@@ -263,7 +263,7 @@ export function ResourceLinkShelf({ resources, title = 'Resources', canCreate, o
             </button>
           ) : null}
         </div>
-      ) : <p className="mt-2 text-sm text-muted-foreground">No resources yet.</p>}
+      ) : <div className="mt-2"><EmptyState title="No resources yet" message="Add a useful reference for this assignment." compact /></div>}
     </section>
   )
 }
