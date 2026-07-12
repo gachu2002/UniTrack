@@ -142,7 +142,7 @@ interface ProjectCommandHeaderProps {
 
 function ProjectCommandHeader({ project, canManage, canPlan, canCreateAssignments, assignmentCreateDisabledReason, onEdit, onCreateMilestone, onCreateTask }: ProjectCommandHeaderProps) {
   const summary = project.topic || project.description || ''
-  const primaryAction = projectPrimaryAction(project, canManage, canPlan, canCreateAssignments)
+  const primaryAction = projectPrimaryAction(project, canPlan, canCreateAssignments)
   const badges = projectHeaderBadges(project)
 
   return (
@@ -190,7 +190,7 @@ function ProjectSignalBadge({ signal }: { signal: ProjectWorkSignal }) {
   return <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold', signal.tone === 'red' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>{signal.label}</span>
 }
 
-function projectPrimaryAction(project: Project, canManage: boolean, canPlan: boolean, canCreateAssignments: boolean) {
+function projectPrimaryAction(project: Project, canPlan: boolean, canCreateAssignments: boolean) {
   if (canPlan && project.milestoneCount === 0) {
     return { kind: 'create-checkpoint' as const, label: 'Create checkpoint' }
   }
